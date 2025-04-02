@@ -10,9 +10,10 @@ import sys
 import threading
 import traceback
 import webbrowser
+import resources_rc
 
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QFile
-from PySide6.QtGui import QFont, QPalette, QIcon, QAction
+from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
@@ -71,9 +72,15 @@ class WarpStatusHandler(QThread):
 class WarpStatsHandler(QThread):
     stats_signal = Signal(list)
 
-    def __init__(self, loop=True):
+    def __init__(self, status_handler, loop=True):
         super().__init__()
         self.looping = loop
+        self.status_handler = status_handler
+        self.status_handler.status_signal.connect(self.update_status)
+        self.warp_connected = False
+
+    def update_status(self, status):
+        self.warp_connected = (status == "Connected")
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -82,32 +89,37 @@ class WarpStatsHandler(QThread):
 
     async def monitor_stats(self):
         while True:
+            if not self.warp_connected:
+                print("Warp is disconnected. Waiting for connection...")
+                while not self.warp_connected:
+                    await asyncio.sleep(2)
+
             try:
                 process = await asyncio.create_subprocess_exec(
                     'warp-cli', 'tunnel', 'stats',
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    stderr=asyncio.subprocess.PIPE
                 )
                 stdout, _ = await process.communicate()
                 stats_output = stdout.decode().splitlines()
 
-                endpoints = stats_output[0].split(': ')[1]
-                handshake_time = stats_output[1].split(': ')[1]
-                sent = stats_output[2].split(': ')[1].split(';')[0].strip()
-                received = stats_output[2].split('; ')[1].split(':')[1].strip()
-                latency = stats_output[3].split(': ')[1]
-                loss = stats_output[4].split(': ')[1]
+                if len(stats_output) < 6:
+                    raise ValueError("Unexpected stats output format")
 
-                self.stats_signal.emit([endpoints, handshake_time, sent, received, latency, loss])
+                protocol = stats_output[0].split(": ")[1].split(" ")[0]
+                endpoints = stats_output[1].split(': ')[1]
+                handshake_time = stats_output[2].split(': ')[1]
+                sent = stats_output[3].split('; ')[0].split(':')[1].strip()
+                received = stats_output[3].split('; ')[1].split(':')[1].strip()
+                latency = stats_output[4].split(': ')[1]
+                loss = stats_output[5].split(': ')[1]
 
-            except Exception:
-                pass
+                self.stats_signal.emit([protocol, endpoints, handshake_time, sent, received, latency, loss])
 
-            if not self.looping:
-                break
-
+            except Exception as e:
+                print(f"Error on getting stats: {e}")
             await asyncio.sleep(15)
+
 
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
@@ -210,19 +222,25 @@ class PowerButton(QWidget):
         threading.Thread(target=toggle, daemon=True).start()
 
     def update_button_state(self, is_on):
-        if type(is_on) is bool:
+        states = {
+            True: {"state": "on", "text": "ON", "color": QColor("green")},
+            False: {"state": "off", "text": "OFF", "color": QColor("red")},
+            "connect": {"state": "connect", "text": "...", "color": QColor("yellow")}
+        }
+
+        if isinstance(is_on, bool):
+            selected_state = states[is_on]
             self.is_on = is_on
-            state = "on" if is_on else "off"
-            color = Qt.green if is_on else Qt.red
-            self.power_button.setStyleSheet(
-                self.button_styles[state][self.theme] + "border-radius: 50px; font-size: 24px;")
-            self.power_button.setText("ON" if is_on else "OFF")
-            self.glow_effect.setColor(color)
         else:
-            self.power_button.setStyleSheet(
-                self.button_styles['connect'][self.theme] + "border-radius: 50px; font-size: 24px;")
-            self.power_button.setText("...")
-            self.glow_effect.setColor(Qt.yellow)
+            selected_state = states["connect"]
+            self.is_on = True
+
+        self.power_button.setStyleSheet(
+            self.button_styles[selected_state["state"]][self.theme] +
+            "border-radius: 50px; font-size: 24px;"
+        )
+        self.power_button.setText(selected_state["text"])
+        self.glow_effect.setColor(selected_state["color"])
 
 
 class CustomTitleBar(QWidget):
@@ -613,13 +631,13 @@ class MainWindow(QMainWindow):
         self.ip_label = QLabel(f"IPv4: 0.0.0.0")
         self.ip_label.setFont(QFont("Segoe UI", 12))
         self.ip_label.setToolTip("This is your current public IP address.")
-        self.current_protocol = get_current_protocol()
-        self.protocol_label = QLabel(f"Protocol: MASQUE")
+        self.protocol_label = QLabel(f"Protocol: ---")
+        current_protocol = get_current_protocol()
         self.protocol_label.setText(
-            f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{self.current_protocol}</span>")
-        self.version_label = QLabel("Version: 1.0.0")
+            f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
+        self.version_label = QLabel("Version: 1.0.1")
         self.version_label.setText(
-            f"Version: <span style='color: #0078D4; font-weight: bold;'>1.0.0</span>")
+            f"Version: <span style='color: #0078D4; font-weight: bold;'>1.0.1</span>")
 
         status_info.addWidget(self.status_label)
         status_info.addWidget(self.ip_label)
@@ -683,7 +701,7 @@ class MainWindow(QMainWindow):
         self.status_checker.start()
 
         # stats Checker
-        self.stats_checker = WarpStatsHandler(loop=True)
+        self.stats_checker = WarpStatsHandler(self.status_checker, loop=True)
         self.stats_checker.stats_signal.connect(self.update_stats_display)
         self.stats_checker.start()
 
@@ -713,7 +731,9 @@ class MainWindow(QMainWindow):
             self.activateWindow()
 
     def update_stats_display(self, stats_list):
-        endpoints, handshake_time, sent, received, latency, loss = stats_list
+        protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
+
+        self.protocol_label.setText(f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
         handshake_value = int(handshake_time.replace('s', ''))
         endpoints_value = endpoints.split(',')
         ipv4 = endpoints_value[0]
@@ -729,7 +749,7 @@ class MainWindow(QMainWindow):
         self.sent_label.setText(f"Sent Data: {sent}")
         self.received_label.setText(f"Received Data: {received}")
 
-        latency_value = int(latency.replace('ms', ''))  # Assuming latency is like "30 ms"
+        latency_value = int(latency.replace('ms', ''))
         if latency_value < 100:
             latency_color = "green"
         elif latency_value < 200:
@@ -829,9 +849,8 @@ class MainWindow(QMainWindow):
         try:
             subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
             QMessageBox.information(self, "Protocol Changed", f"Protocol successfully changed to {protocol}.")
-            self.current_protocol = get_current_protocol()
             self.protocol_label.setText(
-                f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{self.current_protocol}</span>")
+                f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
         except subprocess.CalledProcessError as e:
             error_message = f"Failed to set protocol: {str(e)}"
             QMessageBox.critical(self, "Error", error_message)
@@ -855,7 +874,6 @@ def get_global_ip():
     except Exception as e:
         print(f"Failed to fetch global IP: {e}")
         return 'Failed'
-
 
 def get_current_protocol():
     try:
