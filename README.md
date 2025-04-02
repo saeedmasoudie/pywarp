@@ -15,8 +15,8 @@
 ---
 
 ## **Screenshots**
-![PyWarp Dark Mode](screenshots/screen1.png)
-![PyWarp Normal](screenshots/screen2.png)
+![PyWarp Dark Mode](screenshots/Screenshot-1.jpg)
+![PyWarp Normal](screenshots/Screenshot-2.jpg)
 ---
 
 ## **Prerequisites**
