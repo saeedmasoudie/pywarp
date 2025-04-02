@@ -98,7 +98,8 @@ class WarpStatsHandler(QThread):
                 process = await asyncio.create_subprocess_exec(
                     'warp-cli', 'tunnel', 'stats',
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NO_WINDOW
                 )
                 stdout, _ = await process.communicate()
                 stats_output = stdout.decode().splitlines()
