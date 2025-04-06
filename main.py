@@ -25,7 +25,6 @@ class WarpStatusHandler(QThread):
     def __init__(self, loop=False):
         super().__init__()
         self.looping = loop
-        self.last_status = None
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -56,9 +55,7 @@ class WarpStatusHandler(QThread):
                     except ValueError:
                         current_status = 'Fetching'
 
-                if current_status != self.last_status:
-                    self.last_status = current_status
-                    self.status_signal.emit(current_status)
+                self.status_signal.emit(current_status)
 
             except Exception as e:
                 print(f"Error checking Warp status: {e}")
