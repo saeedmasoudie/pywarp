@@ -3,7 +3,6 @@ import atexit
 import json
 import os
 import platform
-import requests
 import shutil
 import subprocess
 import sys
@@ -11,14 +10,16 @@ import threading
 import traceback
 import webbrowser
 import resources_rc
-
+import requests
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QFile
-from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor
+from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
-                               QLineEdit, QGridLayout)
+                               QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView)
 
+GITHUB_VERSION_URL = "https://github.com/saeedmasoudie/pywarp/blob/main/version.txt"
+CURRENT_VERSION = "1.0.4"
 
 class WarpStatusHandler(QThread):
     status_signal = Signal(str)
@@ -119,7 +120,6 @@ class WarpStatsHandler(QThread):
                 latency = stats_output[4].split(': ')[1]
                 loss = stats_output[5].split(': ')[1]
 
-                print([protocol, endpoints, handshake_time, sent, received, latency, loss])
                 self.stats_signal.emit([protocol, endpoints, handshake_time, sent, received, latency, loss])
 
             except Exception as e:
@@ -653,9 +653,9 @@ class MainWindow(QMainWindow):
         current_protocol = get_current_protocol()
         self.protocol_label.setText(
             f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
-        self.version_label = QLabel("Version: 1.0.2")
+        self.version_label = QLabel(f"Version: {CURRENT_VERSION}")
         self.version_label.setText(
-            f"Version: <span style='color: #0078D4; font-weight: bold;'>1.0.2</span>")
+            f"Version: <span style='color: #0078D4; font-weight: bold;'>{CURRENT_VERSION}</span>")
 
         status_info.addWidget(self.status_label)
         status_info.addWidget(self.ip_label)
@@ -670,29 +670,30 @@ class MainWindow(QMainWindow):
         self.buttons = {}
 
         stats_widget = QWidget()
-        stats_widget.setStyleSheet("""
-            QLabel {
+        stats_layout = QVBoxLayout(stats_widget)
+
+        self.stats_table = QTableWidget(8, 2)
+        self.stats_table.setHorizontalHeaderLabels(["Metric", "Value"])
+        self.stats_table.verticalHeader().setVisible(False)
+        self.stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.stats_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.stats_table.setStyleSheet("""
+            QTableWidget {
                 font-family: 'Segoe UI';
                 font-size: 12pt;
                 font-weight: normal;
             }
         """)
-        stats_layout = QVBoxLayout(stats_widget)
 
-        self.endpoints_label = QLabel("Endpoints: --")
-        self.handshake_label = QLabel("Last Handshake: --")
-        self.sent_label = QLabel("Sent Data: --")
-        self.received_label = QLabel("Received Data: --")
-        self.latency_label = QLabel("Latency: --")
-        self.loss_label = QLabel("Loss: --")
+        stats_labels = [
+            "Protocol", "IPv4 Endpoint", "IPv6 Endpoint",
+            "Last Handshake", "Sent Data", "Received Data", "Latency", "Loss"
+        ]
+        for i, label in enumerate(stats_labels):
+            self.stats_table.setItem(i, 0, QTableWidgetItem(label))
 
-        stats_layout.addWidget(self.endpoints_label)
-        stats_layout.addWidget(self.handshake_label)
-        stats_layout.addWidget(self.sent_label)
-        stats_layout.addWidget(self.received_label)
-        stats_layout.addWidget(self.latency_label)
-        stats_layout.addWidget(self.loss_label)
-
+        stats_layout.addWidget(self.stats_table)
         self.stacked_widget.addWidget(stats_widget)
 
         self.settings_handler = SettingsHandler(loop=True)
@@ -751,39 +752,51 @@ class MainWindow(QMainWindow):
     def update_stats_display(self, stats_list):
         protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
 
-        self.protocol_label.setText(f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
         handshake_value = int(handshake_time.replace('s', ''))
+        formatted_handshake = format_handshake_time(handshake_value)
+        handshake_item = QTableWidgetItem(formatted_handshake)
+        if handshake_value < 1800:
+            handshake_item.setForeground(QBrush(QColor("green")))
+        elif handshake_value < 3600:
+            handshake_item.setForeground(QBrush(QColor("orange")))
+        else:
+            handshake_item.setForeground(QBrush(QColor("red")))
+
         endpoints_value = endpoints.split(',')
         ipv4 = endpoints_value[0]
-        ipv6 = endpoints_value[1] if len(endpoints_value[1]) > 5 else 'not Available'
-        self.endpoints_label.setText(f"IPv4 Endpoint: {ipv4}\nIPv6 Endpoint: {ipv6}")
-        self.handshake_label.setText(f"Last Handshake: {format_handshake_time(handshake_value)}")
-        if handshake_value < 1800:
-            self.handshake_label.setStyleSheet("color: green; font-weight: bold;")
-        elif handshake_value < 3600:
-            self.handshake_label.setStyleSheet("color: orange; font-weight: bold;")
-        else:
-            self.handshake_label.setStyleSheet("color: red; font-weight: bold;")
-        self.sent_label.setText(f"Sent Data: {sent}")
-        self.received_label.setText(f"Received Data: {received}")
+        ipv6 = endpoints_value[1] if len(endpoints_value[1]) > 5 else 'Not Available'
 
-        latency_value = int(latency.replace('ms', ''))
+        # Update table values
+        self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
+        self.stats_table.setItem(1, 1, QTableWidgetItem(ipv4))
+        self.stats_table.setItem(2, 1, QTableWidgetItem(ipv6))
+        self.stats_table.setItem(3, 1, handshake_item)
+        self.stats_table.setItem(4, 1, QTableWidgetItem(sent))
+        self.stats_table.setItem(5, 1, QTableWidgetItem(received))
+
+        latency_value = int(latency.replace("ms", "").strip())
+        latency_item = QTableWidgetItem(f"{latency_value} ms")
+
         if latency_value < 100:
-            latency_color = "green"
+            latency_item.setForeground(QBrush(QColor("green")))  # Good latency
         elif latency_value < 200:
-            latency_color = "orange"
+            latency_item.setForeground(QBrush(QColor("orange")))  # Moderate latency
         else:
-            latency_color = "red"
-        self.latency_label.setStyleSheet(f"color: {latency_color}; font-weight: bold;")
-        self.latency_label.setText(f"Latency: {latency}")
+            latency_item.setForeground(QBrush(QColor("red")))  # High latency
 
-        loss_value = float(loss.split(';')[0].replace("%", ""))
-        if loss_value > 5:
-            self.loss_label.setStyleSheet("color: red; font-weight: bold;")
-            self.loss_label.setToolTip("High packet loss detected!")
+        self.stats_table.setItem(6, 1, latency_item)
+
+        loss_value = float(loss.split(";")[0].replace("%", "").strip())
+        loss_item = QTableWidgetItem(f"{loss_value}%")
+
+        if loss_value < 1:
+            loss_item.setForeground(QBrush(QColor("green")))
+        elif loss_value < 5:
+            loss_item.setForeground(QBrush(QColor("orange")))
         else:
-            self.loss_label.setStyleSheet("color: green; font-weight: normal;")
-        self.loss_label.setText(f"Loss: {loss_value}%")
+            loss_item.setForeground(QBrush(QColor("red")))
+
+        self.stats_table.setItem(7, 1, loss_item)
 
     def update_status(self, is_connected):
         self.status_label.setText(f"Status: {is_connected}")
@@ -947,6 +960,41 @@ def disconnect_on_exit():
 def safe_subprocess_args():
     return {'creationflags': subprocess.CREATE_NO_WINDOW} if platform.system() == "Windows" else {}
 
+
+def get_latest_version():
+    try:
+        response = requests.get(GITHUB_VERSION_URL, timeout=5)
+        response.raise_for_status()
+        latest_version = response.text.strip()
+
+        if latest_version and latest_version.replace(".", "").isdigit():
+            return latest_version
+        else:
+            print("Received invalid version format")
+            return None
+    except requests.exceptions.Timeout:
+        print("Request timed out. Could not check for updates.")
+    except requests.exceptions.RequestException as e:
+        print(f"Network error: {e}")
+
+    return None
+
+def check_for_update():
+    latest_version = get_latest_version()
+    if latest_version and latest_version != CURRENT_VERSION:
+        notify_update(latest_version)
+
+def notify_update(latest_version):
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setWindowTitle("Update Available")
+    msg_box.setText(f"A new version ({latest_version}) is available! Please update.")
+    update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec()
+    if msg_box.clickedButton() == update_button:
+        webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
+
 if __name__ == "__main__":
     atexit.register(disconnect_on_exit)
     app = QApplication(sys.argv)
@@ -966,4 +1014,6 @@ if __name__ == "__main__":
     app.setFont(QFont("Arial", 10))
     window = MainWindow()
     window.show()
+    update_thread = threading.Thread(target=check_for_update, daemon=True)
+    update_thread.start()
     sys.exit(app.exec())
