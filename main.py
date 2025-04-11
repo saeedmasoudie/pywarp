@@ -22,9 +22,11 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 
 class WarpStatusHandler(QThread):
     status_signal = Signal(str)
-    def __init__(self, loop=False):
+
+    def __init__(self, loop=True):
         super().__init__()
         self.looping = loop
+        self.previous_status = None
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -32,13 +34,13 @@ class WarpStatusHandler(QThread):
         loop.run_until_complete(self.monitor_status())
 
     async def monitor_status(self):
-        while True:
+        while self.looping:
             try:
                 process = await asyncio.create_subprocess_exec(
                     'warp-cli', 'status',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    **safe_subprocess_args()
                 )
                 stdout, _ = await process.communicate()
                 status = stdout.decode()
@@ -47,24 +49,29 @@ class WarpStatusHandler(QThread):
                     current_status = 'Connected'
                 elif 'Disconnected' in status:
                     current_status = 'Disconnected'
+                elif 'Connecting' in status:
+                    current_status = 'Connecting...'
                 else:
-                    data = status.split()
-                    try:
-                        reason_index = data.index("Reason:")
-                        current_status = " ".join(data[reason_index + 1:]).lower()
-                    except ValueError:
-                        current_status = 'Fetching'
+                    current_status = self.extract_status_reason(status)
 
-                self.status_signal.emit(current_status)
+                if current_status != self.previous_status:
+                    self.status_signal.emit(current_status)
+                    self.previous_status = current_status
 
             except Exception as e:
                 print(f"Error checking Warp status: {e}")
-                self.status_signal.emit('Fetching')
-
-            if not self.looping:
-                break
 
             await asyncio.sleep(8)
+
+    @staticmethod
+    def extract_status_reason(status):
+        data = status.split()
+        try:
+            reason_index = data.index("Reason:")
+            return " ".join(data[reason_index + 1:]).split()[0]
+        except ValueError:
+            return "Unable"
+
 
 class WarpStatsHandler(QThread):
     stats_signal = Signal(list)
@@ -112,6 +119,7 @@ class WarpStatsHandler(QThread):
                 latency = stats_output[4].split(': ')[1]
                 loss = stats_output[5].split(': ')[1]
 
+                print([protocol, endpoints, handshake_time, sent, received, latency, loss])
                 self.stats_signal.emit([protocol, endpoints, handshake_time, sent, received, latency, loss])
 
             except Exception as e:
@@ -151,7 +159,7 @@ class SettingsHandler(QThread):
                 "warp-cli", "settings",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                **safe_subprocess_args()
             )
             stdout, _ = await process.communicate()
             for line in stdout.decode().splitlines():
@@ -205,19 +213,31 @@ class PowerButton(QWidget):
         self.is_on = False
 
     def toggle_power(self):
+        if hasattr(self, '_toggle_lock') and self._toggle_lock:
+            return
+        self._toggle_lock = True
+
         def toggle():
+            self.power_button.setDisabled(True)
             self.power_button.setText("...")
             self.power_button.setStyleSheet(
                 self.button_styles['connect'][self.theme] + "border-radius: 50px; font-size: 24px;")
             self.glow_effect.setColor(Qt.yellow)
+
             if self.is_on:
-                subprocess.run(['warp-cli', 'disconnect'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run(['warp-cli', 'disconnect'], capture_output=True, **safe_subprocess_args())
                 self.toggled.emit('Disconnecting...')
             else:
-                subprocess.run(['warp-cli', 'connect'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run(['warp-cli', 'connect'], capture_output=True, **safe_subprocess_args())
                 self.toggled.emit('Connecting...')
 
+            self.power_button.setDisabled(False)
+            self._toggle_lock = False
+
         threading.Thread(target=toggle, daemon=True).start()
+
+    def get_creation_flags(self):
+        return subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
 
     def update_button_state(self, is_on):
         states = {
@@ -563,12 +583,12 @@ class SettingsPage(QWidget):
         self.current_dns_mode = selected_dns
         self.save_local_settings()
         QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
-        subprocess.run(["warp-cli", "dns", "families", selected_dns], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.run(["warp-cli", "dns", "families", selected_dns], capture_output=True, **safe_subprocess_args())
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
         if selected_mode:
-            subprocess.run(['warp-cli', 'mode', selected_mode], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['warp-cli', 'mode', selected_mode], capture_output=True, **safe_subprocess_args())
             QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
 
     def update_inputs(self, settings):
@@ -633,9 +653,9 @@ class MainWindow(QMainWindow):
         current_protocol = get_current_protocol()
         self.protocol_label.setText(
             f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
-        self.version_label = QLabel("Version: 1.0.1")
+        self.version_label = QLabel("Version: 1.0.2")
         self.version_label.setText(
-            f"Version: <span style='color: #0078D4; font-weight: bold;'>1.0.1</span>")
+            f"Version: <span style='color: #0078D4; font-weight: bold;'>1.0.2</span>")
 
         status_info.addWidget(self.status_label)
         status_info.addWidget(self.ip_label)
@@ -767,26 +787,31 @@ class MainWindow(QMainWindow):
 
     def update_status(self, is_connected):
         self.status_label.setText(f"Status: {is_connected}")
+        self.status_text = is_connected
+
         if is_connected == 'Connected':
-            ip = get_global_ip()
-            self.status_text = is_connected
             self.status_label.setStyleSheet("color: green; font-weight: bold;")
             is_connected = True
-            self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>fetching...</span>")
+
+            get_global_ip_async(lambda ip: self.ip_label.setText(
+                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
+            ))
+
         elif is_connected == 'Disconnected':
-            ip = get_global_ip()
-            self.status_text = is_connected
             self.status_label.setStyleSheet("color: red; font-weight: bold;")
             is_connected = False
-            self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>fetching...</span>")
+
+            get_global_ip_async(lambda ip: self.ip_label.setText(
+                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
+            ))
+
         else:
-            self.status_text = is_connected
             is_connected = 'Unknown'
-            self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>fetching...</span>")
             self.status_label.setStyleSheet("color: orange; font-weight: bold;")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>fetching...</span>")
+
         self.toggle_switch.update_button_state(is_connected)
 
     def get_styles(self):
@@ -845,7 +870,7 @@ class MainWindow(QMainWindow):
 
     def set_warp_protocol(self, protocol):
         try:
-            subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol], check=True, **safe_subprocess_args())
             QMessageBox.information(self, "Protocol Changed", f"Protocol successfully changed to {protocol}.")
             self.protocol_label.setText(
                 f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
@@ -865,17 +890,22 @@ def format_handshake_time(seconds):
         return f"{secs}s"
 
 
-def get_global_ip():
-    try:
-        response = requests.get('https://api.ipify.org', params={'format': 'json'})
-        return response.json().get('ip', 'Failed')
-    except Exception as e:
-        print(f"Failed to fetch global IP: {e}")
-        return 'Failed'
+def get_global_ip_async(callback):
+    def fetch_ip():
+        try:
+            response = requests.get('https://api.ipify.org', params={'format': 'json'}, timeout=5)
+            ip = response.json().get('ip', 'Unavailable')
+        except requests.RequestException as e:
+            ip = 'Unavailable'
+            print(f"Failed to fetch global IP: {e}")
+        callback(ip)
+
+    thread = threading.Thread(target=fetch_ip, daemon=True)
+    thread.start()
 
 def get_current_protocol():
     try:
-        process = subprocess.Popen(['warp-cli', 'settings'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+        process = subprocess.Popen(['warp-cli', 'settings'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, **safe_subprocess_args())
         stdout, _ = process.communicate()
         output = stdout.decode()
 
@@ -909,10 +939,13 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 def disconnect_on_exit():
     try:
-        subprocess.run(["warp-cli", "disconnect"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.run(["warp-cli", "disconnect"], capture_output=True, **safe_subprocess_args())
         print("Warp disconnected successfully.")
     except Exception as e:
         print(f"Failed to disconnect Warp: {e}")
+
+def safe_subprocess_args():
+    return {'creationflags': subprocess.CREATE_NO_WINDOW} if platform.system() == "Windows" else {}
 
 if __name__ == "__main__":
     atexit.register(disconnect_on_exit)
