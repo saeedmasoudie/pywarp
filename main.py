@@ -11,15 +11,40 @@ import traceback
 import webbrowser
 import resources_rc
 import requests
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QFile
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QFile, QObject
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView)
 
-GITHUB_VERSION_URL = "https://github.com/saeedmasoudie/pywarp/blob/main/version.txt"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.0.5"
+
+class UpdateChecker(QObject):
+    update_available = Signal(str)  # Signal for safely updating GUI
+
+    def check_for_update(self):
+        latest_version = self.get_latest_version()
+        if latest_version and latest_version != CURRENT_VERSION:
+            self.update_available.emit(latest_version)  # Notify main thread
+
+    def get_latest_version(self):
+        try:
+            response = requests.get(GITHUB_VERSION_URL, timeout=5)
+            response.raise_for_status()
+            latest_version = response.text.strip()
+
+            if latest_version and latest_version.replace(".", "").isdigit():
+                return latest_version
+            else:
+                print("Received invalid version format")
+                return None
+        except requests.exceptions.Timeout:
+            print("Request timed out. Could not check for updates.")
+        except requests.exceptions.RequestException as e:
+            print(f"Network error: {e}")
+        return None
 
 class WarpStatusHandler(QThread):
     status_signal = Signal(str)
@@ -964,30 +989,6 @@ def disconnect_on_exit():
 def safe_subprocess_args():
     return {'creationflags': subprocess.CREATE_NO_WINDOW} if platform.system() == "Windows" else {}
 
-
-def get_latest_version():
-    try:
-        response = requests.get(GITHUB_VERSION_URL, timeout=5)
-        response.raise_for_status()
-        latest_version = response.text.strip()
-
-        if latest_version and latest_version.replace(".", "").isdigit():
-            return latest_version
-        else:
-            print("Received invalid version format")
-            return None
-    except requests.exceptions.Timeout:
-        print("Request timed out. Could not check for updates.")
-    except requests.exceptions.RequestException as e:
-        print(f"Network error: {e}")
-
-    return None
-
-def check_for_update():
-    latest_version = get_latest_version()
-    if latest_version and latest_version != CURRENT_VERSION:
-        notify_update(latest_version)
-
 def notify_update(latest_version):
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
@@ -996,8 +997,10 @@ def notify_update(latest_version):
     update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
     msg_box.setStandardButtons(QMessageBox.Ok)
     msg_box.exec()
+
     if msg_box.clickedButton() == update_button:
         webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
+
 
 if __name__ == "__main__":
     atexit.register(disconnect_on_exit)
@@ -1018,6 +1021,8 @@ if __name__ == "__main__":
     app.setFont(QFont("Arial", 10))
     window = MainWindow()
     window.show()
-    update_thread = threading.Thread(target=check_for_update, daemon=True)
+    update_checker = UpdateChecker()
+    update_checker.update_available.connect(notify_update)
+    update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
     update_thread.start()
     sys.exit(app.exec())
