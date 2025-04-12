@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView)
 
 GITHUB_VERSION_URL = "https://github.com/saeedmasoudie/pywarp/blob/main/version.txt"
-CURRENT_VERSION = "1.0.4"
+CURRENT_VERSION = "1.0.5"
 
 class WarpStatusHandler(QThread):
     status_signal = Signal(str)
@@ -69,9 +69,13 @@ class WarpStatusHandler(QThread):
         data = status.split()
         try:
             reason_index = data.index("Reason:")
-            return " ".join(data[reason_index + 1:]).split()[0]
+            reason_text = " ".join(data[reason_index + 1:])
+            if 'No Network' in reason_text:
+                return 'No Network'
+            else:
+                return 'Network Error'
         except ValueError:
-            return "Unable"
+            return "Failed"
 
 
 class WarpStatsHandler(QThread):
