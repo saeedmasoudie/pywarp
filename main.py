@@ -11,18 +11,19 @@ import traceback
 import webbrowser
 import resources_rc
 import requests
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QFile, QObject
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QObject
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
-                               QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView)
+                               QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
+                               QGroupBox, QSpacerItem)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.0.5"
 
 class UpdateChecker(QObject):
-    update_available = Signal(str)  # Signal for safely updating GUI
+    update_available = Signal(str)
 
     def check_for_update(self):
         latest_version = self.get_latest_version()
@@ -463,9 +464,9 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.settings_handler = settings_handler
         self.warp_status_handler = warp_status_handler
-        # Define writable path for local storage
+
         writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
-        os.makedirs(writable_path, exist_ok=True)  # Ensure the directory exists
+        os.makedirs(writable_path, exist_ok=True)
         self.local_storage_file = os.path.join(writable_path, "settings.json")
 
         if not os.path.exists(self.local_storage_file):
@@ -476,7 +477,7 @@ class SettingsPage(QWidget):
         self.current_dns_mode = ""
 
         self.load_local_settings()
-        layout = QGridLayout(self)
+        main_layout = QVBoxLayout(self)
 
         palette = QApplication.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
@@ -484,91 +485,67 @@ class SettingsPage(QWidget):
         bg_color = "#1E1E1E" if is_dark_mode else "white"
         input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
 
-        modes_label = QLabel("Modes:")
-        modes_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {fg_color};")
-        layout.addWidget(modes_label, 0, 0, 1, 2)
-
+        # Modes Section
+        modes_group = self.create_groupbox("Modes", fg_color)
+        modes_layout = QGridLayout()
         self.modes_dropdown = QComboBox()
         self.modes_dropdown.addItems(["warp", "doh", "warp+doh", "dot", "warp+dot", "proxy", "tunnel_only"])
         self.style_dropdown(self.modes_dropdown, fg_color, input_bg_color)
         self.modes_dropdown.currentTextChanged.connect(self.set_mode)
-        layout.addWidget(self.modes_dropdown, 1, 0, 1, 2)
+        modes_layout.addWidget(self.modes_dropdown, 1, 0, 1, 2)
+        modes_layout.addItem(QSpacerItem(10, 15), 0, 0)
+        modes_group.setLayout(modes_layout)
+        main_layout.addWidget(modes_group)
 
-        dns_label = QLabel("DNS Mode:")
-        dns_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {fg_color};")
-        layout.addWidget(dns_label, 2, 0, 1, 2)
-
+        # DNS Section
+        dns_group = self.create_groupbox("DNS Settings", fg_color)
+        dns_layout = QGridLayout()
         self.dns_dropdown = QComboBox()
         self.dns_dropdown.addItems(["off", "family-friendly", "malware"])
         self.dns_dropdown.setCurrentText(self.current_dns_mode)
         self.style_dropdown(self.dns_dropdown, fg_color, input_bg_color)
         self.dns_dropdown.currentTextChanged.connect(self.set_dns_mode)
-        layout.addWidget(self.dns_dropdown, 3, 0, 1, 2)
+        dns_layout.addWidget(self.dns_dropdown, 1, 0, 1, 2)
+        dns_layout.addItem(QSpacerItem(10, 15), 0, 0)
+        dns_group.setLayout(dns_layout)
+        main_layout.addWidget(dns_group)
 
-        endpoint_label = QLabel("Custom Endpoint:")
-        endpoint_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {fg_color};")
-        layout.addWidget(endpoint_label, 4, 0)
-
+        # EndPoint Section
+        endpoint_group = self.create_groupbox("Custom Endpoint", fg_color)
+        endpoint_layout = QGridLayout()
         self.endpoint_input = QLineEdit()
         self.endpoint_input.setPlaceholderText("Enter endpoint")
         self.endpoint_input.setText(self.current_endpoint)
-        self.endpoint_input.setStyleSheet(f"""
-            background-color: {input_bg_color};
-            color: {fg_color};
-            border: 1px solid {fg_color};
-            border-radius: 5px;
-            padding: 5px;
-        """)
-        layout.addWidget(self.endpoint_input, 5, 0, 1, 2)
+        self.style_input(self.endpoint_input, fg_color, input_bg_color)
 
-        endpoint_submit_button = QPushButton("Submit")
-        endpoint_submit_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: #0078D4;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 10px;
-            }}
-            QPushButton:hover {{
-                background-color: #005A9E;
-            }}
-        """)
-        endpoint_submit_button.clicked.connect(self.set_endpoint)
-        layout.addWidget(endpoint_submit_button, 5, 2)
+        submit_button = QPushButton("Submit")
+        self.style_button(submit_button)
+        submit_button.clicked.connect(self.set_endpoint)
+        reset_button = QPushButton("Reset")
+        self.style_button(reset_button, color="#e74c3c")
+        reset_button.clicked.connect(self.reset_endpoint)
 
-        endpoint_reset_button = QPushButton("Reset")
-        endpoint_reset_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 10px;
-            }}
-            QPushButton:hover {{
-                background-color: #c0392b;
-            }}
-        """)
-        endpoint_reset_button.clicked.connect(self.reset_endpoint)
-        layout.addWidget(endpoint_reset_button, 5, 3)
+        endpoint_layout.addWidget(self.endpoint_input, 1, 0, 1, 2)
+        endpoint_layout.addItem(QSpacerItem(10, 15), 0, 0)
+        endpoint_layout.addWidget(submit_button, 1, 2)
+        endpoint_layout.addWidget(reset_button, 1, 3)
+        endpoint_group.setLayout(endpoint_layout)
+        main_layout.addWidget(endpoint_group)
 
+        self.setLayout(main_layout)
         self.setStyleSheet(f"background-color: {bg_color}; padding: 15px; border-radius: 8px;")
-        self.setLayout(layout)
 
-        if self.settings_handler:
-            self.settings_handler.settings_signal.connect(self.update_inputs)
-
-        if self.warp_status_handler:
-            self.warp_status_handler.status_signal.connect(self.update_status)
+    def create_groupbox(self, title, fg_color):
+        groupbox = QGroupBox(title)
+        groupbox.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {fg_color};border: 1px solid {fg_color}; border-radius: 8px; padding: 6px;")
+        return groupbox
 
     def copy_settings_file(self):
-        resource_file = QFile(":/settings.json")
-        if resource_file.open(QFile.ReadOnly | QFile.Text):
-            with open(self.local_storage_file, "w") as file:
-                file.write(resource_file.readAll().data().decode())
-        else:
-            print("Failed to open settings.json from resources.")
+        writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
+        os.makedirs(writable_path, exist_ok=True)
+        default_settings = {"endpoint": "", "dns_mode": "off"}
+        with open(self.local_storage_file, "w") as file:
+            json.dump(default_settings, file)
 
     def load_local_settings(self):
         if os.path.exists(self.local_storage_file):
@@ -583,16 +560,47 @@ class SettingsPage(QWidget):
             self.current_dns_mode = "off"
 
     def save_local_settings(self):
-        data = {
-            "endpoint": self.current_endpoint,
-            "dns_mode": self.current_dns_mode
-        }
+        data = {"endpoint": self.current_endpoint, "dns_mode": self.current_dns_mode}
         with open(self.local_storage_file, "w") as file:
             json.dump(data, file)
 
+    def style_dropdown(self, dropdown, fg_color, bg_color):
+        dropdown.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {bg_color};
+                color: {fg_color};
+                border: 1px solid {fg_color};
+                border-radius: 5px;
+                padding: 5px;
+            }}
+        """)
+
+    def style_input(self, input_field, fg_color, bg_color):
+        input_field.setStyleSheet(f"""
+            background-color: {bg_color};
+            color: {fg_color};
+            border: 1px solid {fg_color};
+            border-radius: 5px;
+            padding: 5px;
+        """)
+
+    def style_button(self, button, color="#0078D4"):
+        button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {color};
+                color: white;
+                border-radius: 5px;
+                padding: 5px 10px;
+                transition: 0.3s;
+            }}
+            QPushButton:hover {{
+                background-color: {'#005A9E' if color == '#0078D4' else '#c0392b'};
+            }}
+        """)
+
     def set_endpoint(self):
-        endpoint = self.endpoint_input.text()
-        if endpoint.strip():
+        endpoint = self.endpoint_input.text().strip()
+        if endpoint:
             self.current_endpoint = endpoint
             self.save_local_settings()
             QMessageBox.information(self, "Endpoint Saved", f"Custom endpoint set to: {endpoint}")
@@ -607,41 +615,14 @@ class SettingsPage(QWidget):
 
     def set_dns_mode(self):
         selected_dns = self.dns_dropdown.currentText()
-        if selected_dns == "family-friendly":
-            selected_dns = "full"
         self.current_dns_mode = selected_dns
         self.save_local_settings()
         QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
-        subprocess.run(["warp-cli", "dns", "families", selected_dns], capture_output=True, **safe_subprocess_args())
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
-        if selected_mode:
-            subprocess.run(['warp-cli', 'mode', selected_mode], capture_output=True, **safe_subprocess_args())
-            QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
+        QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
 
-    def update_inputs(self, settings):
-        self.modes_dropdown.setCurrentText(settings.get("mode", "Unknown"))
-
-    def style_dropdown(self, dropdown, fg_color, bg_color):
-        dropdown.setStyleSheet(f"""
-            QComboBox {{
-                background-color: {bg_color};
-                color: {fg_color};
-                border: 1px solid {fg_color};
-                border-radius: 5px;
-                padding: 5px;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {bg_color};
-                color: {fg_color};
-                selection-background-color: #0078D4;
-            }}
-        """)
-
-    def update_status(self, status):
-        self.current_status = status
-        self.endpoint_input.setDisabled(status == "Connected")
 
 class MainWindow(QMainWindow):
     def __init__(self):
