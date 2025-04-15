@@ -762,7 +762,8 @@ class MainWindow(QMainWindow):
     def update_stats_display(self, stats_list):
         protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
 
-        handshake_value = int(handshake_time.replace('s', ''))
+        handshake_time_cleaned = handshake_time.replace('s', '')
+        handshake_value = int(handshake_time_cleaned) if handshake_time_cleaned.isdigit() else 0
         formatted_handshake = format_handshake_time(handshake_value)
         handshake_item = QTableWidgetItem(formatted_handshake)
         if handshake_value < 1800:
@@ -774,7 +775,7 @@ class MainWindow(QMainWindow):
 
         endpoints_value = endpoints.split(',')
         ipv4 = endpoints_value[0]
-        ipv6 = endpoints_value[1] if len(endpoints_value[1]) > 5 else 'Not Available'
+        ipv6 = endpoints_value[1] if len(endpoints_value) > 1 and len(endpoints_value[1]) > 5 else 'Not Available'
 
         # Update table values
         self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
@@ -788,11 +789,11 @@ class MainWindow(QMainWindow):
         latency_item = QTableWidgetItem(f"{latency_value} ms")
 
         if latency_value < 100:
-            latency_item.setForeground(QBrush(QColor("green")))  # Good latency
+            latency_item.setForeground(QBrush(QColor("green")))
         elif latency_value < 200:
-            latency_item.setForeground(QBrush(QColor("orange")))  # Moderate latency
+            latency_item.setForeground(QBrush(QColor("orange")))
         else:
-            latency_item.setForeground(QBrush(QColor("red")))  # High latency
+            latency_item.setForeground(QBrush(QColor("red")))
 
         self.stats_table.setItem(6, 1, latency_item)
 
