@@ -11,6 +11,9 @@ import sys
 import threading
 import traceback
 import webbrowser
+
+from PySide6.QtNetwork import QLocalSocket, QLocalServer
+
 import resources_rc
 import requests
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QObject
@@ -23,6 +26,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.1.0"
+SERVER_NAME = "PyWarpInstance"
+server = QLocalServer()
 
 class UpdateChecker(QObject):
     update_available = Signal(str)
@@ -1254,6 +1259,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     error_dialog.exec()
 
 def disconnect_on_exit():
+    server.removeServer(SERVER_NAME)
     try:
         subprocess.run(["warp-cli", "disconnect"], capture_output=True, **safe_subprocess_args())
         print("Warp disconnected successfully.")
@@ -1276,11 +1282,22 @@ def notify_update(latest_version):
         webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
 
 
+def check_existing_instance():
+    socket = QLocalSocket()
+    socket.connectToServer(SERVER_NAME)
+
+    if socket.waitForConnected(500):
+        sys.exit(1)
+
 if __name__ == "__main__":
-    atexit.register(disconnect_on_exit)
+    check_existing_instance()
+
     app = QApplication(sys.argv)
+    server.listen(SERVER_NAME)
+    atexit.register(disconnect_on_exit)
     app.setWindowIcon(QIcon(":/logo.png"))
     sys.excepthook = handle_exception
+
     if not is_warp_installed():
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Critical)
@@ -1292,11 +1309,14 @@ if __name__ == "__main__":
         if msg_box.clickedButton() == download_button:
             webbrowser.open(get_os_download_url())
         sys.exit()
+
     app.setFont(QFont("Arial", 10))
     window = MainWindow()
     window.show()
+
     update_checker = UpdateChecker()
     update_checker.update_available.connect(notify_update)
     update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
     update_thread.start()
+
     sys.exit(app.exec())
