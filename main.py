@@ -1,8 +1,10 @@
 import asyncio
 import atexit
+import ipaddress
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -17,10 +19,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
-                               QGroupBox, QSpacerItem)
+                               QGroupBox, QSpacerItem, QDialog, QListWidget)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.0.5"
+CURRENT_VERSION = "1.1.0"
 
 class UpdateChecker(QObject):
     update_available = Signal(str)
@@ -28,7 +30,7 @@ class UpdateChecker(QObject):
     def check_for_update(self):
         latest_version = self.get_latest_version()
         if latest_version and latest_version != CURRENT_VERSION:
-            self.update_available.emit(latest_version)  # Notify main thread
+            self.update_available.emit(latest_version)
 
     def get_latest_version(self):
         try:
@@ -160,9 +162,12 @@ class WarpStatsHandler(QThread):
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
 
-    def __init__(self, loop=True):
+    def __init__(self, settings_file="settings.json", loop=True):
         super().__init__()
         self.looping = loop
+        self.settings_file = settings_file
+        self.settings = {}
+        self.load_settings()
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -171,10 +176,10 @@ class SettingsHandler(QThread):
 
     async def fetch_settings(self):
         while True:
-            settings = {}
             try:
-                settings["mode"] = await self.get_mode()
-                self.settings_signal.emit(settings)
+                self.settings["mode"] = await self.get_mode()
+                self.settings_signal.emit(self.settings)
+
             except Exception as e:
                 print(f"Error fetching settings: {e}")
 
@@ -189,7 +194,7 @@ class SettingsHandler(QThread):
                 "warp-cli", "settings",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                **safe_subprocess_args()
+                **safe_subprocess_args()  # Ensure this function is correctly defined
             )
             stdout, _ = await process.communicate()
             for line in stdout.decode().splitlines():
@@ -198,6 +203,27 @@ class SettingsHandler(QThread):
         except Exception as e:
             print(f"Error fetching mode: {e}")
         return "Unknown"
+
+    def load_settings(self):
+        try:
+            with open(self.settings_file, "r") as file:
+                self.settings = json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.settings = {}
+
+    def save_settings(self):
+        try:
+            with open(self.settings_file, "w") as file:
+                json.dump(self.settings, file, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
+
+    def get(self, key, default=None):
+        return self.settings.get(key, default)
+
+    def set(self, key, value):
+        self.settings[key] = value
+        self.save_settings()
 
 class PowerButton(QWidget):
     toggled = Signal(str)
@@ -459,10 +485,283 @@ class CustomTitleBar(QWidget):
                 obj.setStyleSheet("background-color: #e74c3c; color: white; border-radius: 5px;")
         return super().eventFilter(obj, event)
 
+
+class ExclusionManager(QDialog):
+    exclusions_updated = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Exclusion")
+        self.setFixedSize(300, 220)
+
+        layout = QVBoxLayout(self)
+
+        self.selector = QComboBox()
+        self.selector.addItems(["IP", "Domain"])
+        layout.addWidget(self.selector)
+
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("Enter IP or Domain")
+        layout.addWidget(self.input_field)
+        layout.addSpacing(10)
+
+        self.submit_button = QPushButton("Add")
+        self.submit_button.setMinimumHeight(40)
+        self.submit_button.clicked.connect(self.add_item)
+        layout.addWidget(self.submit_button, alignment=Qt.AlignCenter)
+
+        self.setLayout(layout)
+
+    def is_valid_ip(self, value):
+        try:
+            ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            return False
+
+    def is_valid_domain(self, value):
+        return bool(re.match(r"^(?!-)[A-Za-z0-9-]+(\.[A-Za-z]{2,})+$", value))
+
+    def add_item(self):
+        value = self.input_field.text().strip()
+        if not value:
+            return
+
+        exclusion_type = self.selector.currentText().lower()
+
+        if exclusion_type == "ip" and not self.is_valid_ip(value):
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid IP address.")
+            return
+        elif exclusion_type == "domain" and not self.is_valid_domain(value):
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid domain name.")
+            return
+
+        cmd = ["warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host", "add", value]
+        result = subprocess.run(cmd, capture_output=True)
+
+        if result.returncode == 0:
+            self.exclusions_updated.emit()
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to add {exclusion_type}: {result.stderr.strip()}")
+
+
+class AdvancedSettings(QDialog):
+    def __init__(self, settings_handler, local_storage_file, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Advanced Settings")
+        self.setStyleSheet(self.get_stylesheet())
+        self.setFixedSize(460, 460)
+
+        self.settings_handler = settings_handler
+        self.storage_path = local_storage_file
+        self.current_endpoint = self.settings_handler.get("custom_endpoint", "")
+
+        # Exclude IP/Domain
+        exclusion_group = QGroupBox("Exclude IP/Domain")
+        exclusion_layout = QVBoxLayout()
+
+        self.item_list = QListWidget()
+        self.item_list.setMinimumHeight(150)
+        self.item_list.setMaximumHeight(150)
+        self.item_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        exclusion_layout.addWidget(self.item_list)
+
+        button_layout = QHBoxLayout()
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self.reset_list)
+
+        self.add_button = QPushButton("+")
+        self.add_button.clicked.connect(self.open_exclusion_manager)
+
+        self.remove_button = QPushButton("-")
+        self.remove_button.clicked.connect(self.remove_item)
+
+        button_layout.addWidget(self.reset_button)
+        button_layout.addStretch()
+        button_layout.addWidget(self.add_button)
+        button_layout.addWidget(self.remove_button)
+
+        exclusion_layout.addLayout(button_layout)
+        exclusion_group.setLayout(exclusion_layout)
+
+        # Custom Endpoint
+        endpoint_group = QGroupBox("Custom Endpoint")
+        endpoint_layout = QHBoxLayout()
+
+        self.endpoint_input = QLineEdit()
+        self.endpoint_input.setPlaceholderText("Set Custom Endpoint")
+        self.endpoint_input.setText(self.current_endpoint)
+
+        self.endpoint_save_button = QPushButton("Save")
+        self.endpoint_save_button.clicked.connect(self.save_endpoint)
+
+        self.endpoint_reset_button = QPushButton("Reset")
+        self.endpoint_reset_button.clicked.connect(self.reset_endpoint)
+
+        endpoint_layout.addWidget(self.endpoint_input)
+        endpoint_layout.addWidget(self.endpoint_save_button)
+        endpoint_layout.addWidget(self.endpoint_reset_button)
+        endpoint_group.setLayout(endpoint_layout)
+
+        # Coming Soon
+        coming_soon_group = QGroupBox("App Excludes")
+        coming_soon_layout = QVBoxLayout()
+        coming_soon_layout.addWidget(QLabel("Coming Soon..."))
+        coming_soon_group.setLayout(coming_soon_layout)
+
+        layout = QVBoxLayout()
+        layout.addWidget(exclusion_group)
+        layout.addWidget(endpoint_group)
+        layout.addWidget(coming_soon_group)
+        self.setLayout(layout)
+        self.update_list_view()
+
+    def open_exclusion_manager(self):
+        exclusion_manager = ExclusionManager(self)
+        exclusion_manager.exclusions_updated.connect(self.update_list_view)
+        exclusion_manager.exec()
+
+    def update_list_view(self):
+        self.item_list.clear()
+        cmd = ["warp-cli", "tunnel", "ip", "list"]
+        result_ip = subprocess.run(cmd, capture_output=True, text=True)
+
+        cmd = ["warp-cli", "tunnel", "host", "list"]
+        result_host = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result_ip.returncode == 0:
+            lines = result_ip.stdout.strip().splitlines()
+            for line in lines[1:]:
+                self.item_list.addItem(f"IP: {line.strip()}")
+
+        if result_host.returncode == 0:
+            lines = result_host.stdout.strip().splitlines()
+            for line in lines[1:]:
+                self.item_list.addItem(f"Domain: {line.strip()}")
+
+    def remove_item(self):
+        item = self.item_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Error", "No item selected!")
+            return
+
+        item_text = item.text().split(": ", 1)
+
+        if len(item_text) != 2:
+            QMessageBox.warning(self, "Error", "Invalid entry format!")
+            return
+
+        mode = item_text[0].lower().strip()
+        value_cleaned = " ".join(item_text[1].split(" ")[:-2]).strip()
+        current_exclusions = self.get_exclusion_list(mode)
+
+        if any(value_cleaned in item for item in current_exclusions):
+            cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "remove", value_cleaned]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                self.update_list_view()
+            else:
+                QMessageBox.warning(self, "Error", f"Failed to remove {mode}: {result.stderr.strip()}")
+        else:
+            QMessageBox.warning(self, "Error", f"{value_cleaned} not found in exclusion list!")
+            return
+
+
+    def get_exclusion_list(self, mode):
+        cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "list"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            lines = result.stdout.strip().splitlines()
+            return [f"Domain: {line.strip()}" if mode == "domain" else f"IP: {line.strip()}" for line in lines[1:]]
+
+        return []
+
+    def reset_list(self):
+        cmd = ["warp-cli", "tunnel", "ip", "reset"]
+        subprocess.run(cmd)
+
+        cmd = ["warp-cli", "tunnel", "host", "reset"]
+        subprocess.run(cmd)
+        self.update_list_view()
+
+    def save_endpoint(self):
+        endpoint = self.endpoint_input.text().strip()
+        if not endpoint:
+            return
+        subprocess.run(["warp-cli", "tunnel", "endpoint", "set", endpoint])
+        self.settings_handler.set("custom_endpoint", endpoint)
+        QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
+
+    def reset_endpoint(self):
+        subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"])
+        self.settings_handler.set("custom_endpoint", "")
+        self.endpoint_input.clear()
+        QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
+
+    def get_stylesheet(self):
+        palette = self.palette()
+        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
+        fg_color = "#E0E0E0" if is_dark_mode else "#333"
+        bg_color = "#1E1E1E" if is_dark_mode else "white"
+        input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
+        background_color = "#34495e" if is_dark_mode else "#0078D4"
+        background_color_hover = "#1abc9c" if is_dark_mode else "#005A9E"
+
+        return f"""
+            QDialog {{
+                background-color: {bg_color};
+                color: {fg_color};
+                border-radius: 5px;
+            }}
+
+            QGroupBox {{
+                border: 1px solid {background_color};
+                padding: 10px;
+                font-weight: bold;
+            }}
+            
+            QComboBox {{
+                background-color: {input_bg_color};
+                color: {fg_color};
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 5px;
+            }}
+
+            QListWidget {{
+                background-color: {input_bg_color};
+                color: {fg_color};
+                border: 1px solid #555;
+                font-size: 14px;
+            }}
+
+            QLineEdit {{
+                background-color: {input_bg_color};
+                color: {fg_color};
+                border: 1px solid #777;
+                padding: 6px;
+            }}
+
+            QPushButton {{
+                background-color: {background_color};
+                color: white;
+                padding: 6px;
+                border-radius: 4px;
+            }}
+
+            QPushButton:hover {{
+                background-color: {background_color_hover};
+            }}
+        """
+
+
 class SettingsPage(QWidget):
     def __init__(self, parent=None, warp_status_handler=None, settings_handler=None):
         super().__init__(parent)
-        self.settings_handler = settings_handler
+        self.settings_handler = SettingsHandler()
         self.warp_status_handler = warp_status_handler
 
         writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
@@ -479,18 +778,11 @@ class SettingsPage(QWidget):
         self.load_local_settings()
         main_layout = QVBoxLayout(self)
 
-        palette = QApplication.palette()
-        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        fg_color = "#E0E0E0" if is_dark_mode else "#333"
-        bg_color = "#1E1E1E" if is_dark_mode else "white"
-        input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
-
         # Modes Section
-        modes_group = self.create_groupbox("Modes", fg_color)
+        modes_group = self.create_groupbox("Modes")
         modes_layout = QGridLayout()
         self.modes_dropdown = QComboBox()
         self.modes_dropdown.addItems(["warp", "doh", "warp+doh", "dot", "warp+dot", "proxy", "tunnel_only"])
-        self.style_dropdown(self.modes_dropdown, fg_color, input_bg_color)
         self.modes_dropdown.currentTextChanged.connect(self.set_mode)
         modes_layout.addWidget(self.modes_dropdown, 1, 0, 1, 2)
         modes_layout.addItem(QSpacerItem(10, 15), 0, 0)
@@ -498,46 +790,39 @@ class SettingsPage(QWidget):
         main_layout.addWidget(modes_group)
 
         # DNS Section
-        dns_group = self.create_groupbox("DNS Settings", fg_color)
+        dns_group = self.create_groupbox("DNS Settings")
         dns_layout = QGridLayout()
         self.dns_dropdown = QComboBox()
         self.dns_dropdown.addItems(["off", "family-friendly", "malware"])
         self.dns_dropdown.setCurrentText(self.current_dns_mode)
-        self.style_dropdown(self.dns_dropdown, fg_color, input_bg_color)
         self.dns_dropdown.currentTextChanged.connect(self.set_dns_mode)
         dns_layout.addWidget(self.dns_dropdown, 1, 0, 1, 2)
         dns_layout.addItem(QSpacerItem(10, 15), 0, 0)
         dns_group.setLayout(dns_layout)
         main_layout.addWidget(dns_group)
 
-        # EndPoint Section
-        endpoint_group = self.create_groupbox("Custom Endpoint", fg_color)
-        endpoint_layout = QGridLayout()
-        self.endpoint_input = QLineEdit()
-        self.endpoint_input.setPlaceholderText("Enter endpoint")
-        self.endpoint_input.setText(self.current_endpoint)
-        self.style_input(self.endpoint_input, fg_color, input_bg_color)
+        # Advanced Settings Section
+        advanced_group = self.create_groupbox("Advanced Settings")
+        advanced_layout = QGridLayout()
+        advanced_settings_button = QPushButton("Configure Advanced Settings")
 
-        submit_button = QPushButton("Submit")
-        self.style_button(submit_button)
-        submit_button.clicked.connect(self.set_endpoint)
-        reset_button = QPushButton("Reset")
-        self.style_button(reset_button, color="#e74c3c")
-        reset_button.clicked.connect(self.reset_endpoint)
-
-        endpoint_layout.addWidget(self.endpoint_input, 1, 0, 1, 2)
-        endpoint_layout.addItem(QSpacerItem(10, 15), 0, 0)
-        endpoint_layout.addWidget(submit_button, 1, 2)
-        endpoint_layout.addWidget(reset_button, 1, 3)
-        endpoint_group.setLayout(endpoint_layout)
-        main_layout.addWidget(endpoint_group)
+        advanced_settings_button.setStyleSheet(self.get_stylesheet())
+        advanced_settings_button.clicked.connect(self.open_advanced_settings)
+        advanced_layout.addWidget(advanced_settings_button, 1, 2)
+        advanced_layout.addItem(QSpacerItem(10, 15), 0, 0)
+        advanced_group.setLayout(advanced_layout)
+        main_layout.addWidget(advanced_group)
 
         self.setLayout(main_layout)
-        self.setStyleSheet(f"background-color: {bg_color}; padding: 15px; border-radius: 8px;")
+        self.setStyleSheet(self.get_stylesheet())
 
-    def create_groupbox(self, title, fg_color):
+    def open_advanced_settings(self):
+        dialog = AdvancedSettings(self.settings_handler, "settings.json", self)
+        dialog.exec()
+
+    def create_groupbox(self, title):
         groupbox = QGroupBox(title)
-        groupbox.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {fg_color};border: 1px solid {fg_color}; border-radius: 8px; padding: 6px;")
+        groupbox.setStyleSheet(self.get_stylesheet())
         return groupbox
 
     def copy_settings_file(self):
@@ -564,55 +849,6 @@ class SettingsPage(QWidget):
         with open(self.local_storage_file, "w") as file:
             json.dump(data, file)
 
-    def style_dropdown(self, dropdown, fg_color, bg_color):
-        dropdown.setStyleSheet(f"""
-            QComboBox {{
-                background-color: {bg_color};
-                color: {fg_color};
-                border: 1px solid {fg_color};
-                border-radius: 5px;
-                padding: 5px;
-            }}
-        """)
-
-    def style_input(self, input_field, fg_color, bg_color):
-        input_field.setStyleSheet(f"""
-            background-color: {bg_color};
-            color: {fg_color};
-            border: 1px solid {fg_color};
-            border-radius: 5px;
-            padding: 5px;
-        """)
-
-    def style_button(self, button, color="#0078D4"):
-        button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                border-radius: 5px;
-                padding: 5px 10px;
-                transition: 0.3s;
-            }}
-            QPushButton:hover {{
-                background-color: {'#005A9E' if color == '#0078D4' else '#c0392b'};
-            }}
-        """)
-
-    def set_endpoint(self):
-        endpoint = self.endpoint_input.text().strip()
-        if endpoint:
-            self.current_endpoint = endpoint
-            self.save_local_settings()
-            QMessageBox.information(self, "Endpoint Saved", f"Custom endpoint set to: {endpoint}")
-        else:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a valid endpoint.")
-
-    def reset_endpoint(self):
-        self.current_endpoint = ""
-        self.endpoint_input.clear()
-        self.save_local_settings()
-        QMessageBox.information(self, "Endpoint Reset", "Custom endpoint has been cleared.")
-
     def set_dns_mode(self):
         selected_dns = self.dns_dropdown.currentText()
         self.current_dns_mode = selected_dns
@@ -622,6 +858,62 @@ class SettingsPage(QWidget):
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
         QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
+
+    def get_stylesheet(self):
+        palette = QApplication.palette()
+        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
+
+        fg_color = "#E0E0E0" if is_dark_mode else "#333"
+        bg_color = "#1E1E1E" if is_dark_mode else "white"
+        input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
+        button_bg = "#34495e" if is_dark_mode else "#0078D4"
+        button_hover_bg = "#1abc9c" if is_dark_mode else "#005A9E"
+
+        return f"""
+            QWidget {{
+                background-color: {bg_color};
+                color: {fg_color};
+                padding: 15px;
+                border-radius: 8px;
+            }}
+
+            QGroupBox {{
+                font-size: 18px;
+                font-weight: bold;
+                color: {fg_color};
+                border: 1px solid {button_bg};
+                border-radius: 8px;
+                padding: 6px;
+            }}
+
+            QComboBox {{
+                background-color: {input_bg_color};
+                color: {fg_color};
+                border: 1px solid {fg_color};
+                border-radius: 5px;
+                padding: 5px;
+            }}
+
+            QLineEdit {{
+                background-color: {input_bg_color};
+                color: {fg_color};
+                border: 1px solid {fg_color};
+                border-radius: 5px;
+                padding: 5px;
+            }}
+
+            QPushButton {{
+                background-color: {button_bg};
+                color: white;
+                border-radius: 5px;
+                padding: 5px 10px;
+                transition: 0.3s;
+            }}
+
+            QPushButton:hover {{
+                background-color: {button_hover_bg};
+            }}
+        """
 
 
 class MainWindow(QMainWindow):
