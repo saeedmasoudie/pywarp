@@ -537,7 +537,7 @@ class ExclusionManager(QDialog):
             return
 
         cmd = ["warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host", "add", value]
-        result = subprocess.run(cmd, capture_output=True)
+        result = subprocess.run(cmd, capture_output=True, **safe_subprocess_args())
 
         if result.returncode == 0:
             self.exclusions_updated.emit()
@@ -625,10 +625,10 @@ class AdvancedSettings(QDialog):
     def update_list_view(self):
         self.item_list.clear()
         cmd = ["warp-cli", "tunnel", "ip", "list"]
-        result_ip = subprocess.run(cmd, capture_output=True, text=True)
+        result_ip = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
 
         cmd = ["warp-cli", "tunnel", "host", "list"]
-        result_host = subprocess.run(cmd, capture_output=True, text=True)
+        result_host = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
 
         if result_ip.returncode == 0:
             lines = result_ip.stdout.strip().splitlines()
@@ -658,7 +658,7 @@ class AdvancedSettings(QDialog):
 
         if any(value_cleaned in item for item in current_exclusions):
             cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "remove", value_cleaned]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
 
             if result.returncode == 0:
                 self.update_list_view()
@@ -671,7 +671,7 @@ class AdvancedSettings(QDialog):
 
     def get_exclusion_list(self, mode):
         cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "list"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
 
         if result.returncode == 0:
             lines = result.stdout.strip().splitlines()
@@ -681,22 +681,22 @@ class AdvancedSettings(QDialog):
 
     def reset_list(self):
         cmd = ["warp-cli", "tunnel", "ip", "reset"]
-        subprocess.run(cmd)
+        subprocess.run(cmd, **safe_subprocess_args())
 
         cmd = ["warp-cli", "tunnel", "host", "reset"]
-        subprocess.run(cmd)
+        subprocess.run(cmd, **safe_subprocess_args())
         self.update_list_view()
 
     def save_endpoint(self):
         endpoint = self.endpoint_input.text().strip()
         if not endpoint:
             return
-        subprocess.run(["warp-cli", "tunnel", "endpoint", "set", endpoint])
+        subprocess.run(["warp-cli", "tunnel", "endpoint", "set", endpoint], **safe_subprocess_args())
         self.settings_handler.set("custom_endpoint", endpoint)
         QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
 
     def reset_endpoint(self):
-        subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"])
+        subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"], **safe_subprocess_args())
         self.settings_handler.set("custom_endpoint", "")
         self.endpoint_input.clear()
         QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
