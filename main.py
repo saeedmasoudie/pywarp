@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -779,6 +779,7 @@ class SettingsPage(QWidget):
         self.current_status = "Disconnected"
         self.current_endpoint = ""
         self.current_dns_mode = ""
+        self.current_mode = ""
 
         self.load_local_settings()
         main_layout = QVBoxLayout(self)
@@ -788,6 +789,7 @@ class SettingsPage(QWidget):
         modes_layout = QGridLayout()
         self.modes_dropdown = QComboBox()
         self.modes_dropdown.addItems(["warp", "doh", "warp+doh", "dot", "warp+dot", "proxy", "tunnel_only"])
+        self.modes_dropdown.setCurrentText(self.current_mode)
         self.modes_dropdown.currentTextChanged.connect(self.set_mode)
         modes_layout.addWidget(self.modes_dropdown, 1, 0, 1, 2)
         modes_layout.addItem(QSpacerItem(10, 15), 0, 0)
@@ -798,7 +800,7 @@ class SettingsPage(QWidget):
         dns_group = self.create_groupbox("DNS Settings")
         dns_layout = QGridLayout()
         self.dns_dropdown = QComboBox()
-        self.dns_dropdown.addItems(["off", "family-friendly", "malware"])
+        self.dns_dropdown.addItems(["off", "Block Adult-Content", "Block malware"])
         self.dns_dropdown.setCurrentText(self.current_dns_mode)
         self.dns_dropdown.currentTextChanged.connect(self.set_dns_mode)
         dns_layout.addWidget(self.dns_dropdown, 1, 0, 1, 2)
@@ -833,7 +835,7 @@ class SettingsPage(QWidget):
     def copy_settings_file(self):
         writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
         os.makedirs(writable_path, exist_ok=True)
-        default_settings = {"endpoint": "", "dns_mode": "off"}
+        default_settings = {"endpoint": "", "dns_mode": "off", "mode": "warp"}
         with open(self.local_storage_file, "w") as file:
             json.dump(default_settings, file)
 
@@ -844,25 +846,39 @@ class SettingsPage(QWidget):
                     data = json.load(file)
                     self.current_endpoint = data.get("endpoint", "")
                     self.current_dns_mode = data.get("dns_mode", "off")
+                    self.current_mode = data.get("mode", "warp")
             except Exception as e:
                 print(f"Error loading settings: {e}")
         else:
             self.current_dns_mode = "off"
 
     def save_local_settings(self):
-        data = {"endpoint": self.current_endpoint, "dns_mode": self.current_dns_mode}
+        data = {"endpoint": self.current_endpoint, "dns_mode": self.current_dns_mode, "mode": self.current_mode}
         with open(self.local_storage_file, "w") as file:
             json.dump(data, file)
 
     def set_dns_mode(self):
+        dns_dict = {
+            "off": "off", "Block Adult-Content": "full", "Block malware": "malware"
+        }
         selected_dns = self.dns_dropdown.currentText()
-        self.current_dns_mode = selected_dns
-        self.save_local_settings()
-        QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
+        cmd = subprocess.run(["warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off')], **safe_subprocess_args())
+        if cmd.returncode == 0:
+            self.current_dns_mode = selected_dns
+            self.save_local_settings()
+            QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to Set DNS Mode to {selected_dns}: {cmd.stderr.strip()}")
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
-        QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
+        cmd = subprocess.run(["warp-cli", "mode", selected_mode], **safe_subprocess_args())
+        if cmd.returncode == 0:
+            self.current_mode = selected_mode
+            self.save_local_settings()
+            QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to Set Mode to {selected_mode}: {cmd.stderr.strip()}")
 
     def get_stylesheet(self):
         palette = QApplication.palette()
