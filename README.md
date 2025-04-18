@@ -1,16 +1,17 @@
 # **Pywarp**
 
-🚀 **Pywarp** is a powerful replacement for the official Cloudflare WARP app, offering more advanced options in an intuitive and feature-rich user interface. With Pywarp, you can configure DNS modes, manage WARP protocols (masque and WireGuard), and set custom endpoints—all designed to make WARP functionality accessible and convenient.
+🚀 **Pywarp** is a powerful replacement for the official Cloudflare WARP app, offering more advanced options in an intuitive and feature-rich user interface. With Pywarp, you can configure DNS modes, manage WARP protocols (masque and WireGuard), and set custom endpoints—all designed and all of the current offical app capabalaties to make WARP functionality accessible and convenient.
 
 ---
 
 ## **Features**
 - 🌟 **Enhanced Protocol Support**: Includes UI for changing protocols.
-- 🌐 **DNS Mode Management**: Easily toggle between "off," "family-friendly," and "malware" DNS filters.
+- 🌐 **DNS Mode Management**: Easily toggle between "off," "block adult-content" and "block malware" DNS filters.
 - 🔗 **Custom Endpoint Configuration**: Set, save, and reset connection endpoints directly in the app.
 - 🛠 **Intuitive UI**: No more command lines! All WARP commands are built into a sleek, user-friendly interface.
 - 🎨 **Dynamic Theme Compatibility**: Automatically adapts to your system's dark/light mode.
 - 🗂 **Resource Integration**: Bundles settings and assets directly into the app with Qt Resource System for portability.
+- ⚡ **Exclude IP/Domain**: Manage exclusions directly from the Advanced Settings.
 
 ---
 
