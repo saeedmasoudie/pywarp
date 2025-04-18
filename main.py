@@ -940,7 +940,8 @@ class SettingsPage(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PyWarp App")
+        self.setWindowTitle("PyWarp")
+        self.setWindowIcon(QIcon(":/logo.png"))
         self.setGeometry(100, 100, 400, 600)
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.title_bar = CustomTitleBar(self)
