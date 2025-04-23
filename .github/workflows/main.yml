@@ -1,38 +1,48 @@
-name: Manual Build Workflow
+name: Build Python App Executables (Linux and macOS)
 
 on:
-  workflow_dispatch:  # Enables manual triggering from the GitHub interface
+  push:
+    branches:
+      - main  # Trigger on pushes to the 'main' branch
+  pull_request:
+    branches:
+      - main  # Trigger on pull requests to 'main'
 
 jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]  # Target platforms: Linux and macOS
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3  # Fetch repository code
 
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.11"  # Specify Python version
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
+          # Install Pillow for macOS (to support icon conversion)
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            python -m pip install Pillow
+          fi
 
       - name: Build Executable
         run: |
-          pyinstaller --onefile main.py
-          pyinstaller --onefile --windowed --icon=assets/logo.ico main.py
-          mkdir -p dist/${{ matrix.os }}
-          mv dist/your_script dist/${{ matrix.os }}/your_script_${{ matrix.os }}.exe
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            pyinstaller --onefile --windowed --icon=assets/logo.ico main.py
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            pyinstaller --onefile --windowed --icon=assets/logo.icns main.py
+          fi
 
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v4.6.2
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
           name: executables-${{ matrix.os }}
-          path: dist/${{ matrix.os }}/
+          path: dist/
