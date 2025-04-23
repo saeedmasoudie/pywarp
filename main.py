@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.1"
+CURRENT_VERSION = "1.1.2"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -61,15 +61,17 @@ class WarpStatusHandler(QThread):
         super().__init__()
         self.looping = loop
         self.previous_status = None
+        self.status_map = {
+            "Connected": 8,
+            "Disconnected": 8,
+            "Connecting": 2
+        }
 
     def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.monitor_status())
+        asyncio.run(self.monitor_status())
 
     async def monitor_status(self):
         while self.looping:
-            timeout = 8
             try:
                 process = await asyncio.create_subprocess_exec(
                     'warp-cli', 'status',
@@ -79,17 +81,8 @@ class WarpStatusHandler(QThread):
                 )
                 stdout, _ = await process.communicate()
                 status = stdout.decode()
-
-                if 'Connected' in status:
-                    current_status = 'Connected'
-                elif 'Disconnected' in status:
-                    current_status = 'Disconnected'
-                elif 'Connecting' in status:
-                    current_status = 'Connecting'
-                    timeout = 2
-                else:
-                    timeout = 2
-                    current_status = self.extract_status_reason(status)
+                current_status = self.extract_status(status)
+                timeout = self.status_map.get(current_status, 5)
 
                 if current_status != self.previous_status:
                     self.status_signal.emit(current_status)
@@ -97,8 +90,15 @@ class WarpStatusHandler(QThread):
 
             except Exception as e:
                 print(f"Error checking Warp status: {e}")
+                timeout = 10
 
             await asyncio.sleep(timeout)
+
+    def extract_status(self, status):
+        for key in self.status_map.keys():
+            if key in status:
+                return key
+        return self.extract_status_reason(status)
 
     @staticmethod
     def extract_status_reason(status):
@@ -106,10 +106,7 @@ class WarpStatusHandler(QThread):
         try:
             reason_index = data.index("Reason:")
             reason_text = " ".join(data[reason_index + 1:])
-            if 'No Network' in reason_text:
-                return 'No Network'
-            else:
-                return 'Network Error'
+            return 'No Network' if 'No Network' in reason_text else 'Network Error'
         except ValueError:
             return "Failed"
 
@@ -203,7 +200,7 @@ class SettingsHandler(QThread):
                 "warp-cli", "settings",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                **safe_subprocess_args()  # Ensure this function is correctly defined
+                **safe_subprocess_args()
             )
             stdout, _ = await process.communicate()
             for line in stdout.decode().splitlines():
@@ -248,7 +245,7 @@ class PowerButton(QWidget):
                 "dark": "background-color: #222; border: 4px solid red; color: red;",
                 "light": "background-color: #f0f2f5; border: 4px solid red; color: red;"
             },
-            "connect": {
+            "unknown": {
                 "dark": "background-color: #222; border: 4px solid orange; color: orange;",
                 "light": "background-color: #f0f2f5; border: 4px solid orange; color: orange;"
             },
@@ -259,21 +256,15 @@ class PowerButton(QWidget):
         }
 
         self.theme = "dark" if is_dark_mode else "light"
-
-        # Power Button
         self.power_button = QPushButton("...", self)
         self.power_button.setGeometry(25, 25, 100, 100)
         self.power_button.setStyleSheet("")
         self.power_button.setFont(QFont("Arial", 16, QFont.Bold))
-
-        # Glow Effect
         self.glow_effect = QGraphicsDropShadowEffect()
         self.glow_effect.setBlurRadius(50)
         self.glow_effect.setColor(Qt.yellow)
         self.glow_effect.setOffset(0, 0)
         self.power_button.setGraphicsEffect(self.glow_effect)
-
-        # Button Click Event
         self.power_button.clicked.connect(self.toggle_power)
         self.state = 'disconnected'
 
@@ -286,17 +277,17 @@ class PowerButton(QWidget):
             self.power_button.setDisabled(True)
             self.power_button.setText("...")
             self.power_button.setStyleSheet(
-                self.button_styles['connect'][self.theme] + "border-radius: 50px; font-size: 24px;")
+                self.button_styles['unknown'][self.theme] + "border-radius: 50px; font-size: 24px;")
             self.glow_effect.setColor(Qt.yellow)
 
-            if self.state == "Connected" or self.state == "Connecting":
-                subprocess.run(['warp-cli', 'disconnect'], capture_output=True, **safe_subprocess_args())
-                self.toggled.emit('Disconnecting')
-            elif self.state == "Disconnected":
+            if self.state == "Disconnected":
                 subprocess.run(['warp-cli', 'connect'], capture_output=True, **safe_subprocess_args())
                 self.toggled.emit('Connecting')
+            elif self.state == "Disconnecting" or self.state == "No Network":
+                print(f"The action cannot be performed. (current state : {self.state})")
             else:
-                print(self.state) # todo: show a message of error with the reason
+                subprocess.run(['warp-cli', 'disconnect'], capture_output=True, **safe_subprocess_args())
+                self.toggled.emit('Disconnecting')
 
             self.power_button.setDisabled(False)
             self._toggle_lock = False
@@ -307,7 +298,7 @@ class PowerButton(QWidget):
         states = {
             "Connected": {"state": "on", "text": "ON", "color": QColor("green")},
             "Disconnected": {"state": "off", "text": "OFF", "color": QColor("red")},
-            "unknown": {"state": "connect", "text": "...", "color": QColor("yellow")}
+            "unknown": {"state": "unknown", "text": "...", "color": QColor("yellow")}
         }
         self.state = state
         selected_state = states.get(state, states["unknown"])
@@ -1126,25 +1117,28 @@ class MainWindow(QMainWindow):
     def update_status(self, is_connected):
         if is_connected == 'Connected':
             self.status_label.setText("Status: <span style='color: green; font-weight: bold;'>Connected</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receving...</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
             get_global_ip_async(lambda ip: self.ip_label.setText(
                 f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
             ))
         elif is_connected == 'Disconnected':
             self.status_label.setText("Status: <span style='color: red; font-weight: bold;'>Disconnected</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receving...</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
             get_global_ip_async(lambda ip: self.ip_label.setText(
                 f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
             ))
         elif is_connected == 'Connecting':
             self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>Connecting...</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receving...</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
         elif is_connected == 'Disconnecting':
             self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>Disconnecting...</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receving...</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
+        elif is_connected == 'No Network':
+            self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>No Network</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
         else:
             self.status_label.setText(f"Status: <span style='color: red; font-weight: bold;'>{is_connected}</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receving...</span>")
+            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
             is_connected = 'unknown'
 
         self.toggle_switch.update_button_state(is_connected)
