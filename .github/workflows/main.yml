@@ -7,17 +7,17 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]  # Target platforms
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3  # Fetch your repository's code
+        uses: actions/checkout@v3
 
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"  # Specify Python version
+          python-version: "3.11"
 
       - name: Install Dependencies
         run: |
@@ -26,7 +26,8 @@ jobs:
 
       - name: Build Executable
         run: |
-          pyinstaller --onefile your_script.py
+          pyinstaller --onefile main.py
+          pyinstaller --onefile --windowed --icon=assets/logo.ico main.py
           mkdir -p dist/${{ matrix.os }}
           mv dist/your_script dist/${{ matrix.os }}/your_script_${{ matrix.os }}.exe
 
