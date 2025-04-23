@@ -1,6 +1,7 @@
 name: Build Python App Executables (Linux and macOS)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main  # Trigger on pushes to the 'main' branch
