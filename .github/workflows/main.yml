@@ -1,4 +1,4 @@
-name: Build Python App Executables (Linux and macOS)
+name: Build PyWarp Executables (Linux and macOS)
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: executables-${{ matrix.os }}
           path: dist/
