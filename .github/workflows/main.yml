@@ -1,0 +1,37 @@
+name: Manual Build Workflow
+
+on:
+  workflow_dispatch:  # Enables manual triggering from the GitHub interface
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]  # Target platforms
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3  # Fetch your repository's code
+
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"  # Specify Python version
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build Executable
+        run: |
+          pyinstaller --onefile your_script.py
+          mkdir -p dist/${{ matrix.os }}
+          mv dist/your_script dist/${{ matrix.os }}/your_script_${{ matrix.os }}.exe
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: executables-${{ matrix.os }}
+          path: dist/${{ matrix.os }}/
