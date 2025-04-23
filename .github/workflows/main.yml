@@ -30,8 +30,8 @@ jobs:
           mkdir -p dist/${{ matrix.os }}
           mv dist/your_script dist/${{ matrix.os }}/your_script_${{ matrix.os }}.exe
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: executables-${{ matrix.os }}
           path: dist/${{ matrix.os }}/
