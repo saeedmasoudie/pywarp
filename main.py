@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.2"
+CURRENT_VERSION = "1.1.3"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -138,7 +138,7 @@ class WarpStatusHandler(QThread):
         try:
             reason_index = data.index("Reason:")
             reason_text = " ".join(data[reason_index + 1:])
-            return 'No Network' if 'No Network' in reason_text else 'Network Error'
+            return 'No Network' if 'No Network' in reason_text else reason_text
         except ValueError:
             return "Failed"
 
@@ -717,9 +717,25 @@ class AdvancedSettings(QDialog):
         endpoint = self.endpoint_input.text().strip()
         if not endpoint:
             return
-        subprocess.run(["warp-cli", "tunnel", "endpoint", "set", endpoint], **safe_subprocess_args())
-        self.settings_handler.set("custom_endpoint", endpoint)
-        QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
+
+        try:
+            result = subprocess.run(
+                ["warp-cli", "tunnel", "endpoint", "set", endpoint],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                **safe_subprocess_args()
+            )
+
+            stderr = result.stderr.decode("utf-8").strip()
+            if result.returncode != 0:
+                error_line = stderr.split("\n")[0]
+                QMessageBox.warning(self, "Error", error_line)
+                return
+
+            self.settings_handler.set("custom_endpoint", endpoint)
+            QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"An exception occurred: {str(e)}")
 
     def reset_endpoint(self):
         subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"], **safe_subprocess_args())
@@ -1049,11 +1065,13 @@ class MainWindow(QMainWindow):
             btn = QPushButton(btn_text)
             btn.setMinimumHeight(40)
             if btn_text != "Protocol":
-                btn.clicked.connect(lambda _, i=idx: self.stacked_widget.setCurrentIndex(i))
+                btn.clicked.connect(
+                    lambda _, i=idx: (self.stacked_widget.setCurrentIndex(i), self.update_button_styles()))
             else:
-                btn.clicked.connect(self.set_protocol)
+                btn.clicked.connect(lambda _: (self.set_protocol(), self.update_button_styles()))
             self.buttons[btn_text] = btn
             button_layout.addWidget(btn)
+        self.update_button_styles()
 
         main_layout.addLayout(button_layout)
         main_layout.addWidget(self.stacked_widget)
@@ -1168,12 +1186,27 @@ class MainWindow(QMainWindow):
         elif is_connected == 'No Network':
             self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>No Network</span>")
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
+            self.show_critical_error("Failed to Connect", "No active internet connection detected. Please check your network settings.")
         else:
-            self.status_label.setText(f"Status: <span style='color: red; font-weight: bold;'>{is_connected}</span>")
+            self.status_label.setText(f"Status: <span style='color: red; font-weight: bold;'>Network Error</span>")
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
+            self.show_critical_error("Failed to Connect", is_connected)
             is_connected = 'unknown'
 
         self.toggle_switch.update_button_state(is_connected)
+
+    def show_critical_error(self, title, message):
+        self.activateWindow()
+        self.raise_()
+        QMessageBox.critical(self, title, message)
+
+    def update_button_styles(self):
+        current_index = self.stacked_widget.currentIndex()
+        for idx, (text, btn) in enumerate(self.buttons.items()):
+            is_active = idx == current_index
+            btn.setProperty("active", is_active)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
     def get_styles(self):
         if self.is_dark_mode:
@@ -1182,6 +1215,7 @@ class MainWindow(QMainWindow):
                 #statusFrame { background-color: #1E1E1E; border-radius: 12px; padding: 15px; }
                 QPushButton { background-color: #34495e; color: white; padding: 12px; border-radius: 8px; }
                 QPushButton:hover { background-color: #1abc9c; }
+                QPushButton[active="true"] { background-color: #1abc9c; }
                 QLabel { font-size: 15px; color: #E0E0E0; }
                 QStackedWidget { background-color: #1E1E1E; border-radius: 12px; padding: 20px; }
             """
@@ -1191,6 +1225,7 @@ class MainWindow(QMainWindow):
                 #statusFrame { background-color: white; border-radius: 12px; padding: 15px; }
                 QPushButton { background-color: #0078D4; color: white; padding: 12px; border-radius: 8px; }
                 QPushButton:hover { background-color: #005A9E; }
+                QPushButton[active="true"] { background-color: #005A9E; }
                 QLabel { font-size: 15px; color: #333; }
                 QStackedWidget { background-color: white; border-radius: 12px; padding: 20px; }
             """
