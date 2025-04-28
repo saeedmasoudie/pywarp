@@ -22,12 +22,44 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
-                               QGroupBox, QSpacerItem, QDialog, QListWidget)
+                               QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.1.2"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
+
+class WarpDownloadThread(QThread):
+    progress = Signal(int)
+    finished = Signal(bool, str)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self._abort = False
+
+    def abort(self):
+        self._abort = True
+
+    def run(self):
+        try:
+            local_filename = self.url.split('/')[-1]
+            with requests.get(self.url, stream=True) as r:
+                r.raise_for_status()
+                total_length = int(r.headers.get('content-length', 0))
+                downloaded = 0
+                with open(local_filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if self._abort:
+                            self.finished.emit(False, "")
+                            return
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        percent = int(downloaded * 100 / total_length)
+                        self.progress.emit(percent)
+            self.finished.emit(True, local_filename)
+        except Exception:
+            self.finished.emit(False, "")
 
 class UpdateChecker(QObject):
     update_available = Signal(str)
@@ -1208,6 +1240,142 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", error_message)
 
 
+class WarpInstaller:
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.download_url = self.get_os_download_link()
+
+    def is_warp_installed(self):
+        return shutil.which('warp-cli') is not None
+
+    def get_os_download_link(self):
+        os_name = platform.system()
+        if os_name == "Windows":
+            return "https://package.cloudflareclient.com/latest/Cloudflare_WARP_Release-x64.msi"
+        elif os_name == "Darwin":
+            return "https://package.cloudflareclient.com/latest/Cloudflare_WARP.dmg"
+        else:
+            return None
+
+    def get_manual_download_page(self):
+        return "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/"
+
+    def show_install_prompt(self):
+        msg_box = QMessageBox(self.parent)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle("Warp Not Found")
+        msg_box.setText("Warp Cloudflare is not installed.\n\nDo you want to install it automatically?")
+        auto_install_button = msg_box.addButton("Auto Install", QMessageBox.AcceptRole)
+        manual_button = msg_box.addButton("Manual Install", QMessageBox.ActionRole)
+        retry_button = msg_box.addButton("Retry Check", QMessageBox.DestructiveRole)
+        cancel_button = msg_box.addButton(QMessageBox.Cancel)
+
+        msg_box.exec()
+
+        clicked = msg_box.clickedButton()
+        if clicked == auto_install_button:
+            self.start_auto_install()
+        elif clicked == manual_button:
+            webbrowser.open(self.get_manual_download_page())
+            sys.exit()
+        elif clicked == retry_button:
+            self.retry_install_check()
+        else:
+            sys.exit()
+
+    def start_auto_install(self):
+        if self.download_url is None:
+            self.install_linux_package()
+        else:
+            self.download_thread = WarpDownloadThread(self.download_url)
+            self.progress_dialog = QProgressDialog("Downloading Warp...", "Cancel", 0, 100, self.parent)
+            self.progress_dialog.setWindowTitle("Downloading Warp")
+            self.progress_dialog.setWindowModality(Qt.WindowModal)
+            self.progress_dialog.canceled.connect(self.download_thread.abort)
+
+            self.download_thread.progress.connect(self.progress_dialog.setValue)
+            self.download_thread.finished.connect(self.on_download_finished)
+            self.download_thread.start()
+            self.progress_dialog.exec()
+
+    def on_download_finished(self, success, file_path):
+        self.progress_dialog.close()
+        if success:
+            self.install_downloaded_file(file_path)
+        else:
+            QMessageBox.critical(self.parent, "Download Failed", "Failed to download Warp installer.")
+            self.show_install_prompt()
+
+    def install_downloaded_file(self, file_path):
+        try:
+            os_name = platform.system()
+            if os_name == "Windows":
+                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"], check=True)
+            elif os_name == "Darwin":
+                subprocess.run(["open", file_path], check=True)
+            else:
+                QMessageBox.critical(self.parent, "Unsupported", "Automatic install not supported for this OS.")
+                sys.exit()
+
+            self.register_and_activate_warp()
+
+        except subprocess.CalledProcessError:
+            QMessageBox.critical(self.parent, "Installation Failed", "Failed to install Warp.")
+            self.show_install_prompt()
+
+    def install_linux_package(self):
+        msg_box = QMessageBox(self.parent)
+        msg_box.setWindowTitle("Linux Installation")
+        msg_box.setText(
+            "Warp will be installed via your system's package manager.\n\nDo you want to proceed?"
+        )
+        install_button = msg_box.addButton("Install", QMessageBox.AcceptRole)
+        cancel_button = msg_box.addButton(QMessageBox.Cancel)
+        msg_box.exec()
+
+        if msg_box.clickedButton() == install_button:
+            package_manager = self.detect_linux_package_manager()
+            if package_manager == "apt":
+                subprocess.run(["sudo", "apt", "update"], check=True)
+                subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True)
+            elif package_manager == "dnf":
+                subprocess.run(["sudo", "dnf", "install", "-y", "cloudflare-warp"], check=True)
+            elif package_manager == "yum":
+                subprocess.run(["sudo", "yum", "install", "-y", "cloudflare-warp"], check=True)
+            elif package_manager == "pacman":
+                subprocess.run(["sudo", "pacman", "-S", "cloudflare-warp"], check=True)
+            else:
+                QMessageBox.critical(self.parent, "Unsupported", "Could not detect package manager.")
+                sys.exit()
+
+            self.register_and_activate_warp()
+        else:
+            sys.exit()
+
+    def detect_linux_package_manager(self):
+        if shutil.which("apt"):
+            return "apt"
+        if shutil.which("dnf"):
+            return "dnf"
+        if shutil.which("yum"):
+            return "yum"
+        if shutil.which("pacman"):
+            return "pacman"
+        return None
+
+    def retry_install_check(self):
+        if self.is_warp_installed():
+            QMessageBox.information(self.parent, "Warp Found", "Warp is now installed!")
+        else:
+            self.show_install_prompt()
+
+    def register_and_activate_warp(self):
+        try:
+            subprocess.run(["warp-cli", "register"], check=True)
+            QMessageBox.information(self.parent, "Warp Ready", "Warp has been registered successfully!")
+        except subprocess.CalledProcessError:
+            QMessageBox.critical(self.parent, "Warp Activation Failed", "Failed to register Warp.")
+
 def format_handshake_time(seconds):
     hours, remainder = divmod(seconds, 3600)
     mins, secs = divmod(remainder, 60)
@@ -1217,7 +1385,6 @@ def format_handshake_time(seconds):
         return f"{mins}m {secs}s"
     else:
         return f"{secs}s"
-
 
 def get_global_ip_async(callback):
     def fetch_ip():
@@ -1245,18 +1412,6 @@ def get_current_protocol():
     except Exception as e:
         print(f"Error fetching current protocol: {e}")
         return "Error"
-
-def is_warp_installed():
-    return shutil.which('warp-cli') is not None
-
-def get_os_download_url():
-    base_url = "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/#"
-    os_name = platform.system().lower()
-
-    if os_name == "darwin":
-        os_name = "macos"
-
-    return f"{base_url}{os_name}"
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     error_dialog = QMessageBox()
@@ -1293,30 +1448,23 @@ def notify_update(latest_version):
 def check_existing_instance():
     socket = QLocalSocket()
     socket.connectToServer(SERVER_NAME)
-
     if socket.waitForConnected(500):
         sys.exit(1)
 
 if __name__ == "__main__":
     check_existing_instance()
-
     app = QApplication(sys.argv)
     server.listen(SERVER_NAME)
     atexit.register(disconnect_on_exit)
     app.setWindowIcon(QIcon(":/logo.png"))
     sys.excepthook = handle_exception
 
-    if not is_warp_installed():
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Critical)
-        msg_box.setWindowTitle("Warp Not Found")
-        msg_box.setText("Warp Cloudflare is not installed on this system. Please install Warp to use this app.")
-        download_button = msg_box.addButton("Download", QMessageBox.ActionRole)
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec()
-        if msg_box.clickedButton() == download_button:
-            webbrowser.open(get_os_download_url())
-        sys.exit()
+    installer = WarpInstaller(parent=None)
+    if not installer.is_warp_installed():
+        installer.show_install_prompt()
+        if not installer.is_warp_installed():
+            QMessageBox.critical(None, "Warp Installation Failed", "Warp could not be installed.\nExiting app.")
+            sys.exit()
 
     app.setFont(QFont("Arial", 10))
     window = MainWindow()
