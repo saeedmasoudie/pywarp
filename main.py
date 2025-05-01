@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
-                               QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog)
+                               QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.1.3"
@@ -825,7 +825,21 @@ class SettingsPage(QWidget):
         modes_group = self.create_groupbox("Modes")
         modes_layout = QGridLayout()
         self.modes_dropdown = QComboBox()
-        self.modes_dropdown.addItems(["warp", "doh", "warp+doh", "dot", "warp+dot", "proxy", "tunnel_only"])
+        modes_with_tooltips = {
+            "warp": "Full VPN tunnel via Cloudflare (WireGuard). Encrypts all traffic.",
+            "doh": "Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted.",
+            "warp+doh": "VPN tunnel + DNS over HTTPS. Full encryption + secure DNS.",
+            "dot": "Only DNS over TLS (DoT). Secure DNS, no VPN tunnel.",
+            "warp+dot": "VPN tunnel + DNS over TLS. Full encryption + secure DNS.",
+            "proxy": "Sets up a local proxy (manual port needed). Apps can use it via localhost.",
+            "tunnel_only": "Tunnel is created but not used unless manually routed."
+        }
+
+        for mode, tooltip in modes_with_tooltips.items():
+            self.modes_dropdown.addItem(mode)
+            index = self.modes_dropdown.findText(mode)
+            self.modes_dropdown.setItemData(index, tooltip, Qt.ToolTipRole)
+
         self.modes_dropdown.setCurrentText(self.current_mode)
         self.modes_dropdown.currentTextChanged.connect(self.set_mode)
         modes_layout.addWidget(self.modes_dropdown, 1, 0, 1, 2)
@@ -909,13 +923,48 @@ class SettingsPage(QWidget):
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
+
+        if selected_mode == "proxy":
+            port_str, ok = QInputDialog.getText(
+                self,
+                "Proxy Port Required",
+                "Enter proxy port (1–65535):"
+            )
+
+            if not ok:
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+            try:
+                port = int(port_str)
+                if not (1 <= port <= 65535):
+                    raise ValueError
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Port", "Please enter a valid port number between 1 and 65535.")
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+            set_port_cmd = subprocess.run(
+                ["warp-cli", "set-proxy-port", str(port)],
+                **safe_subprocess_args()
+            )
+            if set_port_cmd.returncode != 0:
+                QMessageBox.warning(
+                    self,
+                    "Port Set Failed",
+                    f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}"
+                )
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
         cmd = subprocess.run(["warp-cli", "mode", selected_mode], **safe_subprocess_args())
         if cmd.returncode == 0:
             self.current_mode = selected_mode
             self.save_local_settings()
             QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
         else:
-            QMessageBox.warning(self, "Error", f"Failed to Set Mode to {selected_mode}: {cmd.stderr.strip()}")
+            QMessageBox.warning(self, "Error", f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+            self.modes_dropdown.setCurrentText(self.current_mode)
 
     def get_stylesheet(self):
         palette = QApplication.palette()
@@ -1369,21 +1418,50 @@ class WarpInstaller:
         msg_box.exec()
 
         if msg_box.clickedButton() == install_button:
-            package_manager = self.detect_linux_package_manager()
-            if package_manager == "apt":
-                subprocess.run(["sudo", "apt", "update"], check=True)
-                subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True)
-            elif package_manager == "dnf":
-                subprocess.run(["sudo", "dnf", "install", "-y", "cloudflare-warp"], check=True)
-            elif package_manager == "yum":
-                subprocess.run(["sudo", "yum", "install", "-y", "cloudflare-warp"], check=True)
-            elif package_manager == "pacman":
-                subprocess.run(["sudo", "pacman", "-S", "cloudflare-warp"], check=True)
-            else:
-                QMessageBox.critical(self.parent, "Unsupported", "Could not detect package manager.")
-                sys.exit()
+            try:
+                package_manager = self.detect_linux_package_manager()
+                if package_manager == "apt":
+                    subprocess.run(["sudo", "apt", "update"], check=True)
+                    subprocess.run([
+                        "sudo", "apt", "install", "-y",
+                        "curl", "gpg", "lsb-release", "apt-transport-https",
+                        "ca-certificates", "sudo"
+                    ], check=True)
+                    subprocess.run([
+                        "bash", "-c",
+                        'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | '
+                        'gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'
+                    ], check=True)
+                    distro = subprocess.check_output(["lsb_release", "-cs"]).decode().strip()
+                    subprocess.run([
+                        "bash", "-c",
+                        f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
+                        f'https://pkg.cloudflareclient.com/ {distro} main" | '
+                        f'sudo tee /etc/apt/sources.list.d/cloudflare-client.list'
+                    ], check=True)
+                    subprocess.run(["sudo", "apt", "update"], check=True)
+                    subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True)
 
-            self.register_and_activate_warp()
+                elif package_manager == "yum":
+                    subprocess.run([
+                        "bash", "-c",
+                        'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | '
+                        'sudo tee /etc/yum.repos.d/cloudflare-warp.repo'
+                    ], check=True)
+                    subprocess.run(["sudo", "yum", "check-update"], check=True)
+                    subprocess.run(["sudo", "yum", "install", "-y", "curl", "sudo", "coreutils"], check=True)
+                    subprocess.run(["sudo", "yum", "check-update"], check=True)
+                    subprocess.run(["sudo", "yum", "install", "-y", "cloudflare-warp"], check=True)
+
+                else:
+                    QMessageBox.critical(self.parent, "Unsupported", "Unsupported package manager for auto install.")
+                    sys.exit()
+
+                self.register_and_activate_warp()
+
+            except subprocess.CalledProcessError as e:
+                QMessageBox.critical(self.parent, "Installation Failed", f"An error occurred:\n{e}")
+                self.show_install_prompt()
         else:
             sys.exit()
 
