@@ -2,13 +2,7 @@ name: Build PyWarp Executables (Linux and macOS)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main  # Trigger on pushes to the 'main' branch
-  pull_request:
-    branches:
-      - main  # Trigger on pull requests to 'main'
-
+  
 jobs:
   build:
     strategy:
