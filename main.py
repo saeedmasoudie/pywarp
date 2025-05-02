@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.3"
+CURRENT_VERSION = "1.1.4"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -301,36 +301,50 @@ class PowerButton(QWidget):
         self.state = 'disconnected'
 
     def toggle_power(self):
-        if hasattr(self, '_toggle_lock') and self._toggle_lock:
+        if getattr(self, '_toggle_lock', False):
             return
         self._toggle_lock = True
 
         def toggle():
             self.power_button.setDisabled(True)
-            self.power_button.setText("...")
-            self.power_button.setStyleSheet(
-                self.button_styles['unknown'][self.theme] + "border-radius: 50px; font-size: 24px;")
-            self.glow_effect.setColor(Qt.yellow)
 
             if self.state == "Disconnected":
                 subprocess.run(['warp-cli', 'connect'], capture_output=True, **safe_subprocess_args())
                 self.toggled.emit('Connecting')
-            elif self.state == "Disconnecting" or self.state == "No Network":
-                print(f"The action cannot be performed. (current state : {self.state})")
-            else:
+                self.change_btn_style()
+            elif self.state in ["Connected", "Connecting"]:
                 subprocess.run(['warp-cli', 'disconnect'], capture_output=True, **safe_subprocess_args())
                 self.toggled.emit('Disconnecting')
+                self.change_btn_style()
+            elif self.state == "No Network":
+                QApplication.instance().postEvent(self, QEvent(QEvent.User))
+            else:
+                QApplication.instance().postEvent(self, QEvent(QEvent.MaxUser))
 
             self.power_button.setDisabled(False)
             self._toggle_lock = False
 
         threading.Thread(target=toggle, daemon=True).start()
 
+    def change_btn_style(self):
+        self.power_button.setText("...")
+        self.power_button.setStyleSheet(
+            self.button_styles['unknown'][self.theme] + "border-radius: 50px; font-size: 24px;")
+        self.glow_effect.setColor(Qt.yellow)
+
+    def customEvent(self, event):
+        if event.type() == QEvent.User:
+            QMessageBox.warning(self, "Warning", "No network detected. Please check your connection.")
+        elif event.type() == QEvent.MaxUser:
+            QMessageBox.warning(self, "Error", "An unexpected error occurred. Please try again later.")
+
     def update_button_state(self, state):
         states = {
             "Connected": {"state": "on", "text": "ON", "color": QColor("green")},
             "Disconnected": {"state": "off", "text": "OFF", "color": QColor("red")},
-            "unknown": {"state": "unknown", "text": "...", "color": QColor("yellow")}
+            "Connecting": {"state": "unknown", "text": "...", "color": QColor("yellow")},
+            "Disconnecting": {"state": "unknown", "text": "...", "color": QColor("yellow")},
+            "unknown": {"state": "off", "text": "ERR", "color": QColor("red")}
         }
         self.state = state
         selected_state = states.get(state, states["unknown"])
@@ -341,175 +355,6 @@ class PowerButton(QWidget):
         )
         self.power_button.setText(selected_state["text"])
         self.glow_effect.setColor(selected_state["color"])
-
-
-class CustomTitleBar(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(40)
-        palette = QApplication.palette()
-        self.is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        if self.is_dark_mode:
-            self.background_color = "#34495e"
-            self.background_color_hover = "#1abc9c"
-        else:
-            self.background_color = "#0078D4"
-            self.background_color_hover = "#005A9E"
-
-        title_layout = QHBoxLayout(self)
-        title_layout.setContentsMargins(5, 0, 5, 0)
-
-        self.icon_label = QLabel()
-        self.icon_label.setPixmap(QIcon(":/logo.png").pixmap(35, 35))
-        title_layout.addWidget(self.icon_label)
-        self.app_name_label = QLabel("PyWarp")
-        self.app_name_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-left: 5px;")
-        title_layout.addWidget(self.app_name_label)
-
-        # About Me
-        self.about_button = QPushButton("About Me")
-        self.about_button.setFixedHeight(30)
-        self.about_button.setStyleSheet("""
-            QPushButton {{
-                background-color: {background_color};
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 10px;
-            }}
-            QPushButton:hover {{
-                background-color: {background_color_hover};
-            }}
-        """.format(background_color=self.background_color, background_color_hover=self.background_color_hover))
-        self.about_button.clicked.connect(self.show_about)
-        title_layout.addWidget(self.about_button)
-
-        # Tutorials
-        self.tutorials_button = QPushButton("Tutorials")
-        self.tutorials_button.setFixedHeight(30)
-        self.tutorials_button.setStyleSheet("""
-            QPushButton {{
-                background-color: {background_color};
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 10px;
-            }}
-            QPushButton:hover {{
-                background-color: {background_color_hover};
-            }}
-        """.format(background_color=self.background_color, background_color_hover=self.background_color_hover))
-        self.tutorials_button.clicked.connect(self.show_tutorials)
-        title_layout.addWidget(self.tutorials_button)
-
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        title_layout.addWidget(spacer)
-
-        # menu buttons
-        self.minimize_button = QPushButton("-")
-        self.style_button(self.minimize_button, f"background-color: {self.background_color};")
-        self.minimize_button.clicked.connect(parent.showMinimized)
-        title_layout.addWidget(self.minimize_button)
-
-        self.maximize_button = QPushButton("□")
-        self.style_button(self.maximize_button, f"background-color: {self.background_color};")
-        self.maximize_button.clicked.connect(self.toggle_maximize_restore)
-        title_layout.addWidget(self.maximize_button)
-
-        self.close_button = QPushButton("×")
-        self.style_button(self.close_button, "background-color: #e74c3c;")
-        self.close_button.clicked.connect(self.confirm_close)
-        title_layout.addWidget(self.close_button)
-
-    def style_button(self, button, base_style):
-        button.setFixedSize(30, 30)
-        button.setStyleSheet(f"""
-            {base_style}
-            border-radius: 5px; color: white;
-        """)
-        button.setCursor(Qt.PointingHandCursor)
-        button.installEventFilter(self)
-
-    def toggle_maximize_restore(self):
-        if self.parent().isMaximized():
-            self.parent().showNormal()
-        else:
-            self.parent().showMaximized()
-
-    def confirm_close(self):
-        msg_box = QMessageBox(self.parent())
-        msg_box.setIcon(QMessageBox.Question)
-        msg_box.setWindowTitle("Exit Confirmation")
-        msg_box.setText("Do you want to close the app or hide it?")
-        close_button = msg_box.addButton("Close", QMessageBox.AcceptRole)
-        hide_button = msg_box.addButton("Hide", QMessageBox.RejectRole)
-        msg_box.exec()
-        if msg_box.clickedButton() == close_button:
-            self.parent().close()
-        elif msg_box.clickedButton() == hide_button:
-            self.parent().hide()
-
-    def show_about(self):
-        about_dialog = QMessageBox(self)
-        about_dialog.setWindowTitle("About Me")
-        about_dialog.setText(
-            "Hi, I'm Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. "
-            "You can explore my work on GitHub."
-        )
-        github_button = QPushButton("Visit GitHub")
-        github_button.clicked.connect(lambda: webbrowser.open("https://github.com/saeedmasoudie"))
-        about_dialog.addButton(github_button, QMessageBox.ActionRole)
-        about_dialog.addButton("Close", QMessageBox.RejectRole)
-        about_dialog.exec()
-
-    def show_tutorials(self):
-        title_color = "#1E90FF" if not self.is_dark_mode else "#87CEEB"
-        text_color = "#333333" if not self.is_dark_mode else "#E0E0E0"
-        warning_color = "#FF6347" if not self.is_dark_mode else "#FF4500"
-        tutorials_dialog = QMessageBox(self)
-        tutorials_dialog.setWindowTitle("PyWarp Tutorials")
-
-        tutorials_dialog.setText(
-            f"""
-            <h2 style="color: {title_color}; text-align: center;">Welcome to PyWarp!</h2>
-            <p style="font-size: 14px; color: {text_color};">This application allows you to manage Cloudflare Warp settings with ease. Here's how it works:</p>
-            <ol style="font-size: 13px; color: {text_color};">
-                <li><b>Modes:</b> Use the dropdown to select the Warp mode (e.g., warp, doh, proxy, etc.).</li>
-                <li><b>DNS Mode:</b> Choose your preferred DNS filtering (off, family-friendly, or malware).</li>
-                <li><b>Endpoint:</b> Set a custom endpoint for advanced configurations.</li>
-                <li><b>Protocol:</b> You can choose your Protocol and try that connection.</li>
-            </ol>
-            <p style="font-size: 14px; color: {warning_color};"><b>⚠️ Important Warning:</b> Ensure Warp is disconnected before changing sensitive settings such as DNS mode or custom endpoint to avoid conflicts or errors.</p>
-            <p style="text-align: center; font-size: 13px; color: {text_color};">Enjoy customizing your Warp experience!</p>
-            """
-        )
-        tutorials_dialog.addButton("Close", QMessageBox.RejectRole)
-        tutorials_dialog.exec()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_pos = event.globalPosition().toPoint()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton:
-            offset = event.globalPosition().toPoint() - self.drag_pos
-            self.parent().move(self.parent().pos() + offset)
-            self.drag_pos = event.globalPosition().toPoint()
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.Enter:
-            obj.setStyleSheet("""
-                background-color: {bg}; color: white; border-radius: 5px;
-            """.format(bg=self.background_color_hover))
-        elif event.type() == QEvent.Leave:
-            if obj == self.minimize_button:
-                obj.setStyleSheet(f"background-color: {self.background_color}; color: white; border-radius: 5px;")
-            elif obj == self.maximize_button:
-                obj.setStyleSheet(f"background-color: {self.background_color}; color: white; border-radius: 5px;")
-            elif obj == self.close_button:
-                obj.setStyleSheet("background-color: #e74c3c; color: white; border-radius: 5px;")
-        return super().eventFilter(obj, event)
 
 
 class ExclusionManager(QDialog):
@@ -1026,12 +871,10 @@ class SettingsPage(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PyWarp")
+        self.setWindowTitle(f"PyWarp {CURRENT_VERSION}")
         self.setWindowIcon(QIcon(":/logo.png"))
         self.setGeometry(100, 100, 400, 600)
-        self.setWindowFlags(Qt.FramelessWindowHint)
-        self.title_bar = CustomTitleBar(self)
-        self.setMenuWidget(self.title_bar)
+        self.setWindowFlags(Qt.Window)
         self.setup_tray()
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -1052,24 +895,28 @@ class MainWindow(QMainWindow):
         status_layout.addWidget(self.toggle_switch)
         status_info = QVBoxLayout()
         status_info.setAlignment(Qt.AlignRight)
+        current_protocol = get_current_protocol()
 
         self.status_label = QLabel("Status: Disconnected")
         self.status_label.setFont(QFont("Segoe UI", 12))
         self.ip_label = QLabel(f"IPv4: 0.0.0.0")
         self.ip_label.setFont(QFont("Segoe UI", 12))
         self.ip_label.setToolTip("This is your current public IP address.")
-        self.protocol_label = QLabel(f"Protocol: ---")
-        current_protocol = get_current_protocol()
-        self.protocol_label.setText(
-            f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
-        self.version_label = QLabel(f"Version: {CURRENT_VERSION}")
-        self.version_label.setText(
-            f"Version: <span style='color: #0078D4; font-weight: bold;'>{CURRENT_VERSION}</span>")
+        self.protocol_label = QLabel(f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
+        self.source_label = QLabel(
+            "Source: <a href='https://github.com/saeedmasoudie/pywarp' "
+            "style='color: #0078D4; font-weight: bold; text-decoration: none;'>"
+            "GitHub</a>"
+        )
+        self.source_label.setTextFormat(Qt.RichText)
+        self.source_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.source_label.setOpenExternalLinks(True)
+        self.source_label.setToolTip("Click here to visit the app's source code on GitHub")
 
         status_info.addWidget(self.status_label)
         status_info.addWidget(self.ip_label)
         status_info.addWidget(self.protocol_label)
-        status_info.addWidget(self.version_label)
+        status_info.addWidget(self.source_label)
 
         status_layout.addLayout(status_info)
         main_layout.addWidget(status_frame)
@@ -1137,15 +984,69 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet(self.get_styles())
 
+    def closeEvent(self, event):
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setWindowTitle("Exit Confirmation")
+        msg_box.setText("Do you want to close the app or hide it?")
+        close_button = msg_box.addButton("Close", QMessageBox.AcceptRole)
+        hide_button = msg_box.addButton("Hide", QMessageBox.RejectRole)
+        msg_box.exec()
+
+        if msg_box.clickedButton() == close_button:
+            event.accept()
+        elif msg_box.clickedButton() == hide_button:
+            event.ignore()
+            self.hide()
+
+    def show_about(self):
+        about_dialog = QMessageBox(self)
+        about_dialog.setWindowTitle("About Me")
+        about_dialog.setText(
+            "Hi, I'm Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. "
+            "You can explore my work on GitHub."
+        )
+        github_button = QPushButton("Visit GitHub")
+        github_button.clicked.connect(lambda: webbrowser.open("https://github.com/saeedmasoudie"))
+        about_dialog.addButton(github_button, QMessageBox.ActionRole)
+        about_dialog.addButton("Close", QMessageBox.RejectRole)
+        about_dialog.exec()
+
+    def show_tutorials(self):
+        tutorials_dialog = QMessageBox(self)
+        tutorials_dialog.setWindowTitle("PyWarp Tutorials")
+        tutorials_dialog.setText(
+            "<h2>Welcome to PyWarp!</h2>"
+            "<p>This application allows you to manage Cloudflare Warp settings with ease.</p>"
+            "<ul>"
+            "<li><b>Modes:</b> Select Warp mode (warp, doh, proxy, etc.).</li>"
+            "<li><b>DNS Mode:</b> Choose filtering (off, family-friendly, or malware).</li>"
+            "<li><b>Endpoint:</b> Set a custom endpoint for advanced configurations.</li>"
+            "<li><b>Protocol:</b> Choose your connection protocol.</li>"
+            "</ul>"
+            "<p><b>⚠️ Important Warning:</b> Disconnect Warp before changing DNS mode or custom endpoint.</p>"
+        )
+        tutorials_dialog.addButton("Close", QMessageBox.RejectRole)
+        tutorials_dialog.exec()
 
     def setup_tray(self):
         self.tray_icon = QSystemTrayIcon(QIcon(":/logo.png"), self)
-        self.tray_icon.setToolTip("PyWarp - Advanced Cloudflare Warp")
+        self.tray_icon.setToolTip("PyWarp - CloudFlare Warp GUI")
         tray_menu = QMenu(self)
 
         show_action = QAction("Show App", self)
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
+
+        help_menu = tray_menu.addMenu("Help")
+
+        about_action = QAction("About Me", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+        tutorials_action = QAction("Tutorials", self)
+        tutorials_action.triggered.connect(self.show_tutorials)
+        help_menu.addAction(tutorials_action)
 
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
@@ -1233,7 +1134,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>Disconnecting...</span>")
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
         elif is_connected == 'No Network':
-            self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>No Network</span>")
+            self.status_label.setText("Status: <span style='color: red; font-weight: bold;'>No Network</span>")
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
             self.show_critical_error("Failed to Connect", "No active internet connection detected. Please check your network settings.")
         else:
@@ -1488,6 +1389,7 @@ class WarpInstaller:
             QMessageBox.information(self.parent, "Warp Ready", "Warp has been registered successfully!")
         except subprocess.CalledProcessError:
             QMessageBox.critical(self.parent, "Warp Activation Failed", "Failed to register Warp.")
+
 
 def format_handshake_time(seconds):
     hours, remainder = divmod(seconds, 3600)
