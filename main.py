@@ -671,7 +671,7 @@ class SettingsPage(QWidget):
         modes_layout = QGridLayout()
         self.modes_dropdown = QComboBox()
         modes_with_tooltips = {
-            "warp": "Full VPN tunnel via Cloudflare (WireGuard). Encrypts all traffic.",
+            "warp": "Full VPN tunnel via Cloudflare. Encrypts all traffic.",
             "doh": "Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted.",
             "warp+doh": "VPN tunnel + DNS over HTTPS. Full encryption + secure DNS.",
             "dot": "Only DNS over TLS (DoT). Secure DNS, no VPN tunnel.",
