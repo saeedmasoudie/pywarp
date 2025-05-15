@@ -1,8 +1,6 @@
 import asyncio
 import atexit
 import ipaddress
-import json
-import os
 import platform
 import re
 import shutil
@@ -16,7 +14,7 @@ from PySide6.QtNetwork import QLocalSocket, QLocalServer
 
 import resources_rc
 import requests
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QStandardPaths, QObject
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
@@ -25,7 +23,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.4"
+CURRENT_VERSION = "1.1.5"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -200,68 +198,26 @@ class WarpStatsHandler(QThread):
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
 
-    def __init__(self, settings_file="settings.json", loop=True):
+    def __init__(self):
         super().__init__()
-        self.looping = loop
-        self.settings_file = settings_file
-        self.settings = {}
-        self.load_settings()
+        self.settings = QSettings("PyWarp", "App")
 
     def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.fetch_settings())
+        self.settings_signal.emit(self.get_all_settings())
 
-    async def fetch_settings(self):
-        while True:
-            try:
-                self.settings["mode"] = await self.get_mode()
-                self.settings_signal.emit(self.settings)
-
-            except Exception as e:
-                print(f"Error fetching settings: {e}")
-
-            if not self.looping:
-                break
-
-            await asyncio.sleep(15)
-
-    async def get_mode(self):
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "warp-cli", "settings",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                **safe_subprocess_args()
-            )
-            stdout, _ = await process.communicate()
-            for line in stdout.decode().splitlines():
-                if "Mode:" in line:
-                    return line.split(":")[1].strip()
-        except Exception as e:
-            print(f"Error fetching mode: {e}")
-        return "Unknown"
-
-    def load_settings(self):
-        try:
-            with open(self.settings_file, "r") as file:
-                self.settings = json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.settings = {}
-
-    def save_settings(self):
-        try:
-            with open(self.settings_file, "w") as file:
-                json.dump(self.settings, file, indent=4)
-        except Exception as e:
-            print(f"Error saving settings: {e}")
+    def save_settings(self, key, value):
+        self.settings.setValue(key, value)
 
     def get(self, key, default=None):
-        return self.settings.get(key, default)
+        return self.settings.value(key, default)
 
-    def set(self, key, value):
-        self.settings[key] = value
-        self.save_settings()
+    def get_all_settings(self):
+        return {
+            "endpoint": self.get("endpoint", ""),
+            "dns_mode": self.get("dns_mode", "off"),
+            "mode": self.get("mode", "warp")
+        }
+
 
 class PowerButton(QWidget):
     toggled = Signal(str)
@@ -418,14 +374,13 @@ class ExclusionManager(QDialog):
 
 
 class AdvancedSettings(QDialog):
-    def __init__(self, settings_handler, local_storage_file, parent=None):
+    def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Advanced Settings")
         self.setStyleSheet(self.get_stylesheet())
         self.setFixedSize(460, 460)
 
         self.settings_handler = settings_handler
-        self.storage_path = local_storage_file
         self.current_endpoint = self.settings_handler.get("custom_endpoint", "")
 
         # Exclude IP/Domain
@@ -577,14 +532,14 @@ class AdvancedSettings(QDialog):
                 QMessageBox.warning(self, "Error", error_line)
                 return
 
-            self.settings_handler.set("custom_endpoint", endpoint)
+            self.settings_handler.save_settings("custom_endpoint", endpoint)
             QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"An exception occurred: {str(e)}")
 
     def reset_endpoint(self):
         subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"], **safe_subprocess_args())
-        self.settings_handler.set("custom_endpoint", "")
+        self.settings_handler.save_settings("custom_endpoint", "")
         self.endpoint_input.clear()
         QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
 
@@ -648,22 +603,13 @@ class AdvancedSettings(QDialog):
 class SettingsPage(QWidget):
     def __init__(self, parent=None, warp_status_handler=None, settings_handler=None):
         super().__init__(parent)
-        self.settings_handler = SettingsHandler()
+        self.settings_handler = settings_handler
         self.warp_status_handler = warp_status_handler
 
-        writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
-        os.makedirs(writable_path, exist_ok=True)
-        self.local_storage_file = os.path.join(writable_path, "settings.json")
-
-        if not os.path.exists(self.local_storage_file):
-            self.copy_settings_file()
-
         self.current_status = "Disconnected"
-        self.current_endpoint = ""
-        self.current_dns_mode = ""
-        self.current_mode = ""
+        self.current_dns_mode = self.settings_handler.get("dns_mode", "off")
+        self.current_mode = self.settings_handler.get("mode", "warp")
 
-        self.load_local_settings()
         main_layout = QVBoxLayout(self)
 
         # Modes Section
@@ -720,38 +666,13 @@ class SettingsPage(QWidget):
         self.setStyleSheet(self.get_stylesheet())
 
     def open_advanced_settings(self):
-        dialog = AdvancedSettings(self.settings_handler, "settings.json", self)
+        dialog = AdvancedSettings(self.settings_handler, self)
         dialog.exec()
 
     def create_groupbox(self, title):
         groupbox = QGroupBox(title)
         groupbox.setStyleSheet(self.get_stylesheet())
         return groupbox
-
-    def copy_settings_file(self):
-        writable_path = QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
-        os.makedirs(writable_path, exist_ok=True)
-        default_settings = {"endpoint": "", "dns_mode": "off", "mode": "warp"}
-        with open(self.local_storage_file, "w") as file:
-            json.dump(default_settings, file)
-
-    def load_local_settings(self):
-        if os.path.exists(self.local_storage_file):
-            try:
-                with open(self.local_storage_file, "r") as file:
-                    data = json.load(file)
-                    self.current_endpoint = data.get("endpoint", "")
-                    self.current_dns_mode = data.get("dns_mode", "off")
-                    self.current_mode = data.get("mode", "warp")
-            except Exception as e:
-                print(f"Error loading settings: {e}")
-        else:
-            self.current_dns_mode = "off"
-
-    def save_local_settings(self):
-        data = {"endpoint": self.current_endpoint, "dns_mode": self.current_dns_mode, "mode": self.current_mode}
-        with open(self.local_storage_file, "w") as file:
-            json.dump(data, file)
 
     def set_dns_mode(self):
         dns_dict = {
@@ -761,7 +682,7 @@ class SettingsPage(QWidget):
         cmd = subprocess.run(["warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off')], **safe_subprocess_args())
         if cmd.returncode == 0:
             self.current_dns_mode = selected_dns
-            self.save_local_settings()
+            self.settings_handler.save_settings("dns_mode", selected_dns)
             QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
         else:
             QMessageBox.warning(self, "Error", f"Failed to Set DNS Mode to {selected_dns}: {cmd.stderr.strip()}")
@@ -805,7 +726,7 @@ class SettingsPage(QWidget):
         cmd = subprocess.run(["warp-cli", "mode", selected_mode], **safe_subprocess_args())
         if cmd.returncode == 0:
             self.current_mode = selected_mode
-            self.save_local_settings()
+            self.settings_handler.save_settings("mode", selected_mode)
             QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
         else:
             QMessageBox.warning(self, "Error", f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
@@ -866,7 +787,6 @@ class SettingsPage(QWidget):
                 background-color: {button_hover_bg};
             }}
         """
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -952,7 +872,7 @@ class MainWindow(QMainWindow):
         stats_layout.addWidget(self.stats_table)
         self.stacked_widget.addWidget(stats_widget)
 
-        self.settings_handler = SettingsHandler(loop=True)
+        self.settings_handler = SettingsHandler()
         self.settings_handler.start()
         settings_widget = SettingsPage(settings_handler=self.settings_handler)
         self.stacked_widget.addWidget(settings_widget)

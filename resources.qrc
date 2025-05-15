@@ -2,6 +2,5 @@
 <RCC version="1.0">
     <qresource>
         <file>logo.png</file>
-        <file>settings.json</file>
     </qresource>
 </RCC>
