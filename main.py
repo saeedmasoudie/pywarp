@@ -9,12 +9,10 @@ import sys
 import threading
 import traceback
 import webbrowser
-
-from PySide6.QtNetwork import QLocalSocket, QLocalServer
-
-import resources_rc
 import requests
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings
+import resources_rc
+from PySide6.QtNetwork import QLocalSocket, QLocalServer
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
@@ -23,7 +21,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.5"
+CURRENT_VERSION = "1.1.6"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -42,7 +40,7 @@ class WarpDownloadThread(QThread):
     def run(self):
         try:
             local_filename = self.url.split('/')[-1]
-            with requests.get(self.url, stream=True) as r:
+            with requests.get(self.url, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 total_length = int(r.headers.get('content-length', 0))
                 downloaded = 0
@@ -51,38 +49,54 @@ class WarpDownloadThread(QThread):
                         if self._abort:
                             self.finished.emit(False, "")
                             return
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        percent = int(downloaded * 100 / total_length)
-                        self.progress.emit(percent)
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_length > 0:
+                                percent = int(downloaded * 100 / total_length)
+                                self.progress.emit(percent)
             self.finished.emit(True, local_filename)
-        except Exception:
+        except Exception as e:
+            print(f"Download error: {e}")
             self.finished.emit(False, "")
+
 
 class UpdateChecker(QObject):
     update_available = Signal(str)
 
     def check_for_update(self):
-        latest_version = self.get_latest_version()
-        if latest_version and latest_version != CURRENT_VERSION:
-            self.update_available.emit(latest_version)
+        try:
+            latest_version = self.get_latest_version()
+            if latest_version and self.is_newer_version(latest_version, CURRENT_VERSION):
+                self.update_available.emit(latest_version)
+        except Exception as e:
+            print(f"Update check failed: {e}")
 
     def get_latest_version(self):
         try:
-            response = requests.get(GITHUB_VERSION_URL, timeout=5)
+            response = requests.get(GITHUB_VERSION_URL, timeout=10)
             response.raise_for_status()
             latest_version = response.text.strip()
 
-            if latest_version and latest_version.replace(".", "").isdigit():
+            if latest_version and self.is_valid_version(latest_version):
                 return latest_version
             else:
                 print("Received invalid version format")
                 return None
-        except requests.exceptions.Timeout:
-            print("Request timed out. Could not check for updates.")
         except requests.exceptions.RequestException as e:
-            print(f"Network error: {e}")
-        return None
+            print(f"Network error during update check: {e}")
+            return None
+
+    def is_valid_version(self, version):
+        """Check if version string is valid (e.g., 1.1.5)"""
+        return bool(re.match(r'^\d+\.\d+\.\d+$', version))
+
+    def is_newer_version(self, latest, current):
+        """Compare version strings"""
+        latest_parts = [int(x) for x in latest.split('.')]
+        current_parts = [int(x) for x in current.split('.')]
+        return latest_parts > current_parts
+
 
 class WarpStatusHandler(QThread):
     status_signal = Signal(str)
@@ -91,27 +105,35 @@ class WarpStatusHandler(QThread):
         super().__init__()
         self.looping = loop
         self.previous_status = None
-        self.status_map = {
-            "Connected": 8,
-            "Disconnected": 8,
-            "Connecting": 2
-        }
+        self.status_map = {"Connected": 8, "Disconnected": 8, "Connecting": 2}
 
     def run(self):
-        asyncio.run(self.monitor_status())
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.monitor_status())
+        finally:
+            loop.close()
 
     async def monitor_status(self):
         while self.looping:
             try:
                 process = await asyncio.create_subprocess_exec(
-                    'warp-cli', 'status',
+                    'warp-cli',
+                    'status',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    **safe_subprocess_args()
-                )
-                stdout, _ = await process.communicate()
-                status = stdout.decode()
-                current_status = self.extract_status(status)
+                    **safe_subprocess_args())
+                stdout, stderr = await process.communicate()
+
+                if process.returncode != 0:
+                    print(f"warp-cli status error: {stderr.decode()}")
+                    current_status = "Failed"
+                else:
+                    status = stdout.decode()
+                    current_status = self.extract_status(status)
+
                 timeout = self.status_map.get(current_status, 5)
 
                 if current_status != self.previous_status:
@@ -137,7 +159,7 @@ class WarpStatusHandler(QThread):
             reason_index = data.index("Reason:")
             reason_text = " ".join(data[reason_index + 1:])
             return 'No Network' if 'No Network' in reason_text else reason_text
-        except ValueError:
+        except (ValueError, IndexError):
             return "Failed"
 
 
@@ -157,41 +179,64 @@ class WarpStatsHandler(QThread):
     def run(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.monitor_stats())
+        try:
+            loop.run_until_complete(self.monitor_stats())
+        finally:
+            loop.close()
 
     async def monitor_stats(self):
-        while True:
+        while self.looping:
             if not self.warp_connected:
-                print("Warp is disconnected. Waiting for connection...")
                 self.stats_signal.emit([])
-                while not self.warp_connected:
-                    await asyncio.sleep(6)
+                await asyncio.sleep(6)
+                continue
 
             try:
                 process = await asyncio.create_subprocess_exec(
-                    'warp-cli', 'tunnel', 'stats',
+                    'warp-cli',
+                    'tunnel',
+                    'stats',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-                stdout, _ = await process.communicate()
+                    **safe_subprocess_args())
+                stdout, stderr = await process.communicate()
+
+                if process.returncode != 0:
+                    print(f"Stats error: {stderr.decode()}")
+                    self.stats_signal.emit([])
+                    await asyncio.sleep(10)
+                    continue
+
                 stats_output = stdout.decode().splitlines()
 
                 if len(stats_output) < 6:
-                    raise ValueError("Unexpected stats output format")
+                    print("Unexpected stats output format")
+                    self.stats_signal.emit([])
+                    await asyncio.sleep(10)
+                    continue
 
-                protocol = stats_output[0].split(": ")[1].split(" ")[0]
-                endpoints = stats_output[1].split(': ')[1]
-                handshake_time = stats_output[2].split(': ')[1]
-                sent = stats_output[3].split('; ')[0].split(':')[1].strip()
-                received = stats_output[3].split('; ')[1].split(':')[1].strip()
-                latency = stats_output[4].split(': ')[1]
-                loss = stats_output[5].split(': ')[1]
+                try:
+                    protocol = stats_output[0].split(": ")[1].split(" ")[0]
+                    endpoints = stats_output[1].split(': ')[1]
+                    handshake_time = stats_output[2].split(': ')[1]
+                    data_line = stats_output[3].split('; ')
+                    sent = data_line[0].split(':')[1].strip()
+                    received = data_line[1].split(':')[1].strip()
+                    latency = stats_output[4].split(': ')[1]
+                    loss = stats_output[5].split(': ')[1]
 
-                self.stats_signal.emit([protocol, endpoints, handshake_time, sent, received, latency, loss])
+                    self.stats_signal.emit([
+                        protocol, endpoints, handshake_time, sent, received,
+                        latency, loss
+                    ])
+                except (IndexError, ValueError) as e:
+                    print(f"Error parsing stats: {e}")
+                    self.stats_signal.emit([])
 
             except Exception as e:
-                print(f"Error on getting stats: {e}")
+                print(f"Error getting stats: {e}")
+                self.stats_signal.emit([])
+
             await asyncio.sleep(10)
 
 
@@ -207,6 +252,7 @@ class SettingsHandler(QThread):
 
     def save_settings(self, key, value):
         self.settings.setValue(key, value)
+        self.settings.sync()
 
     def get(self, key, default=None):
         return self.settings.value(key, default)
@@ -221,6 +267,7 @@ class SettingsHandler(QThread):
 
 class PowerButton(QWidget):
     toggled = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(150, 150)
@@ -230,71 +277,182 @@ class PowerButton(QWidget):
         # Button styles
         self.button_styles = {
             "off": {
-                "dark": "background-color: #222; border: 4px solid red; color: red;",
-                "light": "background-color: #f0f2f5; border: 4px solid red; color: red;"
+                "dark": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0d1117, stop: 1 #161b22);
+                    border: 3px solid #f85149; 
+                    color: #f85149;
+                    font-weight: 700;
+                """,
+                "light": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    border: 3px solid #d1242f; 
+                    color: #d1242f;
+                    font-weight: 700;
+                """
             },
             "unknown": {
-                "dark": "background-color: #222; border: 4px solid orange; color: orange;",
-                "light": "background-color: #f0f2f5; border: 4px solid orange; color: orange;"
+                "dark": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0d1117, stop: 1 #161b22);
+                    border: 3px solid #f0883e; 
+                    color: #f0883e;
+                    font-weight: 700;
+                """,
+                "light": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    border: 3px solid #d15704; 
+                    color: #d15704;
+                    font-weight: 700;
+                """
             },
             "on": {
-                "dark": "background-color: #222; border: 4px solid green; color: green;",
-                "light": "background-color: #f0f2f5; border: 4px solid green; color: green;"
+                "dark": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0d1117, stop: 1 #161b22);
+                    border: 3px solid #3fb950; 
+                    color: #3fb950;
+                    font-weight: 700;
+                """,
+                "light": """
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    border: 3px solid #2da44e; 
+                    color: #2da44e;
+                    font-weight: 700;
+                """
             }
         }
 
         self.theme = "dark" if is_dark_mode else "light"
         self.power_button = QPushButton("...", self)
         self.power_button.setGeometry(25, 25, 100, 100)
-        self.power_button.setStyleSheet("")
+        self.power_button.setStyleSheet("border-radius: 50px; font-size: 24px;")
         self.power_button.setFont(QFont("Arial", 16, QFont.Bold))
+
         self.glow_effect = QGraphicsDropShadowEffect()
         self.glow_effect.setBlurRadius(50)
         self.glow_effect.setColor(Qt.yellow)
         self.glow_effect.setOffset(0, 0)
         self.power_button.setGraphicsEffect(self.glow_effect)
+
         self.power_button.clicked.connect(self.toggle_power)
-        self.state = 'disconnected'
+        self.state = 'Disconnected'
+        self._toggle_lock = False
+
+        # Timer to reset button state if stuck
+        self.reset_timer = QTimer()
+        self.reset_timer.setSingleShot(True)
+        self.reset_timer.timeout.connect(self.reset_button_state)
 
     def toggle_power(self):
-        if getattr(self, '_toggle_lock', False):
+        if self._toggle_lock:
             return
         self._toggle_lock = True
 
         def toggle():
-            self.power_button.setDisabled(True)
+            try:
+                self.power_button.setDisabled(True)
 
-            if self.state == "Disconnected":
-                subprocess.run(['warp-cli', 'connect'], capture_output=True, **safe_subprocess_args())
-                self.toggled.emit('Connecting')
-                self.change_btn_style()
-            elif self.state in ["Connected", "Connecting"]:
-                subprocess.run(['warp-cli', 'disconnect'], capture_output=True, **safe_subprocess_args())
-                self.toggled.emit('Disconnecting')
-                self.change_btn_style()
-            elif self.state == "No Network":
-                QApplication.instance().postEvent(self, QEvent(QEvent.User))
-            else:
-                QApplication.instance().postEvent(self, QEvent(QEvent.MaxUser))
+                # Start timeout timer (10 seconds)
+                self.reset_timer.start(10000)
 
-            self.power_button.setDisabled(False)
-            self._toggle_lock = False
+                if self.state == "Disconnected":
+                    result = subprocess.run(['warp-cli', 'connect'],
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=30,
+                                            **safe_subprocess_args())
+                    if result.returncode == 0:
+                        self.toggled.emit('Connecting')
+                    else:
+                        print(f"Connect failed: {result.stderr}")
+                        self.handle_command_error("Failed to connect")
+
+                elif self.state in ["Connected", "Connecting"]:
+                    result = subprocess.run(['warp-cli', 'disconnect'],
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=30,
+                                            **safe_subprocess_args())
+                    if result.returncode == 0:
+                        self.toggled.emit('Disconnecting')
+                    else:
+                        print(f"Disconnect failed: {result.stderr}")
+                        self.handle_command_error("Failed to disconnect")
+
+                elif self.state == "No Network":
+                    QApplication.instance().postEvent(self, QEvent(QEvent.User))
+                else:
+                    QApplication.instance().postEvent(self, QEvent(QEvent.MaxUser))
+
+                self.change_btn_style()
+            except subprocess.TimeoutExpired:
+                print("Warp command timed out")
+                self.handle_command_error("Command timed out")
+            except Exception as e:
+                print(f"Toggle error: {e}")
+                self.handle_command_error(f"Error: {str(e)}")
+            finally:
+                self.reset_timer.stop()
+                self.power_button.setDisabled(False)
+                self._toggle_lock = False
 
         threading.Thread(target=toggle, daemon=True).start()
+
+    def handle_command_error(self, error_msg):
+        """Handle command errors and reset button state"""
+        # Force state update to current actual status
+        QTimer.singleShot(1000, self.force_status_refresh)
+
+    def force_status_refresh(self):
+        """Force a status refresh to sync button state"""
+        self.toggled.emit('ForceRefresh')
+
+    def reset_button_state(self):
+        """Reset button if it gets stuck"""
+        if self._toggle_lock:
+            self._toggle_lock = False
+            self.power_button.setDisabled(False)
+            # Force a status refresh
+            self.force_status_refresh()
 
     def change_btn_style(self):
         self.power_button.setText("...")
         self.power_button.setStyleSheet(
-            self.button_styles['unknown'][self.theme] + "border-radius: 50px; font-size: 24px;")
+            self.button_styles['unknown'][self.theme] +
+            "border-radius: 50px; font-size: 24px;")
         self.glow_effect.setColor(Qt.yellow)
 
     def customEvent(self, event):
         if event.type() == QEvent.User:
-            QMessageBox.warning(self, "Warning", "No network detected. Please check your connection.")
+            # Use timer to show dialog after current UI updates are processed
+            QTimer.singleShot(100, lambda: self.show_error_dialog(
+                "Warning", "No network detected. Please check your connection."))
         elif event.type() == QEvent.MaxUser:
-            QMessageBox.warning(self, "Error", "An unexpected error occurred. Please try again later.")
+            # Use timer to show dialog after current UI updates are processed
+            QTimer.singleShot(100, lambda: self.show_error_dialog(
+                "Error", "An unexpected error occurred. Please try again later."))
+
+    def show_error_dialog(self, title, message):
+        """Show error dialog and refresh status after"""
+        # Create non-blocking dialog
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Warning if title == "Warning" else QMessageBox.Critical)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+
+        # Show dialog non-blocking and refresh status after it's closed
+        msg_box.finished.connect(lambda: QTimer.singleShot(500, self.force_status_refresh))
+        msg_box.show()
 
     def update_button_state(self, state):
+        # Stop any pending reset timer since we're updating properly
+        self.reset_timer.stop()
+
         states = {
             "Connected": {"state": "on", "text": "ON", "color": QColor("green")},
             "Disconnected": {"state": "off", "text": "OFF", "color": QColor("red")},
@@ -302,15 +460,29 @@ class PowerButton(QWidget):
             "Disconnecting": {"state": "unknown", "text": "...", "color": QColor("yellow")},
             "unknown": {"state": "off", "text": "ERR", "color": QColor("red")}
         }
+
         self.state = state
         selected_state = states.get(state, states["unknown"])
 
+        # Always enable button for stable states
+        if state in ["Connected", "Disconnected"]:
+            self.power_button.setDisabled(False)
+            self._toggle_lock = False
+
+        # Force immediate style update using QTimer to ensure it processes
+        QTimer.singleShot(0, lambda: self.apply_button_style(selected_state))
+
+    def apply_button_style(self, selected_state):
+        """Apply button style immediately"""
         self.power_button.setStyleSheet(
             self.button_styles[selected_state["state"]][self.theme] +
-            "border-radius: 50px; font-size: 24px;"
-        )
+            "border-radius: 50px; font-size: 24px;")
         self.power_button.setText(selected_state["text"])
         self.glow_effect.setColor(selected_state["color"])
+
+        # Force widget update
+        self.power_button.update()
+        self.update()
 
 
 class ExclusionManager(QDialog):
@@ -319,9 +491,16 @@ class ExclusionManager(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Exclusion")
-        self.setFixedSize(300, 220)
+        self.setFixedSize(320, 240)
+
+        # Apply modern styling
+        palette = self.palette()
+        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
+        self.setStyleSheet(self.get_modern_style(is_dark_mode))
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         self.selector = QComboBox()
         self.selector.addItems(["IP", "Domain"])
@@ -338,6 +517,78 @@ class ExclusionManager(QDialog):
         layout.addWidget(self.submit_button, alignment=Qt.AlignCenter)
 
         self.setLayout(layout)
+
+    def get_modern_style(self, is_dark_mode):
+        if is_dark_mode:
+            return """
+                QDialog {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0d1117, stop: 1 #161b22);
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 12px;
+                }
+                QComboBox, QLineEdit {
+                    background-color: #21262d;
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 8px;
+                    padding: 10px;
+                    font-size: 14px;
+                }
+                QComboBox:hover, QLineEdit:hover {
+                    border-color: #58a6ff;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                }
+            """
+        else:
+            return """
+                QDialog {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 12px;
+                }
+                QComboBox, QLineEdit {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 8px;
+                    padding: 10px;
+                    font-size: 14px;
+                }
+                QComboBox:hover, QLineEdit:hover {
+                    border-color: #0969da;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2da44e, stop: 1 #238636);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #2da44e);
+                }
+            """
 
     def is_valid_ip(self, value):
         try:
@@ -357,23 +608,40 @@ class ExclusionManager(QDialog):
         exclusion_type = self.selector.currentText().lower()
 
         if exclusion_type == "ip" and not self.is_valid_ip(value):
-            QMessageBox.warning(self, "Invalid Input", "Please enter a valid IP address.")
+            QMessageBox.warning(self, "Invalid Input",
+                                "Please enter a valid IP address.")
             return
         elif exclusion_type == "domain" and not self.is_valid_domain(value):
-            QMessageBox.warning(self, "Invalid Input", "Please enter a valid domain name.")
+            QMessageBox.warning(self, "Invalid Input",
+                                "Please enter a valid domain name.")
             return
 
-        cmd = ["warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host", "add", value]
-        result = subprocess.run(cmd, capture_output=True, **safe_subprocess_args())
+        cmd = [
+            "warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host",
+            "add", value
+        ]
+        try:
+            result = subprocess.run(cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=30,
+                                    **safe_subprocess_args())
 
-        if result.returncode == 0:
-            self.exclusions_updated.emit()
-            self.accept()
-        else:
-            QMessageBox.warning(self, "Error", f"Failed to add {exclusion_type}: {result.stderr.strip()}")
+            if result.returncode == 0:
+                self.exclusions_updated.emit()
+                self.accept()
+            else:
+                QMessageBox.warning(
+                    self, "Error",
+                    f"Failed to add {exclusion_type}: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            QMessageBox.warning(self, "Error", "Command timed out")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Command failed: {e}")
 
 
 class AdvancedSettings(QDialog):
+
     def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Advanced Settings")
@@ -450,21 +718,36 @@ class AdvancedSettings(QDialog):
 
     def update_list_view(self):
         self.item_list.clear()
-        cmd = ["warp-cli", "tunnel", "ip", "list"]
-        result_ip = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
 
-        cmd = ["warp-cli", "tunnel", "host", "list"]
-        result_host = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
+        # Get IP exclusions
+        try:
+            result_ip = subprocess.run(["warp-cli", "tunnel", "ip", "list"],
+                                       capture_output=True,
+                                       text=True,
+                                       timeout=30,
+                                       **safe_subprocess_args())
+            if result_ip.returncode == 0:
+                lines = result_ip.stdout.strip().splitlines()
+                for line in lines[1:]:  # Skip header
+                    if line.strip():
+                        self.item_list.addItem(f"IP: {line.strip()}")
+        except Exception as e:
+            print(f"Error getting IP list: {e}")
 
-        if result_ip.returncode == 0:
-            lines = result_ip.stdout.strip().splitlines()
-            for line in lines[1:]:
-                self.item_list.addItem(f"IP: {line.strip()}")
-
-        if result_host.returncode == 0:
-            lines = result_host.stdout.strip().splitlines()
-            for line in lines[1:]:
-                self.item_list.addItem(f"Domain: {line.strip()}")
+        # Get host exclusions
+        try:
+            result_host = subprocess.run(["warp-cli", "tunnel", "host", "list"],
+                                         capture_output=True,
+                                         text=True,
+                                         timeout=30,
+                                         **safe_subprocess_args())
+            if result_host.returncode == 0:
+                lines = result_host.stdout.strip().splitlines()
+                for line in lines[1:]:  # Skip header
+                    if line.strip():
+                        self.item_list.addItem(f"Domain: {line.strip()}")
+        except Exception as e:
+            print(f"Error getting host list: {e}")
 
     def remove_item(self):
         item = self.item_list.currentItem()
@@ -473,45 +756,43 @@ class AdvancedSettings(QDialog):
             return
 
         item_text = item.text().split(": ", 1)
-
         if len(item_text) != 2:
             QMessageBox.warning(self, "Error", "Invalid entry format!")
             return
 
         mode = item_text[0].lower().strip()
-        value_cleaned = " ".join(item_text[1].split(" ")[:-2]).strip()
-        current_exclusions = self.get_exclusion_list(mode)
+        value_cleaned = item_text[1].strip()
 
-        if any(value_cleaned in item for item in current_exclusions):
-            cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "remove", value_cleaned]
-            result = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
+        cmd = [
+            "warp-cli", "tunnel", "ip" if mode == "ip" else "host",
+            "remove", value_cleaned
+        ]
+
+        try:
+            result = subprocess.run(cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=30,
+                                    **safe_subprocess_args())
 
             if result.returncode == 0:
                 self.update_list_view()
             else:
-                QMessageBox.warning(self, "Error", f"Failed to remove {mode}: {result.stderr.strip()}")
-        else:
-            QMessageBox.warning(self, "Error", f"{value_cleaned} not found in exclusion list!")
-            return
-
-
-    def get_exclusion_list(self, mode):
-        cmd = ["warp-cli", "tunnel", "ip" if mode == "ip" else "host", "list"]
-        result = subprocess.run(cmd, capture_output=True, text=True, **safe_subprocess_args())
-
-        if result.returncode == 0:
-            lines = result.stdout.strip().splitlines()
-            return [f"Domain: {line.strip()}" if mode == "domain" else f"IP: {line.strip()}" for line in lines[1:]]
-
-        return []
+                QMessageBox.warning(
+                    self, "Error",
+                    f"Failed to remove {mode}: {result.stderr.strip()}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Command failed: {e}")
 
     def reset_list(self):
-        cmd = ["warp-cli", "tunnel", "ip", "reset"]
-        subprocess.run(cmd, **safe_subprocess_args())
-
-        cmd = ["warp-cli", "tunnel", "host", "reset"]
-        subprocess.run(cmd, **safe_subprocess_args())
-        self.update_list_view()
+        try:
+            subprocess.run(["warp-cli", "tunnel", "ip", "reset"],
+                           timeout=30, **safe_subprocess_args())
+            subprocess.run(["warp-cli", "tunnel", "host", "reset"],
+                           timeout=30, **safe_subprocess_args())
+            self.update_list_view()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Reset failed: {e}")
 
     def save_endpoint(self):
         endpoint = self.endpoint_input.text().strip()
@@ -523,12 +804,12 @@ class AdvancedSettings(QDialog):
                 ["warp-cli", "tunnel", "endpoint", "set", endpoint],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                **safe_subprocess_args()
-            )
+                text=True,
+                timeout=30,
+                **safe_subprocess_args())
 
-            stderr = result.stderr.decode("utf-8").strip()
             if result.returncode != 0:
-                error_line = stderr.split("\n")[0]
+                error_line = result.stderr.strip().split("\n")[0]
                 QMessageBox.warning(self, "Error", error_line)
                 return
 
@@ -538,69 +819,155 @@ class AdvancedSettings(QDialog):
             QMessageBox.warning(self, "Error", f"An exception occurred: {str(e)}")
 
     def reset_endpoint(self):
-        subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"], **safe_subprocess_args())
-        self.settings_handler.save_settings("custom_endpoint", "")
-        self.endpoint_input.clear()
-        QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
+        try:
+            subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"],
+                           timeout=30, **safe_subprocess_args())
+            self.settings_handler.save_settings("custom_endpoint", "")
+            self.endpoint_input.clear()
+            QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Reset failed: {e}")
 
     def get_stylesheet(self):
         palette = self.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        fg_color = "#E0E0E0" if is_dark_mode else "#333"
-        bg_color = "#1E1E1E" if is_dark_mode else "white"
-        input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
-        background_color = "#34495e" if is_dark_mode else "#0078D4"
-        background_color_hover = "#1abc9c" if is_dark_mode else "#005A9E"
 
-        return f"""
-            QDialog {{
-                background-color: {bg_color};
-                color: {fg_color};
-                border-radius: 5px;
-            }}
-
-            QGroupBox {{
-                border: 1px solid {background_color};
-                padding: 10px;
-                font-weight: bold;
-            }}
-            
-            QComboBox {{
-                background-color: {input_bg_color};
-                color: {fg_color};
-                border: 1px solid #555;
-                border-radius: 5px;
-                padding: 5px;
-            }}
-
-            QListWidget {{
-                background-color: {input_bg_color};
-                color: {fg_color};
-                border: 1px solid #555;
-                font-size: 14px;
-            }}
-
-            QLineEdit {{
-                background-color: {input_bg_color};
-                color: {fg_color};
-                border: 1px solid #777;
-                padding: 6px;
-            }}
-
-            QPushButton {{
-                background-color: {background_color};
-                color: white;
-                padding: 6px;
-                border-radius: 4px;
-            }}
-
-            QPushButton:hover {{
-                background-color: {background_color_hover};
-            }}
-        """
+        if is_dark_mode:
+            return """
+                QDialog {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0d1117, stop: 1 #161b22);
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 12px;
+                }
+                QGroupBox {
+                    border: 1px solid #30363d;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: #58a6ff;
+                    margin-top: 8px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                }
+                QComboBox, QLineEdit {
+                    background-color: #21262d;
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 13px;
+                }
+                QComboBox:hover, QLineEdit:hover {
+                    border-color: #58a6ff;
+                }
+                QListWidget {
+                    background-color: #0d1117;
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 6px;
+                    font-size: 13px;
+                }
+                QListWidget::item {
+                    padding: 6px;
+                    border-bottom: 1px solid #21262d;
+                }
+                QListWidget::item:hover {
+                    background-color: #161b22;
+                }
+                QListWidget::item:selected {
+                    background-color: #1f6feb;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                }
+            """
+        else:
+            return """
+                QDialog {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 12px;
+                }
+                QGroupBox {
+                    border: 1px solid #d1d9e0;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: #0969da;
+                    margin-top: 8px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                }
+                QComboBox, QLineEdit {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 13px;
+                }
+                QComboBox:hover, QLineEdit:hover {
+                    border-color: #0969da;
+                }
+                QListWidget {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 6px;
+                    font-size: 13px;
+                }
+                QListWidget::item {
+                    padding: 6px;
+                    border-bottom: 1px solid #eaeef2;
+                }
+                QListWidget::item:hover {
+                    background-color: #f6f8fa;
+                }
+                QListWidget::item:selected {
+                    background-color: #dbeafe;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2da44e, stop: 1 #238636);
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #2da44e);
+                }
+            """
 
 
 class SettingsPage(QWidget):
+
     def __init__(self, parent=None, warp_status_handler=None, settings_handler=None):
         super().__init__(parent)
         self.settings_handler = settings_handler
@@ -654,7 +1021,6 @@ class SettingsPage(QWidget):
         advanced_group = self.create_groupbox("Advanced Settings")
         advanced_layout = QGridLayout()
         advanced_settings_button = QPushButton("Configure Advanced Settings")
-
         advanced_settings_button.setStyleSheet(self.get_stylesheet())
         advanced_settings_button.clicked.connect(self.open_advanced_settings)
         advanced_layout.addWidget(advanced_settings_button, 1, 2)
@@ -676,27 +1042,40 @@ class SettingsPage(QWidget):
 
     def set_dns_mode(self):
         dns_dict = {
-            "off": "off", "Block Adult-Content": "full", "Block malware": "malware"
+            "off": "off",
+            "Block Adult-Content": "full",
+            "Block malware": "malware"
         }
         selected_dns = self.dns_dropdown.currentText()
-        cmd = subprocess.run(["warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off')], **safe_subprocess_args())
-        if cmd.returncode == 0:
-            self.current_dns_mode = selected_dns
-            self.settings_handler.save_settings("dns_mode", selected_dns)
-            QMessageBox.information(self, "DNS Mode Saved", f"DNS mode set to: {selected_dns}")
-        else:
-            QMessageBox.warning(self, "Error", f"Failed to Set DNS Mode to {selected_dns}: {cmd.stderr.strip()}")
+
+        try:
+            cmd = subprocess.run(
+                ["warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off')],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                **safe_subprocess_args())
+
+            if cmd.returncode == 0:
+                self.current_dns_mode = selected_dns
+                self.settings_handler.save_settings("dns_mode", selected_dns)
+                QMessageBox.information(self, "DNS Mode Saved",
+                                        f"DNS mode set to: {selected_dns}")
+            else:
+                QMessageBox.warning(
+                    self, "Error",
+                    f"Failed to Set DNS Mode to {selected_dns}: {cmd.stderr.strip()}")
+                self.dns_dropdown.setCurrentText(self.current_dns_mode)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Command failed: {e}")
+            self.dns_dropdown.setCurrentText(self.current_dns_mode)
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
 
         if selected_mode == "proxy":
-            port_str, ok = QInputDialog.getText(
-                self,
-                "Proxy Port Required",
-                "Enter proxy port (1–65535):"
-            )
-
+            port_str, ok = QInputDialog.getText(self, "Proxy Port Required",
+                                                "Enter proxy port (1–65535):")
             if not ok:
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
@@ -706,128 +1085,240 @@ class SettingsPage(QWidget):
                 if not (1 <= port <= 65535):
                     raise ValueError
             except ValueError:
-                QMessageBox.warning(self, "Invalid Port", "Please enter a valid port number between 1 and 65535.")
-                self.modes_dropdown.setCurrentText(self.current_mode)
-                return
-
-            set_port_cmd = subprocess.run(
-                ["warp-cli", "set-proxy-port", str(port)],
-                **safe_subprocess_args()
-            )
-            if set_port_cmd.returncode != 0:
                 QMessageBox.warning(
-                    self,
-                    "Port Set Failed",
-                    f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}"
-                )
+                    self, "Invalid Port",
+                    "Please enter a valid port number between 1 and 65535.")
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
-        cmd = subprocess.run(["warp-cli", "mode", selected_mode], **safe_subprocess_args())
-        if cmd.returncode == 0:
-            self.current_mode = selected_mode
-            self.settings_handler.save_settings("mode", selected_mode)
-            QMessageBox.information(self, "Mode Changed", f"Mode set to: {selected_mode}")
-        else:
-            QMessageBox.warning(self, "Error", f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+            try:
+                set_port_cmd = subprocess.run(
+                    ["warp-cli", "set-proxy-port", str(port)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    **safe_subprocess_args())
+                if set_port_cmd.returncode != 0:
+                    QMessageBox.warning(
+                        self, "Port Set Failed",
+                        f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}")
+                    self.modes_dropdown.setCurrentText(self.current_mode)
+                    return
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Command failed: {e}")
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+        try:
+            cmd = subprocess.run(["warp-cli", "mode", selected_mode],
+                                 capture_output=True,
+                                 text=True,
+                                 timeout=30,
+                                 **safe_subprocess_args())
+            if cmd.returncode == 0:
+                self.current_mode = selected_mode
+                self.settings_handler.save_settings("mode", selected_mode)
+                QMessageBox.information(self, "Mode Changed",
+                                        f"Mode set to: {selected_mode}")
+            else:
+                QMessageBox.warning(
+                    self, "Error",
+                    f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+                self.modes_dropdown.setCurrentText(self.current_mode)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Command failed: {e}")
             self.modes_dropdown.setCurrentText(self.current_mode)
 
     def get_stylesheet(self):
         palette = QApplication.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
 
-        fg_color = "#E0E0E0" if is_dark_mode else "#333"
-        bg_color = "#1E1E1E" if is_dark_mode else "white"
-        input_bg_color = "#333333" if is_dark_mode else "#f0f0f0"
-        button_bg = "#34495e" if is_dark_mode else "#0078D4"
-        button_hover_bg = "#1abc9c" if is_dark_mode else "#005A9E"
+        if is_dark_mode:
+            return """
+                QWidget {
+                    background-color: transparent;
+                    color: #f0f6fc;
+                    font-size: 13px;
+                }
+                QGroupBox {
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 12px;
+                    padding: 12px;
+                    margin-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    color: #58a6ff;
+                }
+                QComboBox {
+                    background-color: #21262d;
+                    color: #f0f6fc;
+                    border: 1px solid #30363d;
+                    border-radius: 8px;
+                    padding: 8px 12px;
+                    min-height: 20px;
+                }
+                QComboBox:hover {
+                    border-color: #58a6ff;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 20px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border: 2px solid #f0f6fc;
+                    width: 6px;
+                    height: 6px;
+                    border-top: none;
+                    border-left: none;
+                    transform: rotate(45deg);
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                    color: white;
+                    border-radius: 8px;
+                    padding: 10px 16px;
+                    font-weight: 600;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #1f7a2e, stop: 1 #1a6928);
+                }
+            """
+        else:
+            return """
+                QWidget {
+                    background-color: transparent;
+                    color: #24292f;
+                    font-size: 13px;
+                }
+                QGroupBox {
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 12px;
+                    padding: 12px;
+                    margin-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    color: #0969da;
+                }
+                QComboBox {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 8px;
+                    padding: 8px 12px;
+                    min-height: 20px;
+                }
+                QComboBox:hover {
+                    border-color: #0969da;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 20px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border: 2px solid #24292f;
+                    width: 6px;
+                    height: 6px;
+                    border-top: none;
+                    border-left: none;
+                    transform: rotate(45deg);
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2da44e, stop: 1 #238636);
+                    color: white;
+                    border-radius: 8px;
+                    padding: 10px 16px;
+                    font-weight: 600;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #2da44e);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                }
+            """
 
-        return f"""
-            QWidget {{
-                background-color: {bg_color};
-                color: {fg_color};
-                padding: 15px;
-                border-radius: 8px;
-            }}
-
-            QGroupBox {{
-                font-size: 18px;
-                font-weight: bold;
-                color: {fg_color};
-                border: 1px solid {button_bg};
-                border-radius: 8px;
-                padding: 6px;
-            }}
-
-            QComboBox {{
-                background-color: {input_bg_color};
-                color: {fg_color};
-                border: 1px solid {fg_color};
-                border-radius: 5px;
-                padding: 5px;
-            }}
-
-            QLineEdit {{
-                background-color: {input_bg_color};
-                color: {fg_color};
-                border: 1px solid {fg_color};
-                border-radius: 5px;
-                padding: 5px;
-            }}
-
-            QPushButton {{
-                background-color: {button_bg};
-                color: white;
-                border-radius: 5px;
-                padding: 5px 10px;
-                transition: 0.3s;
-            }}
-
-            QPushButton:hover {{
-                background-color: {button_hover_bg};
-            }}
-        """
 
 class MainWindow(QMainWindow):
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"PyWarp {CURRENT_VERSION}")
-        self.setWindowIcon(QIcon(":/logo.png"))
-        self.setGeometry(100, 100, 400, 600)
+        # Create a default icon if resources are not available
+        try:
+            self.setWindowIcon(QIcon(":/logo.png"))
+        except:
+            # Create a simple default icon
+            self.setWindowIcon(QIcon())
+
+        self.setGeometry(100, 100, 400, 480)
         self.setWindowFlags(Qt.Window)
+
         self.setup_tray()
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(10)
+
         palette = QApplication.palette()
         self.is_dark_mode = palette.color(QPalette.Window).lightness() < 128
 
+        # Status frame
         status_frame = QFrame()
         status_frame.setObjectName("statusFrame")
         status_layout = QHBoxLayout(status_frame)
-        status_layout.setSpacing(10)
+        status_layout.setSpacing(8)
+        status_layout.setContentsMargins(12, 12, 12, 12)
 
         self.toggle_switch = PowerButton()
-        self.toggle_switch.toggled.connect(self.update_status)
-
+        self.toggle_switch.toggled.connect(self.handle_toggle_signal)
         status_layout.addWidget(self.toggle_switch)
+
         status_info = QVBoxLayout()
         status_info.setAlignment(Qt.AlignRight)
+
         current_protocol = get_current_protocol()
 
         self.status_label = QLabel("Status: Disconnected")
         self.status_label.setFont(QFont("Segoe UI", 12))
-        self.ip_label = QLabel(f"IPv4: 0.0.0.0")
+
+        self.ip_label = QLabel("IPv4: 0.0.0.0")
         self.ip_label.setFont(QFont("Segoe UI", 12))
         self.ip_label.setToolTip("This is your current public IP address.")
-        self.protocol_label = QLabel(f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
+
+        self.protocol_label = QLabel(
+            f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{current_protocol}</span>")
+
         self.source_label = QLabel(
             "Source: <a href='https://github.com/saeedmasoudie/pywarp' "
             "style='color: #0078D4; font-weight: bold; text-decoration: none;'>"
-            "GitHub</a>"
-        )
+            "GitHub</a>")
         self.source_label.setTextFormat(Qt.RichText)
         self.source_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.source_label.setOpenExternalLinks(True)
@@ -841,10 +1332,12 @@ class MainWindow(QMainWindow):
         status_layout.addLayout(status_info)
         main_layout.addWidget(status_frame)
 
+        # Button layout
         button_layout = QHBoxLayout()
         self.stacked_widget = QStackedWidget()
         self.buttons = {}
 
+        # Stats widget
         stats_widget = QWidget()
         stats_layout = QVBoxLayout(stats_widget)
 
@@ -853,7 +1346,9 @@ class MainWindow(QMainWindow):
         self.stats_table.verticalHeader().setVisible(False)
         self.stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.stats_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.stats_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.stats_table.setMaximumHeight(280)
+        self.stats_table.setMinimumHeight(240)
         self.stats_table.setStyleSheet("""
             QTableWidget {
                 font-family: 'Segoe UI';
@@ -863,8 +1358,8 @@ class MainWindow(QMainWindow):
         """)
 
         stats_labels = [
-            "Protocol", "IPv4 Endpoint", "IPv6 Endpoint",
-            "Last Handshake", "Sent Data", "Received Data", "Latency", "Loss"
+            "Protocol", "IPv4 Endpoint", "IPv6 Endpoint", "Last Handshake",
+            "Sent Data", "Received Data", "Latency", "Loss"
         ]
         for i, label in enumerate(stats_labels):
             self.stats_table.setItem(i, 0, QTableWidgetItem(label))
@@ -872,32 +1367,38 @@ class MainWindow(QMainWindow):
         stats_layout.addWidget(self.stats_table)
         self.stacked_widget.addWidget(stats_widget)
 
+        # Settings
         self.settings_handler = SettingsHandler()
         self.settings_handler.start()
         settings_widget = SettingsPage(settings_handler=self.settings_handler)
         self.stacked_widget.addWidget(settings_widget)
 
+        # Buttons
         for idx, btn_text in enumerate(["Network Stats", "Settings", "Protocol"]):
             btn = QPushButton(btn_text)
-            btn.setMinimumHeight(40)
+            btn.setMinimumHeight(32)
             if btn_text != "Protocol":
-                btn.clicked.connect(
-                    lambda _, i=idx: (self.stacked_widget.setCurrentIndex(i), self.update_button_styles()))
+                btn.clicked.connect(lambda _, i=idx: (
+                    self.stacked_widget.setCurrentIndex(i),
+                    self.update_button_styles()))
             else:
-                btn.clicked.connect(lambda _: (self.set_protocol(), self.update_button_styles()))
+                btn.clicked.connect(lambda _: (
+                    self.set_protocol(),
+                    self.update_button_styles()))
             self.buttons[btn_text] = btn
             button_layout.addWidget(btn)
+
         self.update_button_styles()
 
         main_layout.addLayout(button_layout)
         main_layout.addWidget(self.stacked_widget)
 
-        # status checker
+        # Status checker
         self.status_checker = WarpStatusHandler(loop=True)
         self.status_checker.status_signal.connect(self.update_status)
         self.status_checker.start()
 
-        # stats Checker
+        # Stats checker
         self.stats_checker = WarpStatsHandler(self.status_checker, loop=True)
         self.stats_checker.stats_signal.connect(self.update_stats_display)
         self.stats_checker.start()
@@ -924,10 +1425,10 @@ class MainWindow(QMainWindow):
         about_dialog.setWindowTitle("About Me")
         about_dialog.setText(
             "Hi, I'm Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. "
-            "You can explore my work on GitHub."
-        )
+            "You can explore my work on GitHub.")
         github_button = QPushButton("Visit GitHub")
-        github_button.clicked.connect(lambda: webbrowser.open("https://github.com/saeedmasoudie"))
+        github_button.clicked.connect(
+            lambda: webbrowser.open("https://github.com/saeedmasoudie"))
         about_dialog.addButton(github_button, QMessageBox.ActionRole)
         about_dialog.addButton("Close", QMessageBox.RejectRole)
         about_dialog.exec()
@@ -944,13 +1445,16 @@ class MainWindow(QMainWindow):
             "<li><b>Endpoint:</b> Set a custom endpoint for advanced configurations.</li>"
             "<li><b>Protocol:</b> Choose your connection protocol.</li>"
             "</ul>"
-            "<p><b>⚠️ Important Warning:</b> Disconnect Warp before changing DNS mode or custom endpoint.</p>"
-        )
+            "<p><b>⚠️ Important Warning:</b> Disconnect Warp before changing DNS mode or custom endpoint.</p>")
         tutorials_dialog.addButton("Close", QMessageBox.RejectRole)
         tutorials_dialog.exec()
 
     def setup_tray(self):
-        self.tray_icon = QSystemTrayIcon(QIcon(":/logo.png"), self)
+        try:
+            self.tray_icon = QSystemTrayIcon(QIcon(":/logo.png"), self)
+        except:
+            self.tray_icon = QSystemTrayIcon(QIcon(), self)
+
         self.tray_icon.setToolTip("PyWarp - CloudFlare Warp GUI")
         tray_menu = QMenu(self)
 
@@ -977,8 +1481,9 @@ class MainWindow(QMainWindow):
         self.tray_icon.show()
 
     def on_tray_icon_activated(self, reason):
-        if reason == QSystemTrayIcon.Trigger:
-            self.show()
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.showNormal()
+            self.raise_()
             self.activateWindow()
 
     def update_stats_display(self, stats_list):
@@ -987,88 +1492,149 @@ class MainWindow(QMainWindow):
                 self.stats_table.setItem(row, 1, QTableWidgetItem(""))
             return
 
-        protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
+        try:
+            protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
 
-        handshake_time_cleaned = handshake_time.replace('s', '')
-        handshake_value = int(handshake_time_cleaned) if handshake_time_cleaned.isdigit() else 0
-        formatted_handshake = format_handshake_time(handshake_value)
-        handshake_item = QTableWidgetItem(formatted_handshake)
-        if handshake_value < 1800:
-            handshake_item.setForeground(QBrush(QColor("green")))
-        elif handshake_value < 3600:
-            handshake_item.setForeground(QBrush(QColor("orange")))
+            # Process handshake time
+            handshake_time_cleaned = handshake_time.replace('s', '')
+            handshake_value = int(handshake_time_cleaned) if handshake_time_cleaned.isdigit() else 0
+            formatted_handshake = format_handshake_time(handshake_value)
+            handshake_item = QTableWidgetItem(formatted_handshake)
+
+            # Color code handshake time
+            if handshake_value < 1800:
+                handshake_item.setForeground(QBrush(QColor("green")))
+            elif handshake_value < 3600:
+                handshake_item.setForeground(QBrush(QColor("orange")))
+            else:
+                handshake_item.setForeground(QBrush(QColor("red")))
+
+            # Process endpoints
+            endpoints_value = endpoints.split(',')
+            ipv4 = endpoints_value[0] if endpoints_value else 'Not Available'
+            ipv6 = endpoints_value[1] if len(endpoints_value) > 1 and len(endpoints_value[1]) > 5 else 'Not Available'
+
+            # Process latency
+            latency_value = int(latency.replace("ms", "").strip()) if latency.replace("ms", "").strip().isdigit() else 0
+            latency_item = QTableWidgetItem(f"{latency_value} ms")
+
+            if latency_value < 100:
+                latency_item.setForeground(QBrush(QColor("green")))
+            elif latency_value < 200:
+                latency_item.setForeground(QBrush(QColor("orange")))
+            else:
+                latency_item.setForeground(QBrush(QColor("red")))
+
+            # Process loss
+            loss_parts = loss.split(";")[0].replace("%", "").strip()
+            loss_value = float(loss_parts) if loss_parts.replace(".", "").isdigit() else 0.0
+            loss_item = QTableWidgetItem(f"{loss_value}%")
+
+            if loss_value < 1:
+                loss_item.setForeground(QBrush(QColor("green")))
+            elif loss_value < 5:
+                loss_item.setForeground(QBrush(QColor("orange")))
+            else:
+                loss_item.setForeground(QBrush(QColor("red")))
+
+            # Update table values
+            self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
+            self.stats_table.setItem(1, 1, QTableWidgetItem(ipv4))
+            self.stats_table.setItem(2, 1, QTableWidgetItem(ipv6))
+            self.stats_table.setItem(3, 1, handshake_item)
+            self.stats_table.setItem(4, 1, QTableWidgetItem(sent))
+            self.stats_table.setItem(5, 1, QTableWidgetItem(received))
+            self.stats_table.setItem(6, 1, latency_item)
+            self.stats_table.setItem(7, 1, loss_item)
+
+        except Exception as e:
+            print(f"Error updating stats display: {e}")
+
+    def handle_toggle_signal(self, signal):
+        if signal == 'ForceRefresh':
+            # Force a status check
+            self.force_status_check()
         else:
-            handshake_item.setForeground(QBrush(QColor("red")))
+            self.update_status(signal)
 
-        endpoints_value = endpoints.split(',')
-        ipv4 = endpoints_value[0]
-        ipv6 = endpoints_value[1] if len(endpoints_value) > 1 and len(endpoints_value[1]) > 5 else 'Not Available'
+    def force_status_check(self):
+        """Force an immediate status check"""
+        def check_status():
+            try:
+                process = subprocess.run(['warp-cli', 'status'],
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE,
+                                         text=True,
+                                         timeout=10,
+                                         **safe_subprocess_args())
 
-        latency_value = int(latency.replace("ms", "").strip())
-        latency_item = QTableWidgetItem(f"{latency_value} ms")
+                if process.returncode != 0:
+                    current_status = "Disconnected"
+                else:
+                    status_output = process.stdout
+                    if "Connected" in status_output:
+                        current_status = "Connected"
+                    elif "Disconnected" in status_output:
+                        current_status = "Disconnected"
+                    elif "Connecting" in status_output:
+                        current_status = "Connecting"
+                    else:
+                        current_status = "Disconnected"
 
-        if latency_value < 100:
-            latency_item.setForeground(QBrush(QColor("green")))
-        elif latency_value < 200:
-            latency_item.setForeground(QBrush(QColor("orange")))
-        else:
-            latency_item.setForeground(QBrush(QColor("red")))
+                # Update UI in main thread
+                QTimer.singleShot(0, lambda: self.update_status(current_status))
 
-        loss_value = float(loss.split(";")[0].replace("%", "").strip())
-        loss_item = QTableWidgetItem(f"{loss_value}%")
+            except Exception as e:
+                print(f"Error in force status check: {e}")
+                QTimer.singleShot(0, lambda: self.update_status("Disconnected"))
 
-        if loss_value < 1:
-            loss_item.setForeground(QBrush(QColor("green")))
-        elif loss_value < 5:
-            loss_item.setForeground(QBrush(QColor("orange")))
-        else:
-            loss_item.setForeground(QBrush(QColor("red")))
+        threading.Thread(target=check_status, daemon=True).start()
 
-        # Update table values
-        self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
-        self.stats_table.setItem(1, 1, QTableWidgetItem(ipv4))
-        self.stats_table.setItem(2, 1, QTableWidgetItem(ipv6))
-        self.stats_table.setItem(3, 1, handshake_item)
-        self.stats_table.setItem(4, 1, QTableWidgetItem(sent))
-        self.stats_table.setItem(5, 1, QTableWidgetItem(received))
-        self.stats_table.setItem(6, 1, latency_item)
-        self.stats_table.setItem(7, 1, loss_item)
+    def update_status(self, status):
+        status_messages = {
+            'Connected': "Status: <span style='color: green; font-weight: bold;'>Connected</span>",
+            'Disconnected': "Status: <span style='color: red; font-weight: bold;'>Disconnected</span>",
+            'Connecting': "Status: <span style='color: orange; font-weight: bold;'>Connecting...</span>",
+            'Disconnecting': "Status: <span style='color: orange; font-weight: bold;'>Disconnecting...</span>",
+            'No Network': "Status: <span style='color: red; font-weight: bold;'>No Network</span>"
+        }
 
-    def update_status(self, is_connected):
-        if is_connected == 'Connected':
-            self.status_label.setText("Status: <span style='color: green; font-weight: bold;'>Connected</span>")
+        self.status_label.setText(status_messages.get(status,
+                                                      f"Status: <span style='color: red; font-weight: bold;'>Network Error</span>"))
+
+        if status in ['Connected', 'Disconnected']:
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
             get_global_ip_async(lambda ip: self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
-            ))
-        elif is_connected == 'Disconnected':
-            self.status_label.setText("Status: <span style='color: red; font-weight: bold;'>Disconnected</span>")
+                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"))
+        elif status in ['Connecting', 'Disconnecting']:
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-            get_global_ip_async(lambda ip: self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"
-            ))
-        elif is_connected == 'Connecting':
-            self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>Connecting...</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-        elif is_connected == 'Disconnecting':
-            self.status_label.setText("Status: <span style='color: orange; font-weight: bold;'>Disconnecting...</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-        elif is_connected == 'No Network':
-            self.status_label.setText("Status: <span style='color: red; font-weight: bold;'>No Network</span>")
-            self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
-            self.show_critical_error("Failed to Connect", "No active internet connection detected. Please check your network settings.")
         else:
-            self.status_label.setText(f"Status: <span style='color: red; font-weight: bold;'>Network Error</span>")
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>")
-            self.show_critical_error("Failed to Connect", is_connected)
-            is_connected = 'unknown'
+            if status == 'No Network':
+                self.show_critical_error(
+                    "Failed to Connect",
+                    "No active internet connection detected. Please check your network settings.")
+            else:
+                self.show_critical_error("Failed to Connect", status)
 
-        self.toggle_switch.update_button_state(is_connected)
+        self.toggle_switch.update_button_state(status)
 
     def show_critical_error(self, title, message):
+        """Show critical error dialog without blocking UI updates"""
         self.activateWindow()
         self.raise_()
-        QMessageBox.critical(self, title, message)
+
+        # Use timer to ensure status updates are processed first
+        QTimer.singleShot(100, lambda: self.show_non_blocking_error(title, message))
+
+    def show_non_blocking_error(self, title, message):
+        """Show error dialog that doesn't block status updates"""
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+        msg_box.show()
 
     def update_button_styles(self):
         current_index = self.stacked_widget.currentIndex()
@@ -1081,23 +1647,149 @@ class MainWindow(QMainWindow):
     def get_styles(self):
         if self.is_dark_mode:
             return """
-                QMainWindow { background-color: #121212; }
-                #statusFrame { background-color: #1E1E1E; border-radius: 12px; padding: 15px; }
-                QPushButton { background-color: #34495e; color: white; padding: 12px; border-radius: 8px; }
-                QPushButton:hover { background-color: #1abc9c; }
-                QPushButton[active="true"] { background-color: #1abc9c; }
-                QLabel { font-size: 15px; color: #E0E0E0; }
-                QStackedWidget { background-color: #1E1E1E; border-radius: 12px; padding: 20px; }
+                QMainWindow { 
+                    background-color: #0d1117; 
+                    color: #f0f6fc;
+                }
+                #statusFrame { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #161b22, stop: 1 #0d1117);
+                    border: 1px solid #30363d;
+                    border-radius: 12px; 
+                    padding: 12px;
+                    margin: 3px;
+                }
+                QPushButton { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                    color: white; 
+                    padding: 10px 16px; 
+                    border-radius: 8px; 
+                    border: none;
+                    font-weight: 600;
+                    font-size: 13px;
+                    min-height: 14px;
+                }
+                QPushButton:hover { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                    transform: translateY(-1px);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #1f7a2e, stop: 1 #1a6928);
+                }
+                QPushButton[active="true"] { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                    border: 2px solid #58a6ff;
+                }
+                QLabel { 
+                    font-size: 14px; 
+                    color: #f0f6fc; 
+                    font-weight: 500;
+                }
+                QStackedWidget { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #161b22, stop: 1 #0d1117);
+                    border: 1px solid #30363d;
+                    border-radius: 12px; 
+                    padding: 16px;
+                    margin: 3px;
+                }
+                QTableWidget {
+                    background-color: #0d1117;
+                    alternate-background-color: #161b22;
+                    color: #f0f6fc;
+                    gridline-color: #30363d;
+                    border: 1px solid #30363d;
+                    border-radius: 8px;
+                }
+                QTableWidget::item {
+                    padding: 8px;
+                    border-bottom: 1px solid #21262d;
+                }
+                QHeaderView::section {
+                    background: #21262d;
+                    color: #f0f6fc;
+                    font-weight: 600;
+                    padding: 10px;
+                    border: none;
+                    border-right: 1px solid #30363d;
+                }
             """
         else:
             return """
-                QMainWindow { background-color: #f0f2f5; }
-                #statusFrame { background-color: white; border-radius: 12px; padding: 15px; }
-                QPushButton { background-color: #0078D4; color: white; padding: 12px; border-radius: 8px; }
-                QPushButton:hover { background-color: #005A9E; }
-                QPushButton[active="true"] { background-color: #005A9E; }
-                QLabel { font-size: 15px; color: #333; }
-                QStackedWidget { background-color: white; border-radius: 12px; padding: 20px; }
+                QMainWindow { 
+                    background-color: #fafbfc; 
+                    color: #24292f;
+                }
+                #statusFrame { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    border: 1px solid #d1d9e0;
+                    border-radius: 12px; 
+                    padding: 12px;
+                    margin: 3px;
+                }
+                QPushButton { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2da44e, stop: 1 #238636);
+                    color: white; 
+                    padding: 10px 16px; 
+                    border-radius: 8px; 
+                    border: none;
+                    font-weight: 600;
+                    font-size: 13px;
+                    min-height: 14px;
+                }
+                QPushButton:hover { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #2da44e);
+                    transform: translateY(-1px);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #1f7a2e);
+                }
+                QPushButton[active="true"] { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #2da44e);
+                    border: 2px solid #0969da;
+                }
+                QLabel { 
+                    font-size: 14px; 
+                    color: #24292f; 
+                    font-weight: 500;
+                }
+                QStackedWidget { 
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffffff, stop: 1 #f6f8fa);
+                    border: 1px solid #d1d9e0;
+                    border-radius: 12px; 
+                    padding: 16px;
+                    margin: 3px;
+                }
+                QTableWidget {
+                    background-color: #ffffff;
+                    alternate-background-color: #f6f8fa;
+                    color: #24292f;
+                    gridline-color: #d1d9e0;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 8px;
+                }
+                QTableWidget::item {
+                    padding: 8px;
+                    border-bottom: 1px solid #eaeef2;
+                }
+                QHeaderView::section {
+                    background: #f6f8fa;
+                    color: #24292f;
+                    font-weight: 600;
+                    padding: 10px;
+                    border: none;
+                    border-right: 1px solid #d1d9e0;
+                }
             """
 
     def set_protocol(self):
@@ -1118,8 +1810,7 @@ class MainWindow(QMainWindow):
                 }}
             """.format(
             label_color="white" if self.is_dark_mode else "black",
-            message_bg_color="#222222" if self.is_dark_mode else "#FFFFFF"
-        )
+            message_bg_color="#222222" if self.is_dark_mode else "#FFFFFF")
         dlg.setStyleSheet(base_styles + dialog_styles)
 
         custom_button1 = dlg.addButton("WireGuard", QMessageBox.ActionRole)
@@ -1131,21 +1822,28 @@ class MainWindow(QMainWindow):
             self.set_warp_protocol("WireGuard")
         elif dlg.clickedButton() == custom_button2:
             self.set_warp_protocol("MASQUE")
-        elif dlg.clickedButton() == cancel_button:
-            print("Operation canceled.")
 
     def set_warp_protocol(self, protocol):
         try:
-            subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol], check=True, **safe_subprocess_args())
-            QMessageBox.information(self, "Protocol Changed", f"Protocol successfully changed to {protocol}.")
-            self.protocol_label.setText(
-                f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
-        except subprocess.CalledProcessError as e:
-            error_message = f"Failed to set protocol: {str(e)}"
-            QMessageBox.critical(self, "Error", error_message)
+            result = subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=30,
+                                    **safe_subprocess_args())
+            if result.returncode == 0:
+                QMessageBox.information(
+                    self, "Protocol Changed",
+                    f"Protocol successfully changed to {protocol}.")
+                self.protocol_label.setText(
+                    f"Protocol: <span style='color: #0078D4; font-weight: bold;'>{protocol}</span>")
+            else:
+                QMessageBox.critical(self, "Error", f"Failed to set protocol: {result.stderr}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to set protocol: {str(e)}")
 
 
 class WarpInstaller:
+
     def __init__(self, parent=None):
         self.parent = parent
         self.download_url = self.get_os_download_link()
@@ -1170,6 +1868,7 @@ class WarpInstaller:
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.setWindowTitle("Warp Not Found")
         msg_box.setText("Warp Cloudflare is not installed.\n\nDo you want to install it automatically?")
+
         auto_install_button = msg_box.addButton("Auto Install", QMessageBox.AcceptRole)
         manual_button = msg_box.addButton("Manual Install", QMessageBox.ActionRole)
         retry_button = msg_box.addButton("Retry Check", QMessageBox.DestructiveRole)
@@ -1215,25 +1914,28 @@ class WarpInstaller:
         try:
             os_name = platform.system()
             if os_name == "Windows":
-                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"], check=True)
+                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"],
+                               check=True, timeout=300)
             elif os_name == "Darwin":
-                subprocess.run(["open", file_path], check=True)
+                subprocess.run(["open", file_path], check=True, timeout=60)
             else:
-                QMessageBox.critical(self.parent, "Unsupported", "Automatic install not supported for this OS.")
+                QMessageBox.critical(self.parent, "Unsupported",
+                                     "Automatic install not supported for this OS.")
                 sys.exit()
 
             self.register_and_activate_warp()
 
-        except subprocess.CalledProcessError:
-            QMessageBox.critical(self.parent, "Installation Failed", "Failed to install Warp.")
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self.parent, "Installation Failed", f"Failed to install Warp: {e}")
+            self.show_install_prompt()
+        except Exception as e:
+            QMessageBox.critical(self.parent, "Installation Failed", f"Installation error: {e}")
             self.show_install_prompt()
 
     def install_linux_package(self):
         msg_box = QMessageBox(self.parent)
         msg_box.setWindowTitle("Linux Installation")
-        msg_box.setText(
-            "Warp will be installed via your system's package manager.\n\nDo you want to proceed?"
-        )
+        msg_box.setText("Warp will be installed via your system's package manager.\n\nDo you want to proceed?")
         install_button = msg_box.addButton("Install", QMessageBox.AcceptRole)
         cancel_button = msg_box.addButton(QMessageBox.Cancel)
         msg_box.exec()
@@ -1242,40 +1944,12 @@ class WarpInstaller:
             try:
                 package_manager = self.detect_linux_package_manager()
                 if package_manager == "apt":
-                    subprocess.run(["sudo", "apt", "update"], check=True)
-                    subprocess.run([
-                        "sudo", "apt", "install", "-y",
-                        "curl", "gpg", "lsb-release", "apt-transport-https",
-                        "ca-certificates", "sudo"
-                    ], check=True)
-                    subprocess.run([
-                        "bash", "-c",
-                        'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | '
-                        'gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'
-                    ], check=True)
-                    distro = subprocess.check_output(["lsb_release", "-cs"]).decode().strip()
-                    subprocess.run([
-                        "bash", "-c",
-                        f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
-                        f'https://pkg.cloudflareclient.com/ {distro} main" | '
-                        f'sudo tee /etc/apt/sources.list.d/cloudflare-client.list'
-                    ], check=True)
-                    subprocess.run(["sudo", "apt", "update"], check=True)
-                    subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True)
-
-                elif package_manager == "yum":
-                    subprocess.run([
-                        "bash", "-c",
-                        'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | '
-                        'sudo tee /etc/yum.repos.d/cloudflare-warp.repo'
-                    ], check=True)
-                    subprocess.run(["sudo", "yum", "check-update"], check=True)
-                    subprocess.run(["sudo", "yum", "install", "-y", "curl", "sudo", "coreutils"], check=True)
-                    subprocess.run(["sudo", "yum", "check-update"], check=True)
-                    subprocess.run(["sudo", "yum", "install", "-y", "cloudflare-warp"], check=True)
-
+                    self.install_with_apt()
+                elif package_manager in ["yum", "dnf"]:
+                    self.install_with_yum()
                 else:
-                    QMessageBox.critical(self.parent, "Unsupported", "Unsupported package manager for auto install.")
+                    QMessageBox.critical(self.parent, "Unsupported",
+                                         "Unsupported package manager for auto install.")
                     sys.exit()
 
                 self.register_and_activate_warp()
@@ -1283,8 +1957,49 @@ class WarpInstaller:
             except subprocess.CalledProcessError as e:
                 QMessageBox.critical(self.parent, "Installation Failed", f"An error occurred:\n{e}")
                 self.show_install_prompt()
+            except Exception as e:
+                QMessageBox.critical(self.parent, "Installation Failed", f"Installation error: {e}")
+                self.show_install_prompt()
         else:
             sys.exit()
+
+    def install_with_apt(self):
+        commands = [
+            ["sudo", "apt", "update"],
+            ["sudo", "apt", "install", "-y", "curl", "gpg", "lsb-release", "apt-transport-https", "ca-certificates", "sudo"],
+            ["bash", "-c", 'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'],
+        ]
+
+        for cmd in commands:
+            subprocess.run(cmd, check=True, timeout=300)
+
+        # Get distro
+        distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60).decode().strip()
+
+        # Add repository
+        repo_cmd = [
+            "bash", "-c",
+            f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
+            f'https://pkg.cloudflareclient.com/ {distro} main" | '
+            f'sudo tee /etc/apt/sources.list.d/cloudflare-client.list'
+        ]
+        subprocess.run(repo_cmd, check=True, timeout=60)
+
+        # Install
+        subprocess.run(["sudo", "apt", "update"], check=True, timeout=300)
+        subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True, timeout=300)
+
+    def install_with_yum(self):
+        commands = [
+            ["bash", "-c", 'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | sudo tee /etc/yum.repos.d/cloudflare-warp.repo'],
+            ["sudo", "yum", "check-update"],
+            ["sudo", "yum", "install", "-y", "curl", "sudo", "coreutils"],
+            ["sudo", "yum", "check-update"],
+            ["sudo", "yum", "install", "-y", "cloudflare-warp"]
+        ]
+
+        for cmd in commands:
+            subprocess.run(cmd, check=True, timeout=300)
 
     def detect_linux_package_manager(self):
         if shutil.which("apt"):
@@ -1305,13 +2020,16 @@ class WarpInstaller:
 
     def register_and_activate_warp(self):
         try:
-            subprocess.run(["warp-cli", "register"], check=True)
+            subprocess.run(["warp-cli", "register"], check=True, timeout=60)
             QMessageBox.information(self.parent, "Warp Ready", "Warp has been registered successfully!")
-        except subprocess.CalledProcessError:
-            QMessageBox.critical(self.parent, "Warp Activation Failed", "Failed to register Warp.")
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self.parent, "Warp Activation Failed", f"Failed to register Warp: {e}")
+        except Exception as e:
+            QMessageBox.critical(self.parent, "Warp Activation Failed", f"Registration error: {e}")
 
 
 def format_handshake_time(seconds):
+    """Format handshake time in a readable format"""
     hours, remainder = divmod(seconds, 3600)
     mins, secs = divmod(remainder, 60)
     if hours:
@@ -1321,10 +2039,15 @@ def format_handshake_time(seconds):
     else:
         return f"{secs}s"
 
+
 def get_global_ip_async(callback):
+    """Fetch global IP address asynchronously"""
     def fetch_ip():
         try:
-            response = requests.get('https://api.ipify.org', params={'format': 'json'}, timeout=5)
+            response = requests.get('https://api.ipify.org',
+                                    params={'format': 'json'},
+                                    timeout=10)
+            response.raise_for_status()
             ip = response.json().get('ip', 'Unavailable')
         except requests.RequestException as e:
             ip = 'Unavailable'
@@ -1334,12 +2057,21 @@ def get_global_ip_async(callback):
     thread = threading.Thread(target=fetch_ip, daemon=True)
     thread.start()
 
-def get_current_protocol():
-    try:
-        process = subprocess.Popen(['warp-cli', 'settings'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, **safe_subprocess_args())
-        stdout, _ = process.communicate()
-        output = stdout.decode()
 
+def get_current_protocol():
+    """Get current Warp protocol"""
+    try:
+        process = subprocess.run(['warp-cli', 'settings'],
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE,
+                                 text=True,
+                                 timeout=30,
+                                 **safe_subprocess_args())
+
+        if process.returncode != 0:
+            return "Error"
+
+        output = process.stdout
         for line in output.splitlines():
             if "WARP tunnel protocol:" in line:
                 return line.split(":")[1].strip()
@@ -1348,26 +2080,43 @@ def get_current_protocol():
         print(f"Error fetching current protocol: {e}")
         return "Error"
 
+
 def handle_exception(exc_type, exc_value, exc_traceback):
+    """Global exception handler"""
+    if exc_type is KeyboardInterrupt:
+        sys.exit(0)
+
     error_dialog = QMessageBox()
     error_dialog.setIcon(QMessageBox.Critical)
     error_dialog.setWindowTitle("Application Error")
     error_dialog.setText("An unexpected error occurred!")
-    error_dialog.setDetailedText("".join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+    error_dialog.setDetailedText("".join(
+        traceback.format_exception(exc_type, exc_value, exc_traceback)))
     error_dialog.exec()
 
+
 def disconnect_on_exit():
+    """Clean shutdown function"""
     server.removeServer(SERVER_NAME)
     try:
-        subprocess.run(["warp-cli", "disconnect"], capture_output=True, **safe_subprocess_args())
+        subprocess.run(["warp-cli", "disconnect"],
+                       capture_output=True,
+                       timeout=30,
+                       **safe_subprocess_args())
         print("Warp disconnected successfully.")
     except Exception as e:
         print(f"Failed to disconnect Warp: {e}")
 
+
 def safe_subprocess_args():
-    return {'creationflags': subprocess.CREATE_NO_WINDOW} if platform.system() == "Windows" else {}
+    """Platform-specific subprocess arguments"""
+    return {
+        'creationflags': subprocess.CREATE_NO_WINDOW
+    } if platform.system() == "Windows" else {}
+
 
 def notify_update(latest_version):
+    """Show update notification"""
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
     msg_box.setWindowTitle("Update Available")
@@ -1381,33 +2130,53 @@ def notify_update(latest_version):
 
 
 def check_existing_instance():
+    """Check if another instance is already running"""
     socket = QLocalSocket()
     socket.connectToServer(SERVER_NAME)
     if socket.waitForConnected(500):
+        print("Another instance is already running")
         sys.exit(1)
 
+
 if __name__ == "__main__":
+    # Check for existing instance
     check_existing_instance()
+
+    # Create application
     app = QApplication(sys.argv)
     server.listen(SERVER_NAME)
     atexit.register(disconnect_on_exit)
-    app.setWindowIcon(QIcon(":/logo.png"))
+
+    # Set default icon
+    try:
+        app.setWindowIcon(QIcon(":/logo.png"))
+    except:
+        app.setWindowIcon(QIcon())
+
+    # Set exception handler
     sys.excepthook = handle_exception
 
+    # Check for Warp installation
     installer = WarpInstaller(parent=None)
     if not installer.is_warp_installed():
         installer.show_install_prompt()
         if not installer.is_warp_installed():
-            QMessageBox.critical(None, "Warp Installation Failed", "Warp could not be installed.\nExiting app.")
+            QMessageBox.critical(None, "Warp Installation Failed",
+                                 "Warp could not be installed.\nExiting app.")
             sys.exit()
 
+    # Set application properties
     app.setFont(QFont("Arial", 10))
+
+    # Create main window
     window = MainWindow()
     window.show()
 
+    # Start update checker
     update_checker = UpdateChecker()
     update_checker.update_available.connect(notify_update)
     update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
     update_thread.start()
 
+    # Run application
     sys.exit(app.exec())
