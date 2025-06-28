@@ -47,6 +47,7 @@ jobs:
             --disable-console ^
             --enable-plugin=pyside6 ^
             --windows-icon-from-ico=assets/logo.ico ^
+            --assume-yes-for-downloads ^
             --output-filename=%OUTPUT% ^
             --product-version=%VERSION% ^
             --file-version=%VERSION% ^
@@ -67,7 +68,7 @@ jobs:
             --remove-output \
             --disable-console \
             --enable-plugin=pyside6 \
-            $([[ "$PLATFORM" == "macos-latest" ]] && echo "--macos-app-icon=assets/logo.icns") \
+            $( [[ "$PLATFORM" == "macos-latest" ]] && echo "--macos-app-icon=assets/logo.icns" ) \
             --output-filename="$OUTPUT" \
             --product-version="$VERSION" \
             --file-version="$VERSION" \
