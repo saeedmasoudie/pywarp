@@ -29,9 +29,7 @@ jobs:
           python -m nuitka `
             --onefile `
             --standalone `
-            --nofollow-imports `
             --remove-output `
-            --disable-console `
             --enable-plugin=pyside6 `
             --windows-icon-from-ico=assets/logo.ico `
             --assume-yes-for-downloads `
