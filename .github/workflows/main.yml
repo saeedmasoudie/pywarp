@@ -31,6 +31,7 @@ jobs:
             --standalone `
             --onefile `
             --windows-console-mode=disable `
+            --assume-yes-for-downloads `
             --enable-plugin=pyside6 `
             --windows-icon-from-ico=assets/logo.ico `
             --output-filename=$output `
