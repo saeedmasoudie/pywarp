@@ -36,41 +36,42 @@ jobs:
       ###############################################
       - name: Build Executable with Nuitka (Windows)
         if: matrix.os == 'windows-latest'
-        shell: cmd
+        shell: pwsh
         run: |
-          set VERSION=${{ steps.version.outputs.version }}
-          set OUTPUT=pywarp-windows-latest-v%VERSION%
-          set NUITKA_DEPENDENCY_SCAN=1
+          $version = "${{ steps.version.outputs.version }}"
+          $output = "pywarp-windows-latest-v$version.exe"
 
-          python -m nuitka ^
-            --onefile ^
-            --standalone ^
-            --nofollow-imports ^
-            --remove-output ^
-            --disable-console ^
-            --enable-plugin=pyside6 ^
-            --windows-icon-from-ico=assets/logo.ico ^
-            --assume-yes-for-downloads ^
-            --output-filename=%OUTPUT% ^
-            --product-name=PyWarp ^
-            --company-name="Saeed Masoudi" ^
-            --file-description="PyWarp - Cloudflare Warp GUI" ^
-            --version-string=%VERSION% ^
-            --product-version=%VERSION% ^
-            --file-version=%VERSION% ^
-            --copyright="© 2025 Saeed Masoudi" ^
+          $env:NUITKA_DEPENDENCY_SCAN = "1"
+
+          python -m nuitka `
+            --onefile `
+            --standalone `
+            --nofollow-imports `
+            --remove-output `
+            --disable-console `
+            --enable-plugin=pyside6 `
+            --windows-icon-from-ico=assets/logo.ico `
+            --assume-yes-for-downloads `
+            --output-filename="pywarp-windows-latest-v$version" `
+            --product-name="PyWarp" `
+            --company-name="Saeed MSS" `
+            --file-description="PyWarp - Cloudflare Warp GUI" `
+            --version-string="$version" `
+            --product-version="$version" `
+            --file-version="$version" `
+            --copyright="© 2025 Saeed MSS" `
             main.py
 
-          if not exist "%OUTPUT%.exe" (
-            echo ERROR: Executable was not created
+          if (!(Test-Path $output)) {
+            Write-Host "ERROR: Executable not created"
             exit 1
-          )
+          }
 
       - name: Upload Artifact (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: pywarp-windows-latest-v${{ steps.version.outputs.version }}
+          name: pywarp-windows
           path: pywarp-windows-latest-v${{ steps.version.outputs.version }}.exe
 
       ###############################################
@@ -84,6 +85,11 @@ jobs:
           PLATFORM="${{ matrix.os }}"
           OUTPUT="pywarp-${PLATFORM}-v$VERSION"
 
+          ICON=""
+          if [[ "$PLATFORM" == "macos-latest" ]]; then
+            ICON="--macos-app-icon=assets/logo.icns"
+          fi
+
           python -m nuitka \
             --onefile \
             --standalone \
@@ -91,7 +97,8 @@ jobs:
             --remove-output \
             --disable-console \
             --enable-plugin=pyside6 \
-            $( [[ "$PLATFORM" == "macos-latest" ]] && echo "--macos-app-icon=assets/logo.icns" ) \
+            $ICON \
+            --assume-yes-for-downloads \
             --output-filename="$OUTPUT" \
             --product-version="$VERSION" \
             --file-version="$VERSION" \
@@ -105,5 +112,5 @@ jobs:
         if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
+          name: pywarp-${{ matrix.os }}
           path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
