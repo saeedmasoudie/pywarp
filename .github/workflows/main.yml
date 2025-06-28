@@ -52,8 +52,13 @@ jobs:
             --windows-icon-from-ico=assets/logo.ico ^
             --assume-yes-for-downloads ^
             --output-filename=%OUTPUT% ^
+            --product-name=PyWarp ^
+            --company-name="Saeed Masoudi" ^
+            --file-description="PyWarp - Cloudflare Warp GUI" ^
+            --version-string=%VERSION% ^
             --product-version=%VERSION% ^
             --file-version=%VERSION% ^
+            --copyright="© 2025 Saeed Masoudi" ^
             main.py
 
           if not exist "%OUTPUT%.exe" (
