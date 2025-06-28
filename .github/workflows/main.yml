@@ -31,6 +31,9 @@ jobs:
           pip install -r requirements.txt || true
         shell: bash
 
+      ###############################################
+      # WINDOWS BUILD
+      ###############################################
       - name: Build Executable with Nuitka (Windows)
         if: matrix.os == 'windows-latest'
         shell: cmd
@@ -53,6 +56,21 @@ jobs:
             --file-version=%VERSION% ^
             main.py
 
+          if not exist "%OUTPUT%.exe" (
+            echo ERROR: Executable was not created
+            exit 1
+          )
+
+      - name: Upload Artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-windows-latest-v${{ steps.version.outputs.version }}
+          path: pywarp-windows-latest-v${{ steps.version.outputs.version }}.exe
+
+      ###############################################
+      # LINUX / MACOS BUILD
+      ###############################################
       - name: Build Executable with Nuitka (Linux/macOS)
         if: matrix.os != 'windows-latest'
         shell: bash
@@ -78,7 +96,8 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: chmod +x pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
 
-      - name: Upload Artifact
+      - name: Upload Artifact (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
