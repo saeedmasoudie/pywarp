@@ -28,12 +28,37 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install nuitka
-          pip install -r requirements.txt || true  # optional: your deps
+          pip install -r requirements.txt || true
+        shell: bash
 
-      - name: Build Executable with Nuitka
+      - name: Build Executable with Nuitka (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          set VERSION=${{ steps.version.outputs.version }}
+          set OUTPUT=pywarp-windows-v%VERSION%
+          set NUITKA_DEPENDENCY_SCAN=1
+
+          python -m nuitka ^
+            --onefile ^
+            --standalone ^
+            --nofollow-imports ^
+            --remove-output ^
+            --disable-console ^
+            --enable-plugin=pyside6 ^
+            --windows-icon-from-ico=assets/logo.ico ^
+            --output-filename=%OUTPUT% ^
+            --product-version=%VERSION% ^
+            --file-version=%VERSION% ^
+            main.py
+
+      - name: Build Executable with Nuitka (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          OUTPUT_NAME="pywarp-${{ matrix.os }}-v$VERSION"
+          PLATFORM="${{ matrix.os }}"
+          OUTPUT="pywarp-${PLATFORM}-v$VERSION"
 
           python -m nuitka \
             --onefile \
@@ -42,15 +67,13 @@ jobs:
             --remove-output \
             --disable-console \
             --enable-plugin=pyside6 \
-            --output-filename="$OUTPUT_NAME" \
-            ${{ matrix.os == 'windows-latest' && '--windows-icon-from-ico=assets/logo.ico' || '' }} \
-            ${{ matrix.os == 'macos-latest' && '--macos-app-icon=assets/logo.icns' || '' }} \
+            $([[ "$PLATFORM" == "macos-latest" ]] && echo "--macos-app-icon=assets/logo.icns") \
+            --output-filename="$OUTPUT" \
             --product-version="$VERSION" \
             --file-version="$VERSION" \
             main.py
-        shell: bash
 
-      - name: Set Executable Permissions (Linux/macOS only)
+      - name: Set Executable Permissions (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: chmod +x pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
 
