@@ -36,7 +36,7 @@ jobs:
         shell: cmd
         run: |
           set VERSION=${{ steps.version.outputs.version }}
-          set OUTPUT=pywarp-windows-v%VERSION%
+          set OUTPUT=pywarp-windows-latest-v%VERSION%
           set NUITKA_DEPENDENCY_SCAN=1
 
           python -m nuitka ^
