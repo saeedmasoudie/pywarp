@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.6"
+CURRENT_VERSION = "1.1.7"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -273,6 +273,7 @@ class PowerButton(QWidget):
         self.setFixedSize(150, 150)
         palette = QApplication.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
+        self.current_error_box = None
 
         # Button styles
         self.button_styles = {
@@ -438,15 +439,23 @@ class PowerButton(QWidget):
 
     def show_error_dialog(self, title, message):
         """Show error dialog and refresh status after"""
-        # Create non-blocking dialog
+
+        if hasattr(self, 'current_error_box') and self.current_error_box:
+            self.current_error_box.close()
+
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Warning if title == "Warning" else QMessageBox.Critical)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.setAttribute(Qt.WA_DeleteOnClose)
 
-        # Show dialog non-blocking and refresh status after it's closed
-        msg_box.finished.connect(lambda: QTimer.singleShot(500, self.force_status_refresh))
+        self.current_error_box = msg_box
+
+        msg_box.finished.connect(lambda: (
+            QTimer.singleShot(500, self.force_status_refresh),
+            setattr(self, 'current_error_box', None)
+        ))
+
         msg_box.show()
 
     def update_button_state(self, state):
@@ -683,9 +692,14 @@ class AdvancedSettings(QDialog):
         endpoint_group = QGroupBox("Custom Endpoint")
         endpoint_layout = QHBoxLayout()
 
-        self.endpoint_input = QLineEdit()
+        self.endpoint_input = QComboBox()
+        self.endpoint_input.setEditable(True)
+        self.endpoint_input.setInsertPolicy(QComboBox.InsertAtTop)
+        self.endpoint_input.setMinimumWidth(250)
+
+        self.load_endpoint_history()
         self.endpoint_input.setPlaceholderText("Set Custom Endpoint")
-        self.endpoint_input.setText(self.current_endpoint)
+        self.endpoint_input.setCurrentText(self.current_endpoint)
 
         self.endpoint_save_button = QPushButton("Save")
         self.endpoint_save_button.clicked.connect(self.save_endpoint)
@@ -715,6 +729,28 @@ class AdvancedSettings(QDialog):
         exclusion_manager = ExclusionManager(self)
         exclusion_manager.exclusions_updated.connect(self.update_list_view)
         exclusion_manager.exec()
+
+    def load_endpoint_history(self):
+        history = self.settings_handler.get("endpoint_history", [])
+        if history:
+            self.endpoint_input.addItems(history)
+        if self.current_endpoint and self.current_endpoint not in history:
+            self.endpoint_input.insertItem(0, self.current_endpoint)
+
+    def save_endpoint_history(self, endpoint):
+        history = self.settings_handler.get("endpoint_history", [])
+        if not isinstance(history, list):
+            history = []
+
+        if endpoint in history:
+            history.remove(endpoint)
+        history.insert(0, endpoint)
+        history = history[:5]
+
+        self.settings_handler.save_settings("endpoint_history", history)
+        self.endpoint_input.clear()
+        self.endpoint_input.addItems(history)
+        self.endpoint_input.setCurrentText(endpoint)
 
     def update_list_view(self):
         self.item_list.clear()
@@ -814,6 +850,7 @@ class AdvancedSettings(QDialog):
                 return
 
             self.settings_handler.save_settings("custom_endpoint", endpoint)
+            self.save_endpoint_history(endpoint)
             QMessageBox.information(self, "Saved", "Endpoint saved successfully.")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"An exception occurred: {str(e)}")
@@ -1277,6 +1314,7 @@ class MainWindow(QMainWindow):
 
         self.setGeometry(100, 100, 400, 480)
         self.setWindowFlags(Qt.Window)
+        self.current_error_box = None
 
         self.setup_tray()
 
@@ -1628,13 +1666,15 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(100, lambda: self.show_non_blocking_error(title, message))
 
     def show_non_blocking_error(self, title, message):
-        """Show error dialog that doesn't block status updates"""
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Critical)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setAttribute(Qt.WA_DeleteOnClose)
-        msg_box.show()
+        if self.current_error_box:
+            self.current_error_box.close()
+
+        self.current_error_box = QMessageBox(self)
+        self.current_error_box.setIcon(QMessageBox.Critical)
+        self.current_error_box.setWindowTitle(title)
+        self.current_error_box.setText(message)
+        self.current_error_box.setAttribute(Qt.WA_DeleteOnClose)
+        self.current_error_box.show()
 
     def update_button_styles(self):
         current_index = self.stacked_widget.currentIndex()

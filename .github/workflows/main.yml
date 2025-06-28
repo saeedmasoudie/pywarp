@@ -1,54 +1,61 @@
-name: Build PyWarp Executables (Linux and macOS)
+name: Build PyWarp Executables (Windows, Linux, macOS)
 
 on:
   workflow_dispatch:
-  
+
 jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]  # Target platforms: Linux and macOS
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3  # Fetch repository code
+        uses: actions/checkout@v3
+
+      - name: Read Version
+        id: version
+        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+        shell: bash
 
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"  # Specify Python version
+          python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Install Nuitka and Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            python -m pip install Pillow  # For icon handling on macOS
-          fi
+          pip install nuitka
+          pip install -r requirements.txt || true  # optional: your deps
 
-      - name: Build Executable
+      - name: Build Executable with Nuitka
         run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            pyinstaller --onefile --windowed --icon=assets/logo.ico main.py
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            pyinstaller --onefile --windowed --icon=assets/logo.icns main.py
-          fi
+          VERSION="${{ steps.version.outputs.version }}"
+          OUTPUT_NAME="pywarp-${{ matrix.os }}-v$VERSION"
 
-      - name: Set Permissions (Linux only)
-        if: matrix.os == 'ubuntu-latest'
-        run: chmod +x dist/main
+          python -m nuitka \
+            --onefile \
+            --standalone \
+            --nofollow-imports \
+            --remove-output \
+            --disable-console \
+            --enable-plugin=pyside6 \
+            --output-filename="$OUTPUT_NAME" \
+            ${{ matrix.os == 'windows-latest' && '--windows-icon-from-ico=assets/logo.ico' || '' }} \
+            ${{ matrix.os == 'macos-latest' && '--macos-app-icon=assets/logo.icns' || '' }} \
+            --product-version="$VERSION" \
+            --file-version="$VERSION" \
+            main.py
+        shell: bash
 
-      - name: Rename Executables
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            mv dist/main dist/pywarp-linux
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            mv dist/main dist/pywarp-macos
-          fi
+      - name: Set Executable Permissions (Linux/macOS only)
+        if: matrix.os != 'windows-latest'
+        run: chmod +x pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: executables-${{ matrix.os }}
-          path: dist/
+          name: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
+          path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
