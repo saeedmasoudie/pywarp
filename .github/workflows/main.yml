@@ -27,22 +27,17 @@ jobs:
           $env:NUITKA_DEPENDENCY_SCAN = "1"
 
           python -m nuitka `
-            --onefile `
+            main.py `
             --standalone `
-            --nofollow-imports `
-            --remove-output `
-            --disable-console `
+            --onefile `
+            --windows-console-mode=disable `
             --enable-plugin=pyside6 `
             --windows-icon-from-ico=assets/logo.ico `
-            --assume-yes-for-downloads `
-            --output-filename="pywarp-windows-v$version" `
-            --product-name="PyWarp" `
-            --company-name="Saeed Masoudi" `
-            --file-description="PyWarp - Cloudflare Warp GUI" `
-            --product-version="$version" `
-            --file-version="$version" `
-            --copyright="© 2025 Saeed Masoudi" `
-            main.py
+            --output-filename=$output `
+            --windows-company-name="PyWarp" `
+            --windows-product-name="PyWarp" `
+            --windows-file-version="$version" `
+            --windows-product-version="$version"
 
           if (!(Test-Path $output)) {
             Write-Host "::error::Windows .exe not created"
