@@ -25,14 +25,14 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $output = "dist\\pywarp-windows-v$version.exe"
+          $output = "pywarp-windows-v$version.exe"
           $env:NUITKA_DEPENDENCY_SCAN = "1"
 
           python -m nuitka `
             main.py `
             --standalone `
             --onefile `
-            --windows-console-mode=disable `
+            --disable-console `
             --assume-yes-for-downloads `
             --enable-plugin=pyside6 `
             --nofollow-imports `
@@ -48,7 +48,7 @@ jobs:
             --windows-product-version="$version" `
             --remove-output
 
-          if (!(Test-Path $output)) {
+          if (!(Test-Path "dist\\$output")) {
             Write-Host "::error::Windows .exe not created"
             exit 1
           }
