@@ -14,16 +14,18 @@ jobs:
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Python & Nuitka
+      - name: Set Up Python & Nuitka
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka pyside6
+          pip install nuitka==1.9.5 pyside6
+          python -m nuitka --version
+          python --version
 
       - name: Build Executable (Windows)
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $output = "pywarp-windows-v$version.exe"
+          $output = "dist\\pywarp-windows-v$version.exe"
           $env:NUITKA_DEPENDENCY_SCAN = "1"
 
           python -m nuitka `
@@ -33,12 +35,18 @@ jobs:
             --windows-console-mode=disable `
             --assume-yes-for-downloads `
             --enable-plugin=pyside6 `
+            --nofollow-imports `
+            --noinclude-pytest-mode=nofollow `
+            --noinclude-unittest-mode=nofollow `
+            --nofollow-import-to=tkinter,test,pydoc `
             --windows-icon-from-ico=assets/logo.ico `
-            --output-filename=$output `
+            --output-dir=dist `
+            --output-filename="pywarp-windows-v$version" `
             --windows-company-name="PyWarp" `
             --windows-product-name="PyWarp" `
             --windows-file-version="$version" `
-            --windows-product-version="$version"
+            --windows-product-version="$version" `
+            --remove-output
 
           if (!(Test-Path $output)) {
             Write-Host "::error::Windows .exe not created"
@@ -49,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows
-          path: pywarp-windows-v${{ steps.version.outputs.version }}.exe
+          path: dist/pywarp-windows-v${{ steps.version.outputs.version }}.exe
 
   build-linux-macos:
     strategy:
@@ -68,7 +76,7 @@ jobs:
       - name: Install Python & Nuitka
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka pyside6
+          pip install nuitka==1.9.5 pyside6
 
       - name: Build Executable (Linux/macOS)
         shell: bash
@@ -83,6 +91,7 @@ jobs:
           fi
 
           python -m nuitka \
+            main.py \
             --onefile \
             --standalone \
             --nofollow-imports \
@@ -90,8 +99,7 @@ jobs:
             --disable-console \
             --enable-plugin=pyside6 \
             $ICON \
-            --output-filename="$OUTPUT" \
-            main.py
+            --output-filename="$OUTPUT"
 
       - name: Make Executable (Linux/macOS)
         run: chmod +x pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
