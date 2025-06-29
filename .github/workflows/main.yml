@@ -19,10 +19,11 @@ jobs:
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Python & Nuitka
+      - name: Install Python & Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka==1.9.5 pyside6
+          pip install -r requirements.txt
+          pip install nuitka==1.9.5
           python -m nuitka --version
           python --version
 
@@ -38,12 +39,13 @@ jobs:
             --standalone `
             --onefile `
             --disable-console `
-            --assume-yes-for-downloads `
             --enable-plugin=pyside6 `
             --nofollow-imports `
             --noinclude-pytest-mode=nofollow `
             --noinclude-unittest-mode=nofollow `
             --nofollow-import-to=tkinter,test,pydoc `
+            --include-data-dir=assets=assets `
+            --include-qt-plugins=all `
             --windows-icon-from-ico=assets/logo.ico `
             --output-dir=dist `
             --output-filename="pywarp-windows-v$version" `
@@ -51,7 +53,8 @@ jobs:
             --windows-product-name="PyWarp" `
             --windows-file-version="$version" `
             --windows-product-version="$version" `
-            --remove-output
+            --remove-output `
+            --assume-yes-for-downloads
 
           if (!(Test-Path "dist\\$output")) {
             Write-Host "::error::Windows .exe not created"
@@ -83,10 +86,11 @@ jobs:
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Python & Nuitka
+      - name: Install Python & Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka==1.9.5 pyside6
+          pip install -r requirements.txt
+          pip install nuitka==1.9.5
 
       - name: Build Executable (Linux/macOS)
         shell: bash
@@ -95,20 +99,15 @@ jobs:
           PLATFORM="${{ matrix.os }}"
           OUTPUT="pywarp-${PLATFORM}-v$VERSION"
 
-          ICON=""
+          FLAGS="--standalone --onefile --remove-output --disable-console --enable-plugin=pyside6"
           if [[ "$PLATFORM" == "macos-latest" ]]; then
-            ICON="--macos-app-icon=assets/logo.icns"
+            FLAGS+=" --macos-app-icon=assets/logo.icns --macos-create-app-bundle"
           fi
 
           python -m nuitka \
             main.py \
-            --onefile \
-            --standalone \
-            --nofollow-imports \
-            --remove-output \
-            --disable-console \
-            --enable-plugin=pyside6 \
-            $ICON \
+            $FLAGS \
+            --include-data-dir=assets=assets \
             --output-filename="$OUTPUT"
 
       - name: Make Executable (Linux/macOS)
