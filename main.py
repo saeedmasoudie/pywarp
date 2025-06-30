@@ -731,7 +731,16 @@ class AdvancedSettings(QDialog):
         exclusion_manager.exec()
 
     def load_endpoint_history(self):
-        history = self.settings_handler.get("endpoint_history", [])
+        history = self.settings_handler.get("endpoint_history")
+        if isinstance(history, str):
+            try:
+                import ast
+                history = ast.literal_eval(history)
+            except Exception:
+                history = []
+        if not isinstance(history, list):
+            history = []
+
         if history:
             self.endpoint_input.addItems(history)
         if self.current_endpoint and self.current_endpoint not in history:
@@ -831,7 +840,7 @@ class AdvancedSettings(QDialog):
             QMessageBox.warning(self, "Error", f"Reset failed: {e}")
 
     def save_endpoint(self):
-        endpoint = self.endpoint_input.text().strip()
+        endpoint = self.endpoint_input.currentText().strip()
         if not endpoint:
             return
 
@@ -1046,7 +1055,9 @@ class SettingsPage(QWidget):
         dns_group = self.create_groupbox("DNS Settings")
         dns_layout = QGridLayout()
         self.dns_dropdown = QComboBox()
-        self.dns_dropdown.addItems(["off", "Block Adult-Content", "Block malware"])
+        self.dns_dropdown.addItem("Off (No DNS filtering)")
+        self.dns_dropdown.addItem("Block Adult Content")
+        self.dns_dropdown.addItem("Block Malware")
         self.dns_dropdown.setCurrentText(self.current_dns_mode)
         self.dns_dropdown.currentTextChanged.connect(self.set_dns_mode)
         dns_layout.addWidget(self.dns_dropdown, 1, 0, 1, 2)
@@ -1525,6 +1536,10 @@ class MainWindow(QMainWindow):
             self.activateWindow()
 
     def update_stats_display(self, stats_list):
+        if len(stats_list) != 7:
+            print("Stats format mismatch:", stats_list)
+            return
+
         if not stats_list:
             for row in range(8):
                 self.stats_table.setItem(row, 1, QTableWidgetItem(""))
@@ -1666,15 +1681,28 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(100, lambda: self.show_non_blocking_error(title, message))
 
     def show_non_blocking_error(self, title, message):
-        if self.current_error_box:
-            self.current_error_box.close()
+        # Close old box if still open
+        if self.current_error_box is not None:
+            try:
+                self.current_error_box.close()
+            except Exception:
+                pass
+            self.current_error_box = None
 
-        self.current_error_box = QMessageBox(self)
-        self.current_error_box.setIcon(QMessageBox.Critical)
-        self.current_error_box.setWindowTitle(title)
-        self.current_error_box.setText(message)
-        self.current_error_box.setAttribute(Qt.WA_DeleteOnClose)
-        self.current_error_box.show()
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+
+        # Clear reference after it’s closed to avoid double-deletion
+        def on_close():
+            self.current_error_box = None
+            QTimer.singleShot(500, self.force_status_check)
+
+        msg_box.finished.connect(on_close)
+        self.current_error_box = msg_box
+        msg_box.show()
 
     def update_button_styles(self):
         current_index = self.stacked_widget.currentIndex()
@@ -2149,10 +2177,7 @@ def disconnect_on_exit():
 
 
 def safe_subprocess_args():
-    """Platform-specific subprocess arguments"""
-    return {
-        'creationflags': subprocess.CREATE_NO_WINDOW
-    } if platform.system() == "Windows" else {}
+    return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0}
 
 
 def notify_update(latest_version):
