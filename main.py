@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.7"
+CURRENT_VERSION = "1.1.8"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
