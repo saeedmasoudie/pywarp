@@ -212,7 +212,7 @@ class WarpStatsHandler(QThread):
                 if len(stats_output) < 6:
                     print("Unexpected stats output format")
                     self.stats_signal.emit([])
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(30)
                     continue
 
                 try:
@@ -268,12 +268,25 @@ class SettingsHandler(QThread):
 class PowerButton(QWidget):
     toggled = Signal(str)
 
+    STATES = {
+        "Connected": {"style": "on", "text": "ON", "color": QColor("green")},
+        "Disconnected": {"style": "off", "text": "OFF", "color": QColor("red")},
+        "Connecting": {"style": "unknown", "text": "...", "color": QColor("yellow")},
+        "Disconnecting": {"style": "unknown", "text": "...", "color": QColor("yellow")},
+        "No Network": {"style": "off", "text": "ERR", "color": QColor("red")},
+        "unknown": {"style": "off", "text": "ERR", "color": QColor("red")}
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(150, 150)
+        self.current_error_box = None
+        self.state = 'Disconnected'
+        self._toggle_lock = False
+
         palette = QApplication.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        self.current_error_box = None
+        self.theme = "dark" if is_dark_mode else "light"
 
         # Button styles
         self.button_styles = {
@@ -327,7 +340,6 @@ class PowerButton(QWidget):
             }
         }
 
-        self.theme = "dark" if is_dark_mode else "light"
         self.power_button = QPushButton("...", self)
         self.power_button.setGeometry(25, 25, 100, 100)
         self.power_button.setStyleSheet("border-radius: 50px; font-size: 24px;")
@@ -340,11 +352,8 @@ class PowerButton(QWidget):
         self.power_button.setGraphicsEffect(self.glow_effect)
 
         self.power_button.clicked.connect(self.toggle_power)
-        self.state = 'Disconnected'
-        self._toggle_lock = False
 
-        # Timer to reset button state if stuck
-        self.reset_timer = QTimer()
+        self.reset_timer = QTimer(self)
         self.reset_timer.setSingleShot(True)
         self.reset_timer.timeout.connect(self.reset_button_state)
 
@@ -352,146 +361,81 @@ class PowerButton(QWidget):
         if self._toggle_lock:
             return
         self._toggle_lock = True
+        self.power_button.setDisabled(True)
+        self.apply_style("unknown", "...", QColor("yellow"))
 
         def toggle():
             try:
-                self.power_button.setDisabled(True)
-
-                # Start timeout timer (10 seconds)
-                self.reset_timer.start(10000)
-
-                if self.state == "Disconnected":
-                    result = subprocess.run(['warp-cli', 'connect'],
-                                            capture_output=True,
-                                            text=True,
-                                            timeout=30,
-                                            **safe_subprocess_args())
-                    if result.returncode == 0:
-                        self.toggled.emit('Connecting')
-                    else:
-                        print(f"Connect failed: {result.stderr}")
-                        self.handle_command_error("Failed to connect")
-
-                elif self.state in ["Connected", "Connecting"]:
-                    result = subprocess.run(['warp-cli', 'disconnect'],
-                                            capture_output=True,
-                                            text=True,
-                                            timeout=30,
-                                            **safe_subprocess_args())
-                    if result.returncode == 0:
-                        self.toggled.emit('Disconnecting')
-                    else:
-                        print(f"Disconnect failed: {result.stderr}")
-                        self.handle_command_error("Failed to disconnect")
-
-                elif self.state == "No Network":
-                    QApplication.instance().postEvent(self, QEvent(QEvent.User))
-                else:
-                    QApplication.instance().postEvent(self, QEvent(QEvent.MaxUser))
-
-                self.change_btn_style()
-            except subprocess.TimeoutExpired:
-                print("Warp command timed out")
-                self.handle_command_error("Command timed out")
-            except Exception as e:
-                print(f"Toggle error: {e}")
-                self.handle_command_error(f"Error: {str(e)}")
+                self.reset_timer.start(15000)
+                command = ["warp-cli", "connect"] if self.state == "Disconnected" else ["warp-cli", "disconnect"]
+                result = run_warp_command(*command)
+                if not result or result.returncode != 0:
+                    error = result.stderr.strip() if result else "Unknown error"
+                    self.show_error_dialog("Command Error", f"Failed to run command: {error}")
             finally:
                 self.reset_timer.stop()
-                self.power_button.setDisabled(False)
-                self._toggle_lock = False
+                QTimer.singleShot(500, self.force_status_refresh)
 
         threading.Thread(target=toggle, daemon=True).start()
 
-    def handle_command_error(self, error_msg):
-        """Handle command errors and reset button state"""
-        # Force state update to current actual status
-        QTimer.singleShot(1000, self.force_status_refresh)
+    def update_button_state(self, new_state):
+        """Update button appearance based on Warp status"""
+        self.state = new_state
+        config = self.STATES.get(new_state, self.STATES["unknown"])
 
-    def force_status_refresh(self):
-        """Force a status refresh to sync button state"""
-        self.toggled.emit('ForceRefresh')
+        if new_state in ["Connected", "Disconnected", "No Network"]:
+            self._toggle_lock = False
+            self.power_button.setDisabled(False)
+        else:
+            self._toggle_lock = True
+            self.power_button.setDisabled(True)
+
+        self.apply_style(config["style"], config["text"], config["color"])
+
+    def apply_style(self, style_key, text, glow_color):
+        """Apply visual style to button based on state"""
+        stylesheet = self.button_styles.get(style_key, {}).get(self.theme, "")
+        self.power_button.setStyleSheet(stylesheet + "border-radius: 50px; font-size: 24px;")
+        self.power_button.setText(text)
+        self.glow_effect.setColor(glow_color)
+        self.power_button.update()
+        self.update()
 
     def reset_button_state(self):
-        """Reset button if it gets stuck"""
         if self._toggle_lock:
             self._toggle_lock = False
             self.power_button.setDisabled(False)
-            # Force a status refresh
             self.force_status_refresh()
 
-    def change_btn_style(self):
-        self.power_button.setText("...")
-        self.power_button.setStyleSheet(
-            self.button_styles['unknown'][self.theme] +
-            "border-radius: 50px; font-size: 24px;")
-        self.glow_effect.setColor(Qt.yellow)
+    def force_status_refresh(self):
+        self.toggled.emit("ForceRefresh")
 
     def customEvent(self, event):
+        """Handle async error events posted from threads"""
         if event.type() == QEvent.User:
-            # Use timer to show dialog after current UI updates are processed
-            QTimer.singleShot(100, lambda: self.show_error_dialog(
-                "Warning", "No network detected. Please check your connection."))
+            self.show_error_dialog("Warning", "No network detected. Please check your connection.")
+        elif event.type() == QEvent.Type(QEvent.User + 1):
+            self.show_error_dialog("Command Error", event.error_message)
         elif event.type() == QEvent.MaxUser:
-            # Use timer to show dialog after current UI updates are processed
-            QTimer.singleShot(100, lambda: self.show_error_dialog(
-                "Error", "An unexpected error occurred. Please try again later."))
+            self.show_error_dialog("Error", "An unexpected error occurred. Please try again later.")
 
     def show_error_dialog(self, title, message):
-        """Show error dialog and refresh status after"""
-
-        if hasattr(self, 'current_error_box') and self.current_error_box:
+        """Display error message box"""
+        if self.current_error_box:
             self.current_error_box.close()
 
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Warning if title == "Warning" else QMessageBox.Critical)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning if title == "Warning" else QMessageBox.Critical)
+        box.setWindowTitle(title)
+        box.setText(message)
+        box.setAttribute(Qt.WA_DeleteOnClose)
+        box.finished.connect(self._on_error_dialog_closed)
+        self.current_error_box = box
+        box.show()
 
-        self.current_error_box = msg_box
-
-        msg_box.finished.connect(lambda: (
-            QTimer.singleShot(500, self.force_status_refresh),
-            setattr(self, 'current_error_box', None)
-        ))
-
-        msg_box.show()
-
-    def update_button_state(self, state):
-        # Stop any pending reset timer since we're updating properly
-        self.reset_timer.stop()
-
-        states = {
-            "Connected": {"state": "on", "text": "ON", "color": QColor("green")},
-            "Disconnected": {"state": "off", "text": "OFF", "color": QColor("red")},
-            "Connecting": {"state": "unknown", "text": "...", "color": QColor("yellow")},
-            "Disconnecting": {"state": "unknown", "text": "...", "color": QColor("yellow")},
-            "unknown": {"state": "off", "text": "ERR", "color": QColor("red")}
-        }
-
-        self.state = state
-        selected_state = states.get(state, states["unknown"])
-
-        # Always enable button for stable states
-        if state in ["Connected", "Disconnected"]:
-            self.power_button.setDisabled(False)
-            self._toggle_lock = False
-
-        # Force immediate style update using QTimer to ensure it processes
-        QTimer.singleShot(0, lambda: self.apply_button_style(selected_state))
-
-    def apply_button_style(self, selected_state):
-        """Apply button style immediately"""
-        self.power_button.setStyleSheet(
-            self.button_styles[selected_state["state"]][self.theme] +
-            "border-radius: 50px; font-size: 24px;")
-        self.power_button.setText(selected_state["text"])
-        self.glow_effect.setColor(selected_state["color"])
-
-        # Force widget update
-        self.power_button.update()
-        self.update()
+    def _on_error_dialog_closed(self):
+        self.current_error_box = None
+        QTimer.singleShot(500, self.force_status_refresh)
 
 
 class ExclusionManager(QDialog):
@@ -607,7 +551,7 @@ class ExclusionManager(QDialog):
             return False
 
     def is_valid_domain(self, value):
-        return bool(re.match(r"^(?!-)[A-Za-z0-9-]+(\.[A-Za-z]{2,})+$", value))
+        return bool(re.match(r'^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,63}$', value))
 
     def add_item(self):
         value = self.input_field.text().strip()
@@ -625,16 +569,8 @@ class ExclusionManager(QDialog):
                                 "Please enter a valid domain name.")
             return
 
-        cmd = [
-            "warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host",
-            "add", value
-        ]
         try:
-            result = subprocess.run(cmd,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=30,
-                                    **safe_subprocess_args())
+            result = run_warp_command("warp-cli", "tunnel", "ip" if exclusion_type == "ip" else "host", "add", value)
 
             if result.returncode == 0:
                 self.exclusions_updated.emit()
@@ -766,31 +702,25 @@ class AdvancedSettings(QDialog):
 
         # Get IP exclusions
         try:
-            result_ip = subprocess.run(["warp-cli", "tunnel", "ip", "list"],
-                                       capture_output=True,
-                                       text=True,
-                                       timeout=30,
-                                       **safe_subprocess_args())
+            result_ip = run_warp_command("warp-cli", "tunnel", "ip", "list")
             if result_ip.returncode == 0:
                 lines = result_ip.stdout.strip().splitlines()
-                for line in lines[1:]:  # Skip header
-                    if line.strip():
-                        self.item_list.addItem(f"IP: {line.strip()}")
+                for line in lines[1:]:
+                    ip_value = line.strip().split()[0] if line.strip() else ""
+                    if ip_value:
+                        self.item_list.addItem(f"IP: {ip_value}")
         except Exception as e:
             print(f"Error getting IP list: {e}")
 
         # Get host exclusions
         try:
-            result_host = subprocess.run(["warp-cli", "tunnel", "host", "list"],
-                                         capture_output=True,
-                                         text=True,
-                                         timeout=30,
-                                         **safe_subprocess_args())
+            result_host = run_warp_command("warp-cli", "tunnel", "host", "list")
             if result_host.returncode == 0:
                 lines = result_host.stdout.strip().splitlines()
-                for line in lines[1:]:  # Skip header
-                    if line.strip():
-                        self.item_list.addItem(f"Domain: {line.strip()}")
+                for line in lines[1:]:
+                    host_value = line.strip().split()[0] if line.strip() else ""
+                    if host_value:
+                        self.item_list.addItem(f"Domain: {host_value}")
         except Exception as e:
             print(f"Error getting host list: {e}")
 
@@ -806,35 +736,25 @@ class AdvancedSettings(QDialog):
             return
 
         mode = item_text[0].lower().strip()
-        value_cleaned = item_text[1].strip()
-
-        cmd = [
-            "warp-cli", "tunnel", "ip" if mode == "ip" else "host",
-            "remove", value_cleaned
-        ]
+        value_from_list = item_text[1].strip()
+        value_cleaned = value_from_list.split('/')[0]
 
         try:
-            result = subprocess.run(cmd,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=30,
-                                    **safe_subprocess_args())
+            result = run_warp_command("warp-cli", "tunnel", "ip" if mode == "ip" else "host", "remove", value_cleaned)
 
             if result.returncode == 0:
                 self.update_list_view()
             else:
                 QMessageBox.warning(
                     self, "Error",
-                    f"Failed to remove {mode}: {result.stderr.strip()}")
+                    f"Failed to remove {mode}:\n\n{result.stderr.strip()}")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Command failed: {e}")
 
     def reset_list(self):
         try:
-            subprocess.run(["warp-cli", "tunnel", "ip", "reset"],
-                           timeout=30, **safe_subprocess_args())
-            subprocess.run(["warp-cli", "tunnel", "host", "reset"],
-                           timeout=30, **safe_subprocess_args())
+            run_warp_command("warp-cli", "tunnel", "ip", "reset")
+            run_warp_command("warp-cli", "tunnel", "host", "reset")
             self.update_list_view()
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Reset failed: {e}")
@@ -845,13 +765,7 @@ class AdvancedSettings(QDialog):
             return
 
         try:
-            result = subprocess.run(
-                ["warp-cli", "tunnel", "endpoint", "set", endpoint],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=30,
-                **safe_subprocess_args())
+            result = run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint)
 
             if result.returncode != 0:
                 error_line = result.stderr.strip().split("\n")[0]
@@ -866,8 +780,7 @@ class AdvancedSettings(QDialog):
 
     def reset_endpoint(self):
         try:
-            subprocess.run(["warp-cli", "tunnel", "endpoint", "reset"],
-                           timeout=30, **safe_subprocess_args())
+            run_warp_command("warp-cli", "tunnel", "endpoint", "reset")
             self.settings_handler.save_settings("custom_endpoint", "")
             self.endpoint_input.clear()
             QMessageBox.information(self, "Reset", "Endpoint reset successfully.")
@@ -1097,12 +1010,7 @@ class SettingsPage(QWidget):
         selected_dns = self.dns_dropdown.currentText()
 
         try:
-            cmd = subprocess.run(
-                ["warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off')],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                **safe_subprocess_args())
+            cmd = run_warp_command("warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off'))
 
             if cmd.returncode == 0:
                 self.current_dns_mode = selected_dns
@@ -1140,12 +1048,7 @@ class SettingsPage(QWidget):
                 return
 
             try:
-                set_port_cmd = subprocess.run(
-                    ["warp-cli", "set-proxy-port", str(port)],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    **safe_subprocess_args())
+                set_port_cmd = run_warp_command("warp-cli", "proxy", "port", str(port))
                 if set_port_cmd.returncode != 0:
                     QMessageBox.warning(
                         self, "Port Set Failed",
@@ -1158,16 +1061,11 @@ class SettingsPage(QWidget):
                 return
 
         try:
-            cmd = subprocess.run(["warp-cli", "mode", selected_mode],
-                                 capture_output=True,
-                                 text=True,
-                                 timeout=30,
-                                 **safe_subprocess_args())
+            cmd = run_warp_command("warp-cli", "mode", selected_mode)
             if cmd.returncode == 0:
                 self.current_mode = selected_mode
                 self.settings_handler.save_settings("mode", selected_mode)
-                QMessageBox.information(self, "Mode Changed",
-                                        f"Mode set to: {selected_mode}")
+                QMessageBox.information(self, "Mode Changed",f"Mode set to: {selected_mode}")
             else:
                 QMessageBox.warning(
                     self, "Error",
@@ -1316,11 +1214,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"PyWarp {CURRENT_VERSION}")
-        # Create a default icon if resources are not available
+
         try:
             self.setWindowIcon(QIcon(":/logo.png"))
         except:
-            # Create a simple default icon
             self.setWindowIcon(QIcon())
 
         self.setGeometry(100, 100, 400, 480)
@@ -1537,7 +1434,6 @@ class MainWindow(QMainWindow):
 
     def update_stats_display(self, stats_list):
         if len(stats_list) != 7:
-            print("Stats format mismatch:", stats_list)
             return
 
         if not stats_list:
@@ -1605,7 +1501,6 @@ class MainWindow(QMainWindow):
 
     def handle_toggle_signal(self, signal):
         if signal == 'ForceRefresh':
-            # Force a status check
             self.force_status_check()
         else:
             self.update_status(signal)
@@ -1614,12 +1509,7 @@ class MainWindow(QMainWindow):
         """Force an immediate status check"""
         def check_status():
             try:
-                process = subprocess.run(['warp-cli', 'status'],
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE,
-                                         text=True,
-                                         timeout=10,
-                                         **safe_subprocess_args())
+                process = run_warp_command('warp-cli', 'status')
 
                 if process.returncode != 0:
                     current_status = "Disconnected"
@@ -1893,11 +1783,7 @@ class MainWindow(QMainWindow):
 
     def set_warp_protocol(self, protocol):
         try:
-            result = subprocess.run(['warp-cli', 'tunnel', 'protocol', 'set', protocol],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=30,
-                                    **safe_subprocess_args())
+            result = run_warp_command('warp-cli', 'tunnel', 'protocol', 'set', protocol)
             if result.returncode == 0:
                 QMessageBox.information(
                     self, "Protocol Changed",
@@ -1982,13 +1868,11 @@ class WarpInstaller:
         try:
             os_name = platform.system()
             if os_name == "Windows":
-                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"],
-                               check=True, timeout=300)
+                run_warp_command("msiexec", "/i", file_path, "/quiet", "/norestart")
             elif os_name == "Darwin":
-                subprocess.run(["open", file_path], check=True, timeout=60)
+                run_warp_command("open", file_path)
             else:
-                QMessageBox.critical(self.parent, "Unsupported",
-                                     "Automatic install not supported for this OS.")
+                QMessageBox.critical(self.parent, "Unsupported","Automatic install not supported for this OS.")
                 sys.exit()
 
             self.register_and_activate_warp()
@@ -2129,12 +2013,7 @@ def get_global_ip_async(callback):
 def get_current_protocol():
     """Get current Warp protocol"""
     try:
-        process = subprocess.run(['warp-cli', 'settings'],
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE,
-                                 text=True,
-                                 timeout=30,
-                                 **safe_subprocess_args())
+        process = run_warp_command('warp-cli', 'settings')
 
         if process.returncode != 0:
             return "Error"
@@ -2167,10 +2046,7 @@ def disconnect_on_exit():
     """Clean shutdown function"""
     server.removeServer(SERVER_NAME)
     try:
-        subprocess.run(["warp-cli", "disconnect"],
-                       capture_output=True,
-                       timeout=30,
-                       **safe_subprocess_args())
+        run_warp_command("warp-cli", "disconnect")
         print("Warp disconnected successfully.")
     except Exception as e:
         print(f"Failed to disconnect Warp: {e}")
@@ -2179,6 +2055,16 @@ def disconnect_on_exit():
 def safe_subprocess_args():
     return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0}
 
+def run_warp_command(*args):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
+        return result
+    except subprocess.TimeoutExpired:
+        print(f"Command timeout: {' '.join(args)}")
+        return None
+    except Exception as e:
+        print(f"Command failed: {' '.join(args)}: {e}")
+        return None
 
 def notify_update(latest_version):
     """Show update notification"""
