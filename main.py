@@ -21,9 +21,120 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-CURRENT_VERSION = "1.1.8"
+CURRENT_VERSION = "1.1.9"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
+
+# ------------------- Utilities ----------------------
+def format_handshake_time(seconds):
+    """Format handshake time in a readable format"""
+    hours, remainder = divmod(seconds, 3600)
+    mins, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {mins}m {secs}s"
+    elif mins:
+        return f"{mins}m {secs}s"
+    else:
+        return f"{secs}s"
+
+
+def get_global_ip_async(callback):
+    """Fetch global IP address asynchronously"""
+    def fetch_ip():
+        try:
+            response = requests.get('https://api.ipify.org',
+                                    params={'format': 'json'},
+                                    timeout=10)
+            response.raise_for_status()
+            ip = response.json().get('ip', 'Unavailable')
+        except requests.RequestException as e:
+            ip = 'Unavailable'
+            print(f"Failed to fetch global IP: {e}")
+        callback(ip)
+
+    thread = threading.Thread(target=fetch_ip, daemon=True)
+    thread.start()
+
+
+def get_current_protocol():
+    """Get current Warp protocol"""
+    try:
+        process = run_warp_command('warp-cli', 'settings')
+
+        if process.returncode != 0:
+            return "Error"
+
+        output = process.stdout
+        for line in output.splitlines():
+            if "WARP tunnel protocol:" in line:
+                return line.split(":")[1].strip()
+        return "Unknown"
+    except Exception as e:
+        print(f"Error fetching current protocol: {e}")
+        return "Error"
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """Global exception handler"""
+    if exc_type is KeyboardInterrupt:
+        sys.exit(0)
+
+    error_dialog = QMessageBox()
+    error_dialog.setIcon(QMessageBox.Critical)
+    error_dialog.setWindowTitle("Application Error")
+    error_dialog.setText("An unexpected error occurred!")
+    error_dialog.setDetailedText("".join(
+        traceback.format_exception(exc_type, exc_value, exc_traceback)))
+    error_dialog.exec()
+
+
+def disconnect_on_exit():
+    """Clean shutdown function"""
+    server.removeServer(SERVER_NAME)
+    try:
+        run_warp_command("warp-cli", "disconnect")
+        print("Warp disconnected successfully.")
+    except Exception as e:
+        print(f"Failed to disconnect Warp: {e}")
+
+
+def safe_subprocess_args():
+    return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0}
+
+def run_warp_command(*args):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
+        return result
+    except subprocess.TimeoutExpired:
+        print(f"Command timeout: {' '.join(args)}")
+        return None
+    except Exception as e:
+        print(f"Command failed: {' '.join(args)}: {e}")
+        return None
+
+def notify_update(latest_version):
+    """Show update notification"""
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setWindowTitle("Update Available")
+    msg_box.setText(f"A new version ({latest_version}) is available! Please update.")
+    update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec()
+
+    if msg_box.clickedButton() == update_button:
+        webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
+
+
+def check_existing_instance():
+    """Check if another instance is already running"""
+    socket = QLocalSocket()
+    socket.connectToServer(SERVER_NAME)
+    if socket.waitForConnected(500):
+        print("Another instance is already running")
+        sys.exit(1)
+# -----------------------------------------------------
+
 
 class WarpDownloadThread(QThread):
     progress = Signal(int)
@@ -108,7 +219,6 @@ class WarpStatusHandler(QThread):
         self.status_map = {"Connected": 8, "Disconnected": 8, "Connecting": 2}
 
     def run(self):
-        # Create new event loop for this thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -136,7 +246,7 @@ class WarpStatusHandler(QThread):
 
                 timeout = self.status_map.get(current_status, 5)
 
-                if current_status != self.previous_status:
+                if self.previous_status != current_status:
                     self.status_signal.emit(current_status)
                     self.previous_status = current_status
 
@@ -368,6 +478,7 @@ class PowerButton(QWidget):
             try:
                 self.reset_timer.start(15000)
                 command = ["warp-cli", "connect"] if self.state == "Disconnected" else ["warp-cli", "disconnect"]
+                self.toggled.emit("Connecting") if command != ["warp-cli", "disconnect"] else self.toggled.emit("Disconnected")
                 result = run_warp_command(*command)
                 if not result or result.returncode != 0:
                     error = result.stderr.strip() if result else "Unknown error"
@@ -379,11 +490,10 @@ class PowerButton(QWidget):
         threading.Thread(target=toggle, daemon=True).start()
 
     def update_button_state(self, new_state):
-        """Update button appearance based on Warp status"""
         self.state = new_state
         config = self.STATES.get(new_state, self.STATES["unknown"])
 
-        if new_state in ["Connected", "Disconnected", "No Network"]:
+        if new_state in ["Connected", "Disconnected", "Connecting"]:
             self._toggle_lock = False
             self.power_button.setDisabled(False)
         else:
@@ -393,7 +503,6 @@ class PowerButton(QWidget):
         self.apply_style(config["style"], config["text"], config["color"])
 
     def apply_style(self, style_key, text, glow_color):
-        """Apply visual style to button based on state"""
         stylesheet = self.button_styles.get(style_key, {}).get(self.theme, "")
         self.power_button.setStyleSheet(stylesheet + "border-radius: 50px; font-size: 24px;")
         self.power_button.setText(text)
@@ -411,7 +520,6 @@ class PowerButton(QWidget):
         self.toggled.emit("ForceRefresh")
 
     def customEvent(self, event):
-        """Handle async error events posted from threads"""
         if event.type() == QEvent.User:
             self.show_error_dialog("Warning", "No network detected. Please check your connection.")
         elif event.type() == QEvent.Type(QEvent.User + 1):
@@ -420,7 +528,6 @@ class PowerButton(QWidget):
             self.show_error_dialog("Error", "An unexpected error occurred. Please try again later.")
 
     def show_error_dialog(self, title, message):
-        """Display error message box"""
         if self.current_error_box:
             self.current_error_box.close()
 
@@ -1978,115 +2085,6 @@ class WarpInstaller:
             QMessageBox.critical(self.parent, "Warp Activation Failed", f"Failed to register Warp: {e}")
         except Exception as e:
             QMessageBox.critical(self.parent, "Warp Activation Failed", f"Registration error: {e}")
-
-
-def format_handshake_time(seconds):
-    """Format handshake time in a readable format"""
-    hours, remainder = divmod(seconds, 3600)
-    mins, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}h {mins}m {secs}s"
-    elif mins:
-        return f"{mins}m {secs}s"
-    else:
-        return f"{secs}s"
-
-
-def get_global_ip_async(callback):
-    """Fetch global IP address asynchronously"""
-    def fetch_ip():
-        try:
-            response = requests.get('https://api.ipify.org',
-                                    params={'format': 'json'},
-                                    timeout=10)
-            response.raise_for_status()
-            ip = response.json().get('ip', 'Unavailable')
-        except requests.RequestException as e:
-            ip = 'Unavailable'
-            print(f"Failed to fetch global IP: {e}")
-        callback(ip)
-
-    thread = threading.Thread(target=fetch_ip, daemon=True)
-    thread.start()
-
-
-def get_current_protocol():
-    """Get current Warp protocol"""
-    try:
-        process = run_warp_command('warp-cli', 'settings')
-
-        if process.returncode != 0:
-            return "Error"
-
-        output = process.stdout
-        for line in output.splitlines():
-            if "WARP tunnel protocol:" in line:
-                return line.split(":")[1].strip()
-        return "Unknown"
-    except Exception as e:
-        print(f"Error fetching current protocol: {e}")
-        return "Error"
-
-
-def handle_exception(exc_type, exc_value, exc_traceback):
-    """Global exception handler"""
-    if exc_type is KeyboardInterrupt:
-        sys.exit(0)
-
-    error_dialog = QMessageBox()
-    error_dialog.setIcon(QMessageBox.Critical)
-    error_dialog.setWindowTitle("Application Error")
-    error_dialog.setText("An unexpected error occurred!")
-    error_dialog.setDetailedText("".join(
-        traceback.format_exception(exc_type, exc_value, exc_traceback)))
-    error_dialog.exec()
-
-
-def disconnect_on_exit():
-    """Clean shutdown function"""
-    server.removeServer(SERVER_NAME)
-    try:
-        run_warp_command("warp-cli", "disconnect")
-        print("Warp disconnected successfully.")
-    except Exception as e:
-        print(f"Failed to disconnect Warp: {e}")
-
-
-def safe_subprocess_args():
-    return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0}
-
-def run_warp_command(*args):
-    try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
-        return result
-    except subprocess.TimeoutExpired:
-        print(f"Command timeout: {' '.join(args)}")
-        return None
-    except Exception as e:
-        print(f"Command failed: {' '.join(args)}: {e}")
-        return None
-
-def notify_update(latest_version):
-    """Show update notification"""
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Information)
-    msg_box.setWindowTitle("Update Available")
-    msg_box.setText(f"A new version ({latest_version}) is available! Please update.")
-    update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
-    msg_box.setStandardButtons(QMessageBox.Ok)
-    msg_box.exec()
-
-    if msg_box.clickedButton() == update_button:
-        webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
-
-
-def check_existing_instance():
-    """Check if another instance is already running"""
-    socket = QLocalSocket()
-    socket.connectToServer(SERVER_NAME)
-    if socket.waitForConnected(500):
-        print("Another instance is already running")
-        sys.exit(1)
 
 
 if __name__ == "__main__":
