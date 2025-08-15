@@ -38,9 +38,10 @@ def format_handshake_time(seconds):
         return f"{secs}s"
 
 
-def get_global_ip_async(callback):
-    """Fetch global IP address asynchronously"""
-    def fetch_ip():
+class IpFetcher(QObject):
+    ip_ready = Signal(str)
+
+    def fetch_ip(self):
         try:
             response = requests.get('https://api.ipify.org',
                                     params={'format': 'json'},
@@ -50,10 +51,7 @@ def get_global_ip_async(callback):
         except requests.RequestException as e:
             ip = 'Unavailable'
             print(f"Failed to fetch global IP: {e}")
-        callback(ip)
-
-    thread = threading.Thread(target=fetch_ip, daemon=True)
-    thread.start()
+        self.ip_ready.emit(ip)
 
 
 def get_current_protocol():
@@ -227,14 +225,15 @@ class WarpStatusHandler(QThread):
             loop.close()
 
     async def monitor_status(self):
+        connecting_count = 0
         while self.looping:
             try:
                 process = await asyncio.create_subprocess_exec(
-                    'warp-cli',
-                    'status',
+                    'warp-cli', 'status',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    **safe_subprocess_args())
+                    **safe_subprocess_args()
+                )
                 stdout, stderr = await process.communicate()
 
                 if process.returncode != 0:
@@ -245,6 +244,14 @@ class WarpStatusHandler(QThread):
                     current_status = self.extract_status(status)
 
                 timeout = self.status_map.get(current_status, 5)
+
+                if current_status == "Connecting":
+                    connecting_count += 1
+                    if connecting_count * timeout >= 15:
+                        self.previous_status = None
+                        connecting_count = 0
+                else:
+                    connecting_count = 0
 
                 if self.previous_status != current_status:
                     self.status_signal.emit(current_status)
@@ -478,7 +485,8 @@ class PowerButton(QWidget):
             try:
                 self.reset_timer.start(15000)
                 command = ["warp-cli", "connect"] if self.state == "Disconnected" else ["warp-cli", "disconnect"]
-                self.toggled.emit("Connecting") if command != ["warp-cli", "disconnect"] else self.toggled.emit("Disconnected")
+                self.toggled.emit("Connecting") if command != ["warp-cli", "disconnect"] else self.toggled.emit(
+                    "Disconnected")
                 result = run_warp_command(*command)
                 if not result or result.returncode != 0:
                     error = result.stderr.strip() if result else "Unknown error"
@@ -1115,6 +1123,8 @@ class SettingsPage(QWidget):
             "Block malware": "malware"
         }
         selected_dns = self.dns_dropdown.currentText()
+        self.dns_dropdown.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
 
         try:
             cmd = run_warp_command("warp-cli", "dns", "families", dns_dict.get(selected_dns, 'off'))
@@ -1132,6 +1142,10 @@ class SettingsPage(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Command failed: {e}")
             self.dns_dropdown.setCurrentText(self.current_dns_mode)
+
+        finally:
+            self.dns_dropdown.setEnabled(True)
+            QApplication.restoreOverrideCursor()
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
@@ -1540,9 +1554,6 @@ class MainWindow(QMainWindow):
             self.activateWindow()
 
     def update_stats_display(self, stats_list):
-        if len(stats_list) != 7:
-            return
-
         if not stats_list:
             for row in range(8):
                 self.stats_table.setItem(row, 1, QTableWidgetItem(""))
@@ -1654,8 +1665,17 @@ class MainWindow(QMainWindow):
 
         if status in ['Connected', 'Disconnected']:
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-            get_global_ip_async(lambda ip: self.ip_label.setText(
-                f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>"))
+            self.ip_fetcher_thread = QThread()
+            self.ip_fetcher = IpFetcher()
+            self.ip_fetcher.moveToThread(self.ip_fetcher_thread)
+
+            self.ip_fetcher_thread.started.connect(self.ip_fetcher.fetch_ip)
+            self.ip_fetcher.ip_ready.connect(self.update_ip_label)
+            self.ip_fetcher.ip_ready.connect(self.ip_fetcher_thread.quit)
+            self.ip_fetcher.ip_ready.connect(self.ip_fetcher.deleteLater)
+            self.ip_fetcher_thread.finished.connect(self.ip_fetcher_thread.deleteLater)
+
+            self.ip_fetcher_thread.start()
         elif status in ['Connecting', 'Disconnecting']:
             self.ip_label.setText("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
         else:
@@ -1668,6 +1688,9 @@ class MainWindow(QMainWindow):
                 self.show_critical_error("Failed to Connect", status)
 
         self.toggle_switch.update_button_state(status)
+
+    def update_ip_label(self, ip):
+        self.ip_label.setText(f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
 
     def show_critical_error(self, title, message):
         """Show critical error dialog without blocking UI updates"""
