@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
-                               QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog)
+                               QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 CURRENT_VERSION = "1.1.9"
@@ -378,7 +378,8 @@ class SettingsHandler(QThread):
         return {
             "endpoint": self.get("endpoint", ""),
             "dns_mode": self.get("dns_mode", "off"),
-            "mode": self.get("mode", "warp")
+            "mode": self.get("mode", "warp"),
+            "silent_mode": self.get("silent_mode", False)
         }
 
 
@@ -1439,6 +1440,7 @@ class MainWindow(QMainWindow):
         self.settings_handler.start()
         settings_widget = SettingsPage(settings_handler=self.settings_handler)
         self.stacked_widget.addWidget(settings_widget)
+        self.silent_mode = self.settings_handler.get("silent_mode", 'false')
 
         # Buttons
         for idx, btn_text in enumerate(["Network Stats", "Settings", "Protocol"]):
@@ -1693,15 +1695,14 @@ class MainWindow(QMainWindow):
         self.ip_label.setText(f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
 
     def show_critical_error(self, title, message):
-        """Show critical error dialog without blocking UI updates"""
-        self.activateWindow()
-        self.raise_()
-
-        # Use timer to ensure status updates are processed first
-        QTimer.singleShot(100, lambda: self.show_non_blocking_error(title, message))
+        if self.silent_mode == 'true':
+            print(f"{title}: {message}")
+        else:
+            self.activateWindow()
+            self.raise_()
+            QTimer.singleShot(100, lambda: self.show_non_blocking_error(title, message))
 
     def show_non_blocking_error(self, title, message):
-        # Close old box if still open
         if self.current_error_box is not None:
             try:
                 self.current_error_box.close()
@@ -1715,10 +1716,16 @@ class MainWindow(QMainWindow):
         msg_box.setText(message)
         msg_box.setAttribute(Qt.WA_DeleteOnClose)
 
-        # Clear reference after it’s closed to avoid double-deletion
+        checkbox = QCheckBox("Don't show error messages again")
+        checkbox.setStyleSheet("QCheckBox { margin-top: 12px; margin-left: 4px; }")
+        msg_box.setCheckBox(checkbox)
+
         def on_close():
             self.current_error_box = None
             QTimer.singleShot(500, self.force_status_check)
+            if checkbox.isChecked():
+                self.silent_mode = True
+                self.settings_handler.save_settings("silent_mode", True)
 
         msg_box.finished.connect(on_close)
         self.current_error_box = msg_box
