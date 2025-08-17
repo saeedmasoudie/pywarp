@@ -15,6 +15,18 @@
 
 ---
 
+## 🚧 Roadmap
+
+**Completed:**
+- ✅ Major Fixes
+
+**Planned / In Progress:**
+- 🔁 Add Split Tunnel Future
+- 🎨 Rework on Theme
+- 🧲 Add more Options in Settings
+
+---
+
 ## 💖 Support the Project
 
 If you enjoy my work and want to support future development, you can donate here:
