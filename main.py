@@ -12,7 +12,7 @@ import webbrowser
 import requests
 import resources_rc
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
@@ -26,16 +26,12 @@ SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
 # ------------------- Utilities ----------------------
-def format_handshake_time(seconds):
-    """Format handshake time in a readable format"""
-    hours, remainder = divmod(seconds, 3600)
-    mins, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}h {mins}m {secs}s"
-    elif mins:
-        return f"{mins}m {secs}s"
-    else:
-        return f"{secs}s"
+def format_seconds_to_hms(seconds):
+    seconds = int(seconds)
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02}:{m:02}:{s:02}"
 
 
 class IpFetcher(QObject):
@@ -1417,11 +1413,21 @@ class MainWindow(QMainWindow):
         self.stats_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.stats_table.setMaximumHeight(280)
         self.stats_table.setMinimumHeight(240)
+        self.stats_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.stats_table.setFocusPolicy(Qt.NoFocus)
+        self.stats_table.setMouseTracking(False)
         self.stats_table.setStyleSheet("""
             QTableWidget {
                 font-family: 'Segoe UI';
                 font-size: 12pt;
                 font-weight: normal;
+            }
+            QTableWidget::item:hover {
+                background-color: transparent;
+            }
+            QTableWidget::item:selected {
+                background-color: transparent;
+                color: inherit;
             }
         """)
 
@@ -1555,6 +1561,43 @@ class MainWindow(QMainWindow):
             self.raise_()
             self.activateWindow()
 
+    def parse_with_unit(self, value: str):
+        match = re.match(r"([\d.]+)\s*([A-Za-z]*)", value.strip())
+        if match:
+            num = float(match.group(1))
+            unit = " " + match.group(2) if match.group(2) else ""
+            return num, unit
+        return 0.0, ""
+
+    def animate_number(self, row, col, start_value, end_value, suffix="", color_func=None, decimals=2,
+                       format_func=None):
+        animation = QVariantAnimation(self)
+        animation.setStartValue(start_value)
+        animation.setEndValue(end_value)
+        animation.setDuration(5000)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+
+        def on_value_changed(value):
+            if format_func:
+                text = format_func(value)
+            elif decimals > 0:
+                text = f"{value:.{decimals}f}{suffix}"
+            else:
+                text = f"{int(value)}{suffix}"
+
+            item = QTableWidgetItem(text)
+            if color_func:
+                item.setForeground(QBrush(QColor(color_func(value))))
+            self.stats_table.setItem(row, col, item)
+
+        animation.valueChanged.connect(on_value_changed)
+        animation.start()
+
+        if not hasattr(self, "_animations"):
+            self._animations = []
+        self._animations.append(animation)
+        animation.finished.connect(lambda: self._animations.remove(animation))
+
     def update_stats_display(self, stats_list):
         if not stats_list:
             for row in range(8):
@@ -1564,57 +1607,80 @@ class MainWindow(QMainWindow):
         try:
             protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
 
-            # Process handshake time
-            handshake_time_cleaned = handshake_time.replace('s', '')
-            handshake_value = int(handshake_time_cleaned) if handshake_time_cleaned.isdigit() else 0
-            formatted_handshake = format_handshake_time(handshake_value)
-            handshake_item = QTableWidgetItem(formatted_handshake)
-
-            # Color code handshake time
-            if handshake_value < 1800:
-                handshake_item.setForeground(QBrush(QColor("green")))
-            elif handshake_value < 3600:
-                handshake_item.setForeground(QBrush(QColor("orange")))
-            else:
-                handshake_item.setForeground(QBrush(QColor("red")))
-
-            # Process endpoints
+            # --- Protocol & Endpoints ---
+            self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
             endpoints_value = endpoints.split(',')
             ipv4 = endpoints_value[0] if endpoints_value else 'Not Available'
             ipv6 = endpoints_value[1] if len(endpoints_value) > 1 and len(endpoints_value[1]) > 5 else 'Not Available'
-
-            # Process latency
-            latency_value = int(latency.replace("ms", "").strip()) if latency.replace("ms", "").strip().isdigit() else 0
-            latency_item = QTableWidgetItem(f"{latency_value} ms")
-
-            if latency_value < 100:
-                latency_item.setForeground(QBrush(QColor("green")))
-            elif latency_value < 200:
-                latency_item.setForeground(QBrush(QColor("orange")))
-            else:
-                latency_item.setForeground(QBrush(QColor("red")))
-
-            # Process loss
-            loss_parts = loss.split(";")[0].replace("%", "").strip()
-            loss_value = float(loss_parts) if loss_parts.replace(".", "").isdigit() else 0.0
-            loss_item = QTableWidgetItem(f"{loss_value}%")
-
-            if loss_value < 1:
-                loss_item.setForeground(QBrush(QColor("green")))
-            elif loss_value < 5:
-                loss_item.setForeground(QBrush(QColor("orange")))
-            else:
-                loss_item.setForeground(QBrush(QColor("red")))
-
-            # Update table values
-            self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
             self.stats_table.setItem(1, 1, QTableWidgetItem(ipv4))
             self.stats_table.setItem(2, 1, QTableWidgetItem(ipv6))
-            self.stats_table.setItem(3, 1, handshake_item)
-            self.stats_table.setItem(4, 1, QTableWidgetItem(sent))
-            self.stats_table.setItem(5, 1, QTableWidgetItem(received))
-            self.stats_table.setItem(6, 1, latency_item)
-            self.stats_table.setItem(7, 1, loss_item)
+
+            # --- Handshake ---
+            handshake_time_cleaned = handshake_time.replace('s', '')
+            handshake_value = int(handshake_time_cleaned) if handshake_time_cleaned.isdigit() else 0
+
+            def handshake_color(val):
+                if val < 1800:
+                    return "green"
+                elif val < 3600:
+                    return "orange"
+                return "red"
+
+            prev_handshake = getattr(self, "_prev_handshake", 0)
+            self.animate_number(
+                3, 1,
+                prev_handshake,
+                handshake_value,
+                suffix="",
+                color_func=handshake_color,
+                decimals=0,
+                format_func=format_seconds_to_hms
+            )
+            self._prev_handshake = handshake_value
+
+            # --- Sent ---
+            sent_value, sent_unit = self.parse_with_unit(sent)
+            prev_sent = getattr(self, "_prev_sent", 0.0)
+            self.animate_number(4, 1, prev_sent, sent_value, sent_unit, None, decimals=2)
+            self._prev_sent = sent_value
+
+            # --- Received ---
+            received_value, recv_unit = self.parse_with_unit(received)
+            prev_received = getattr(self, "_prev_received", 0.0)
+            self.animate_number(5, 1, prev_received, received_value, recv_unit, None, decimals=2)
+            self._prev_received = received_value
+
+            # --- Latency ---
+            latency_value = int(latency.replace("ms", "").strip()) if latency.replace("ms", "").strip().isdigit() else 0
+
+            def latency_color(val):
+                if val < 100:
+                    return "green"
+                elif val < 200:
+                    return "orange"
+                return "red"
+
+            prev_latency = getattr(self, "_prev_latency", 0)
+            self.animate_number(6, 1, prev_latency, latency_value, " ms", latency_color, decimals=0)
+            self._prev_latency = latency_value
+
+            # --- Loss ---
+            loss_parts = loss.split(";")[0].replace("%", "").strip()
+            try:
+                loss_value = float(loss_parts)
+            except ValueError:
+                loss_value = 0.0
+
+            def loss_color(val):
+                if val < 1:
+                    return "green"
+                elif val < 5:
+                    return "orange"
+                return "red"
+
+            prev_loss = getattr(self, "_prev_loss", 0.0)
+            self.animate_number(7, 1, prev_loss, loss_value, "%", loss_color, decimals=2)
+            self._prev_loss = loss_value
 
         except Exception as e:
             print(f"Error updating stats display: {e}")
