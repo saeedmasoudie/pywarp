@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_CLI_URL = "https://github.com/user/repo/releases/latest/download/warp-cli.exe"
 WARP_SVC_URL = "https://github.com/user/repo/releases/latest/download/warp-svc.exe"
-CURRENT_VERSION = "1.1.9"
+CURRENT_VERSION = "1.2.0"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
