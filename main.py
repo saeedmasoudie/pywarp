@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import ipaddress
+import os
 import platform
 import re
 import shutil
@@ -11,6 +12,7 @@ import traceback
 import webbrowser
 import requests
 import resources_rc
+from pathlib import Path
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
@@ -21,18 +23,20 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox)
 
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
+WARP_CLI_URL = "https://github.com/user/repo/releases/latest/download/warp-cli.exe"
+WARP_SVC_URL = "https://github.com/user/repo/releases/latest/download/warp-svc.exe"
 CURRENT_VERSION = "1.1.9"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
 # ------------------- Utilities ----------------------
+
 def format_seconds_to_hms(seconds):
     seconds = int(seconds)
     h = seconds // 3600
     m = (seconds % 3600) // 60
     s = seconds % 60
     return f"{h:02}:{m:02}:{s:02}"
-
 
 class IpFetcher(QObject):
     ip_ready = Signal(str)
@@ -49,9 +53,7 @@ class IpFetcher(QObject):
             print(f"Failed to fetch global IP: {e}")
         self.ip_ready.emit(ip)
 
-
 def get_current_protocol():
-    """Get current Warp protocol"""
     try:
         process = run_warp_command('warp-cli', 'settings')
 
@@ -69,7 +71,6 @@ def get_current_protocol():
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
-    """Global exception handler"""
     if exc_type is KeyboardInterrupt:
         sys.exit(0)
 
@@ -81,9 +82,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         traceback.format_exception(exc_type, exc_value, exc_traceback)))
     error_dialog.exec()
 
-
 def disconnect_on_exit():
-    """Clean shutdown function"""
     server.removeServer(SERVER_NAME)
     try:
         run_warp_command("warp-cli", "disconnect")
@@ -106,27 +105,48 @@ def run_warp_command(*args):
         print(f"Command failed: {' '.join(args)}: {e}")
         return None
 
-def notify_update(latest_version):
-    """Show update notification"""
+
+def notify_update(update_type, latest_version, current_version):
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
     msg_box.setWindowTitle("Update Available")
-    msg_box.setText(f"A new version ({latest_version}) is available! Please update.")
-    update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
-    msg_box.setStandardButtons(QMessageBox.Ok)
-    msg_box.exec()
+    manual_update_button = msg_box.addButton("Update", QMessageBox.ActionRole)
+    msg_box.addButton("Later", QMessageBox.RejectRole)
 
-    if msg_box.clickedButton() == update_button:
+    if update_type == "pywarp":
+        msg_box.setText(
+            f"A new version of PyWarp is available!\n\nLatest: {latest_version}\nCurrent: {current_version}")
+
+    elif update_type == "warp_installed":
+        msg_box.setText(f"A new version of WARP is available!\n\nLatest: {latest_version}\nCurrent: {current_version}")
+
+    elif update_type == "warp_portable":
+        msg_box.setText(
+            f"A new version of portable WARP is available!\n\nLatest: {latest_version}\nCurrent: {current_version}")
+        auto_update_button = msg_box.addButton("Auto Update", QMessageBox.AcceptRole)
+        msg_box.setDefaultButton(auto_update_button)
+        msg_box.removeButton(manual_update_button)
+
+    msg_box.exec()
+    clicked_button = msg_box.clickedButton()
+
+    if clicked_button == manual_update_button:
         webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
+    elif 'auto_update_button' in locals() and clicked_button == auto_update_button:
+        update_thread = threading.Thread(target=update_checker.perform_portable_warp_update, daemon=True)
+        update_thread.start()
+
+def show_update_result(message):
+    QMessageBox.information(None, "Update Status", message)
 
 
 def check_existing_instance():
-    """Check if another instance is already running"""
     socket = QLocalSocket()
     socket.connectToServer(SERVER_NAME)
     if socket.waitForConnected(500):
         print("Another instance is already running")
         sys.exit(1)
+
 # -----------------------------------------------------
 
 
@@ -167,40 +187,106 @@ class WarpDownloadThread(QThread):
 
 
 class UpdateChecker(QObject):
-    update_available = Signal(str)
+    update_available = Signal(str, str, str)
+    update_finished = Signal(str)
+
+    def __init__(self, installer, parent=None):
+        super().__init__(parent)
+        if not installer:
+            raise ValueError("UpdateChecker requires a valid WarpInstaller instance.")
+        self.installer = installer
 
     def check_for_update(self):
         try:
-            latest_version = self.get_latest_version()
-            if latest_version and self.is_newer_version(latest_version, CURRENT_VERSION):
-                self.update_available.emit(latest_version)
+            versions = self._get_latest_versions()
+            if not versions:
+                print("Could not retrieve latest version info.")
+                return
+
+            latest_pywarp = versions.get("pywarp")
+            if latest_pywarp and self._is_newer_version(latest_pywarp, CURRENT_VERSION):
+                self.update_available.emit("pywarp", latest_pywarp, CURRENT_VERSION)
+
+            latest_warp = versions.get("warp")
+            local_warp_version, _, is_portable = self.get_warp_info()
+
+            if latest_warp and local_warp_version and self._is_newer_version(latest_warp, local_warp_version):
+                update_type = "warp_portable" if is_portable else "warp_installed"
+                self.update_available.emit(update_type, latest_warp, local_warp_version)
+
         except Exception as e:
             print(f"Update check failed: {e}")
 
-    def get_latest_version(self):
+    def _get_latest_versions(self):
         try:
             response = requests.get(GITHUB_VERSION_URL, timeout=10)
             response.raise_for_status()
-            latest_version = response.text.strip()
-
-            if latest_version and self.is_valid_version(latest_version):
-                return latest_version
-            else:
-                print("Received invalid version format")
-                return None
+            lines = response.text.strip().splitlines()
+            return {k.strip(): v.strip() for k, v in (line.split("=", 1) for line in lines if "=" in line)}
         except requests.exceptions.RequestException as e:
             print(f"Network error during update check: {e}")
             return None
 
-    def is_valid_version(self, version):
-        """Check if version string is valid (e.g., 1.1.5)"""
-        return bool(re.match(r'^\d+\.\d+\.\d+$', version))
+    def get_warp_info(self):
+        try:
+            warp_cli_path, _ = self.installer._portable_paths()
+            if warp_cli_path.exists():
+                out = subprocess.check_output(
+                    [str(warp_cli_path), "--version"],
+                    text=True,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                )
+                version = out.strip().split()[-1]
+                return version, warp_cli_path, True
+        except (IOError, subprocess.SubprocessError):
+            pass
 
-    def is_newer_version(self, latest, current):
-        """Compare version strings"""
-        latest_parts = [int(x) for x in latest.split('.')]
-        current_parts = [int(x) for x in current.split('.')]
-        return latest_parts > current_parts
+        try:
+            if shutil.which("warp-cli"):
+                out = subprocess.check_output(["warp-cli", "--version"], text=True)
+                version = out.strip().split()[-1]
+                return version, Path(shutil.which("warp-cli")), False
+        except (IOError, subprocess.SubprocessError):
+            pass
+
+        return None, None, False
+
+    def perform_portable_warp_update(self):
+        try:
+            cli_path, svc_path = self.installer._portable_paths()
+            cli_temp_path = cli_path.with_suffix(".exe.tmp")
+            svc_temp_path = svc_path.with_suffix(".exe.tmp")
+
+            print("Downloading latest warp-cli.exe...")
+            cli_response = requests.get(WARP_CLI_URL, timeout=60)
+            cli_response.raise_for_status()
+            with open(cli_temp_path, "wb") as f:
+                f.write(cli_response.content)
+
+            print("Downloading latest warp-svc.exe...")
+            svc_response = requests.get(WARP_SVC_URL, timeout=60)
+            svc_response.raise_for_status()
+            with open(svc_temp_path, "wb") as f:
+                f.write(svc_response.content)
+
+            shutil.move(cli_temp_path, cli_path)
+            shutil.move(svc_temp_path, svc_path)
+
+            print("Portable WARP update successful!")
+            self.update_finished.emit("✅ Portable WARP has been successfully updated!")
+
+        except Exception as e:
+            print(f"Portable WARP update failed: {e}")
+            self.update_finished.emit(f"❌ Update failed: {e}")
+
+    def _is_newer_version(self, latest, current):
+        try:
+            from packaging import version
+            return version.parse(latest) > version.parse(current)
+        except (ImportError, TypeError):
+            latest_parts = [int(x) for x in latest.split('.')]
+            current_parts = [int(x) for x in current.split('.')]
+            return latest_parts > current_parts
 
 
 class WarpStatusHandler(QThread):
@@ -2000,13 +2086,26 @@ class MainWindow(QMainWindow):
 
 
 class WarpInstaller:
-
     def __init__(self, parent=None):
         self.parent = parent
         self.download_url = self.get_os_download_link()
+        self.appdata_dir = Path(os.getenv("APPDATA") or Path.home() / ".pywarp") / "warp"
+        self.appdata_dir.mkdir(parents=True, exist_ok=True)
 
     def is_warp_installed(self):
-        return shutil.which('warp-cli') is not None
+        os_name = platform.system()
+        if os_name == "Windows":
+            if shutil.which("warp-cli"):
+                return True
+
+            warp_cli, warp_svc = self._portable_paths()
+            if warp_cli.exists() and warp_svc.exists():
+                if not self._is_warp_svc_running_windows():
+                    self._ensure_warp_svc_running_windows()
+                return True
+            return False
+
+        return shutil.which("warp-cli") is not None
 
     def get_os_download_link(self):
         os_name = platform.system()
@@ -2024,13 +2123,12 @@ class WarpInstaller:
         msg_box = QMessageBox(self.parent)
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.setWindowTitle("Warp Not Found")
-        msg_box.setText("Warp Cloudflare is not installed.\n\nDo you want to install it automatically?")
+        msg_box.setText("Cloudflare WARP is not installed.\n\nDo you want to install it automatically?")
 
         auto_install_button = msg_box.addButton("Auto Install", QMessageBox.AcceptRole)
         manual_button = msg_box.addButton("Manual Install", QMessageBox.ActionRole)
         retry_button = msg_box.addButton("Retry Check", QMessageBox.DestructiveRole)
         cancel_button = msg_box.addButton(QMessageBox.Cancel)
-
         msg_box.exec()
 
         clicked = msg_box.clickedButton()
@@ -2045,43 +2143,103 @@ class WarpInstaller:
             sys.exit()
 
     def start_auto_install(self):
+        os_name = platform.system()
+        if os_name == "Windows":
+            self.install_windows_portable()
+            return
+
         if self.download_url is None:
             self.install_linux_package()
-        else:
+            return
+
+        self.download_thread = WarpDownloadThread(self.download_url)
+        self.progress_dialog = QProgressDialog("Downloading WARP...", "Cancel", 0, 100, self.parent)
+        self.progress_dialog.setWindowTitle("Downloading WARP")
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.canceled.connect(self.download_thread.abort)
+        self.download_thread.progress.connect(self.progress_dialog.setValue)
+        self.download_thread.finished.connect(self.on_download_finished)
+        self.download_thread.start()
+        self.progress_dialog.exec()
+
+    def install_windows_portable(self):
+        try:
+            base_url = "https://github.com/saeedmasoudie/pywarp/releases/latest/download/"
+            for binary in ["warp-cli.exe", "warp-svc.exe"]:
+                url = base_url + binary
+                r = requests.get(url, stream=True, timeout=90)
+                r.raise_for_status()
+                with open(self.appdata_dir / binary, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+
+            self._ensure_warp_svc_running_windows()
+            self.register_and_activate_warp()
+
+        except Exception as e:
+            QMessageBox.critical(self.parent, "Warp Install Failed",
+                                 f"Could not setup portable WARP binaries:\n{e}")
+            self._fallback_windows_prompt()
+
+    def _fallback_windows_prompt(self):
+        if self.download_url:
             self.download_thread = WarpDownloadThread(self.download_url)
-            self.progress_dialog = QProgressDialog("Downloading Warp...", "Cancel", 0, 100, self.parent)
-            self.progress_dialog.setWindowTitle("Downloading Warp")
+            self.progress_dialog = QProgressDialog("Downloading WARP (MSI fallback)...", "Cancel", 0, 100, self.parent)
+            self.progress_dialog.setWindowTitle("Downloading WARP")
             self.progress_dialog.setWindowModality(Qt.WindowModal)
             self.progress_dialog.canceled.connect(self.download_thread.abort)
-
             self.download_thread.progress.connect(self.progress_dialog.setValue)
             self.download_thread.finished.connect(self.on_download_finished)
             self.download_thread.start()
             self.progress_dialog.exec()
+        else:
+            self.show_install_prompt()
+
+    def _portable_paths(self):
+        return (self.appdata_dir / "warp-cli.exe", self.appdata_dir / "warp-svc.exe")
+
+    def _is_warp_svc_running_windows(self):
+        try:
+            out = subprocess.check_output(["tasklist"], text=True)
+            return "warp-svc.exe" in out
+        except Exception:
+            return False
+
+    def _ensure_warp_svc_running_windows(self):
+        if not self._is_warp_svc_running_windows():
+            _, warp_svc = self._portable_paths()
+            if warp_svc.exists():
+                try:
+                    subprocess.Popen([str(warp_svc)],
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL)
+                except Exception as e:
+                    QMessageBox.critical(self.parent, "Warp Error",
+                                         f"Failed to start warp-svc: {e}")
+                    raise
 
     def on_download_finished(self, success, file_path):
         self.progress_dialog.close()
         if success:
             self.install_downloaded_file(file_path)
         else:
-            QMessageBox.critical(self.parent, "Download Failed", "Failed to download Warp installer.")
+            QMessageBox.critical(self.parent, "Download Failed", "Failed to download WARP installer.")
             self.show_install_prompt()
 
     def install_downloaded_file(self, file_path):
         try:
             os_name = platform.system()
             if os_name == "Windows":
-                run_warp_command("msiexec", "/i", file_path, "/quiet", "/norestart")
+                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"], check=True, timeout=600)
             elif os_name == "Darwin":
-                run_warp_command("open", file_path)
+                subprocess.run(["open", file_path], check=True, timeout=60)
             else:
-                QMessageBox.critical(self.parent, "Unsupported","Automatic install not supported for this OS.")
+                QMessageBox.critical(self.parent, "Unsupported", "Automatic install not supported for this OS.")
                 sys.exit()
-
             self.register_and_activate_warp()
-
         except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self.parent, "Installation Failed", f"Failed to install Warp: {e}")
+            QMessageBox.critical(self.parent, "Installation Failed", f"Failed to install WARP: {e}")
             self.show_install_prompt()
         except Exception as e:
             QMessageBox.critical(self.parent, "Installation Failed", f"Installation error: {e}")
@@ -2090,33 +2248,31 @@ class WarpInstaller:
     def install_linux_package(self):
         msg_box = QMessageBox(self.parent)
         msg_box.setWindowTitle("Linux Installation")
-        msg_box.setText("Warp will be installed via your system's package manager.\n\nDo you want to proceed?")
+        msg_box.setText("WARP will be installed via your system's package manager.\n\nDo you want to proceed?")
         install_button = msg_box.addButton("Install", QMessageBox.AcceptRole)
         cancel_button = msg_box.addButton(QMessageBox.Cancel)
         msg_box.exec()
 
-        if msg_box.clickedButton() == install_button:
-            try:
-                package_manager = self.detect_linux_package_manager()
-                if package_manager == "apt":
-                    self.install_with_apt()
-                elif package_manager in ["yum", "dnf"]:
-                    self.install_with_yum()
-                else:
-                    QMessageBox.critical(self.parent, "Unsupported",
-                                         "Unsupported package manager for auto install.")
-                    sys.exit()
-
-                self.register_and_activate_warp()
-
-            except subprocess.CalledProcessError as e:
-                QMessageBox.critical(self.parent, "Installation Failed", f"An error occurred:\n{e}")
-                self.show_install_prompt()
-            except Exception as e:
-                QMessageBox.critical(self.parent, "Installation Failed", f"Installation error: {e}")
-                self.show_install_prompt()
-        else:
+        if msg_box.clickedButton() != install_button:
             sys.exit()
+
+        try:
+            pm = self.detect_linux_package_manager()
+            if pm == "apt":
+                self.install_with_apt()
+            elif pm in ("yum", "dnf"):
+                self.install_with_yum_dnf(pm)
+            else:
+                QMessageBox.critical(self.parent, "Unsupported",
+                                     "Unsupported package manager for auto install.")
+                sys.exit()
+            self.register_and_activate_warp()
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self.parent, "Installation Failed", f"An error occurred:\n{e}")
+            self.show_install_prompt()
+        except Exception as e:
+            QMessageBox.critical(self.parent, "Installation Failed", f"Installation error: {e}")
+            self.show_install_prompt()
 
     def install_with_apt(self):
         commands = [
@@ -2124,14 +2280,10 @@ class WarpInstaller:
             ["sudo", "apt", "install", "-y", "curl", "gpg", "lsb-release", "apt-transport-https", "ca-certificates", "sudo"],
             ["bash", "-c", 'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'],
         ]
-
         for cmd in commands:
             subprocess.run(cmd, check=True, timeout=300)
 
-        # Get distro
-        distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60).decode().strip()
-
-        # Add repository
+        distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60, text=True).strip()
         repo_cmd = [
             "bash", "-c",
             f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
@@ -2139,22 +2291,18 @@ class WarpInstaller:
             f'sudo tee /etc/apt/sources.list.d/cloudflare-client.list'
         ]
         subprocess.run(repo_cmd, check=True, timeout=60)
-
-        # Install
         subprocess.run(["sudo", "apt", "update"], check=True, timeout=300)
         subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True, timeout=300)
 
-    def install_with_yum(self):
-        commands = [
-            ["bash", "-c", 'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | sudo tee /etc/yum.repos.d/cloudflare-warp.repo'],
-            ["sudo", "yum", "check-update"],
-            ["sudo", "yum", "install", "-y", "curl", "sudo", "coreutils"],
-            ["sudo", "yum", "check-update"],
-            ["sudo", "yum", "install", "-y", "cloudflare-warp"]
-        ]
-
-        for cmd in commands:
-            subprocess.run(cmd, check=True, timeout=300)
+    def install_with_yum_dnf(self, pm):
+        repo_cmd = ["bash", "-c",
+                    'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | '
+                    'sudo tee /etc/yum.repos.d/cloudflare-warp.repo']
+        subprocess.run(repo_cmd, check=True, timeout=120)
+        subprocess.run(["sudo", pm, "check-update"], check=False, timeout=300)
+        subprocess.run(["sudo", pm, "install", "-y", "curl", "sudo", "coreutils"], check=True, timeout=300)
+        subprocess.run(["sudo", pm, "check-update"], check=False, timeout=300)
+        subprocess.run(["sudo", pm, "install", "-y", "cloudflare-warp"], check=True, timeout=600)
 
     def detect_linux_package_manager(self):
         if shutil.which("apt"):
@@ -2169,39 +2317,39 @@ class WarpInstaller:
 
     def retry_install_check(self):
         if self.is_warp_installed():
-            QMessageBox.information(self.parent, "Warp Found", "Warp is now installed!")
+            QMessageBox.information(self.parent, "Warp Found", "WARP is now installed!")
         else:
             self.show_install_prompt()
 
     def register_and_activate_warp(self):
         try:
-            subprocess.run(["warp-cli", "register"], check=True, timeout=60)
-            QMessageBox.information(self.parent, "Warp Ready", "Warp has been registered successfully!")
+            os_name = platform.system()
+            if os_name == "Windows" and not shutil.which("warp-cli"):
+                warp_cli, _ = self._portable_paths()
+                cmd = [str(warp_cli), "register"]
+            else:
+                cmd = ["warp-cli", "register"]
+
+            subprocess.run(cmd, check=True, timeout=60)
+            QMessageBox.information(self.parent, "Warp Ready", "WARP has been registered successfully!")
         except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self.parent, "Warp Activation Failed", f"Failed to register Warp: {e}")
+            QMessageBox.critical(self.parent, "Warp Activation Failed", f"Failed to register WARP: {e}")
         except Exception as e:
             QMessageBox.critical(self.parent, "Warp Activation Failed", f"Registration error: {e}")
 
 
 if __name__ == "__main__":
-    # Check for existing instance
     check_existing_instance()
-
-    # Create application
     app = QApplication(sys.argv)
     server.listen(SERVER_NAME)
     atexit.register(disconnect_on_exit)
 
-    # Set default icon
     try:
         app.setWindowIcon(QIcon(":/logo.png"))
     except:
         app.setWindowIcon(QIcon())
 
-    # Set exception handler
     sys.excepthook = handle_exception
-
-    # Check for Warp installation
     installer = WarpInstaller(parent=None)
     if not installer.is_warp_installed():
         installer.show_install_prompt()
@@ -2210,18 +2358,11 @@ if __name__ == "__main__":
                                  "Warp could not be installed.\nExiting app.")
             sys.exit()
 
-    # Set application properties
     app.setFont(QFont("Arial", 10))
-
-    # Create main window
     window = MainWindow()
     window.show()
-
-    # Start update checker
-    update_checker = UpdateChecker()
+    update_checker = UpdateChecker(installer=installer)
     update_checker.update_available.connect(notify_update)
     update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
     update_thread.start()
-
-    # Run application
     sys.exit(app.exec())
