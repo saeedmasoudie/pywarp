@@ -22,10 +22,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QSpacerItem, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox)
 
+CURRENT_VERSION = "1.2.0"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-WARP_CLI_URL = "https://github.com/user/repo/releases/latest/download/warp-cli.exe"
-WARP_SVC_URL = "https://github.com/user/repo/releases/latest/download/warp-svc.exe"
-CURRENT_VERSION = "1.1.9"
+WARP_CLI_URL = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp-cli.exe"
+WARP_SVC_URL = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp-svc.exe"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
