@@ -23,7 +23,8 @@
 **Planned / In Progress:**
 - 🔁 Add Split Tunnel Future
 - 🎨 Rework on Theme
-- 🧲 Add more Options in Settings
+- 🛠 Change Settings Section
+- 🔗 Add Proxy Chain
 
 ---
 
