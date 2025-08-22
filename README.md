@@ -19,10 +19,10 @@
 
 **Completed:**
 - ✅ Major Fixes
+- ✅ Rework on Theme
 
 **Planned / In Progress:**
 - 🔁 Add Split Tunnel Future
-- 🎨 Rework on Theme
 - 🛠 Change Settings Section
 - 🔗 Add Proxy Chain
 
