@@ -2,5 +2,6 @@
 <RCC version="1.0">
     <qresource>
         <file>logo.png</file>
+        <file>logo_gray.png</file>
     </qresource>
 </RCC>

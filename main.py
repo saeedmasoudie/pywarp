@@ -15,7 +15,7 @@ import resources_rc
 from pathlib import Path
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve
-from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush
+from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QImage, QPixmap, QActionGroup
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
@@ -37,6 +37,13 @@ def format_seconds_to_hms(seconds):
     m = (seconds % 3600) // 60
     s = seconds % 60
     return f"{h:02}:{m:02}:{s:02}"
+
+def to_bool(v):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "on")
+    return bool(v)
 
 class IpFetcher(QObject):
     ip_ready = Signal(str)
@@ -92,7 +99,9 @@ def disconnect_on_exit():
 
 
 def safe_subprocess_args():
-    return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0}
+    if platform.system() == "Windows":
+        return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW}
+    return {"shell": False}
 
 def run_warp_command(*args):
     try:
@@ -149,6 +158,289 @@ def check_existing_instance():
 
 # -----------------------------------------------------
 
+class ThemeManager:
+    @staticmethod
+    def is_dark_mode():
+        palette = QApplication.palette()
+        return palette.color(QPalette.Window).lightness() < 128
+
+    @staticmethod
+    def apply():
+        app = QApplication.instance()
+        if not app:
+            return
+        if ThemeManager.is_dark_mode():
+            app.setStyleSheet(ThemeManager.dark_theme())
+        else:
+            app.setStyleSheet(ThemeManager.light_theme())
+
+    @staticmethod
+    def dark_theme():
+        return """
+        QWidget {
+            background-color: #0d1117;
+            color: #f0f6fc;
+            font-size: 13px;
+        }
+        QMainWindow { background-color: #0d1117; }
+        QLabel { font-size: 14px; font-weight: 500; }
+
+        /* GroupBox */
+        QGroupBox {
+            font-size: 16px;
+            font-weight: 600;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        QGroupBox::title { color: #58a6ff; left: 10px; padding: 0 5px; }
+
+        /* Buttons */
+        QPushButton {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #238636, stop:1 #1f7a2e);
+            color: white;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: 600;
+            border: none;
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2ea043, stop:1 #238636);
+        }
+        QPushButton:pressed {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1f7a2e, stop:1 #1a6928);
+        }
+
+        /* Inputs */
+        QComboBox, QLineEdit, QTextEdit, QSpinBox {
+            background-color: #21262d;
+            color: #f0f6fc;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+        QComboBox:hover, QLineEdit:hover, QTextEdit:hover, QSpinBox:hover {
+            border-color: #58a6ff;
+        }
+        QComboBox::down-arrow {
+            image: none;
+            border: 2px solid #f0f6fc;
+            width: 6px; height: 6px;
+            border-top: none; border-left: none;
+            transform: rotate(45deg);
+        }
+
+        /* Tables / Lists */
+        QTableWidget, QListWidget {
+            background-color: #0d1117;
+            alternate-background-color: #161b22;
+            color: #f0f6fc;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+        }
+        QTableWidget::item, QListWidget::item {
+            padding: 6px;
+            border-bottom: 1px solid #21262d;
+        }
+        QListWidget::item:hover { background-color: #161b22; }
+        QListWidget::item:selected { background-color: #1f6feb; }
+
+        QHeaderView::section {
+            background: #21262d;
+            color: #f0f6fc;
+            font-weight: 600;
+            padding: 8px;
+            border: none;
+            border-right: 1px solid #30363d;
+        }
+
+        /* Dialogs & MessageBox */
+        QDialog, QMessageBox {
+            background-color: #161b22;
+            color: #f0f6fc;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+        }
+        QMessageBox QLabel {
+            background: transparent;
+            color: white;
+            font-size: 14px;
+            border: none;
+        }
+        QMessageBox QPushButton {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #238636, stop:1 #1f7a2e);
+            color: white;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: 600;
+        }
+        QMessageBox QPushButton:hover {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2ea043, stop:1 #238636);
+        }
+        QMenu {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 6px;
+        }
+        QMenu::item {
+            padding: 6px 20px;
+            color: #f0f6fc;
+            border-radius: 6px;
+        }
+        QMenu::item:selected {
+            background-color: #238636;   /* hover effect */
+            color: white;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #30363d;
+            margin: 4px 0;
+        }
+        """
+
+    @staticmethod
+    def light_theme():
+        return """
+        QWidget {
+            background-color: #f4f6f8;
+            color: #1a1f24;
+            font-size: 13px;
+        }
+        QMainWindow {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #f9fafb, stop:1 #f0f2f4);
+        }
+        QLabel {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1a1f24;
+        }
+
+        /* GroupBox */
+        QGroupBox {
+            font-size: 16px;
+            font-weight: 600;
+            border: 1px solid #d0d7de;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 10px;
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #ffffff, stop:1 #f6f8fa);
+        }
+        QGroupBox::title { color: #2563eb; left: 10px; padding: 0 5px; }
+
+        /* Buttons */
+        QPushButton {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #3b82f6, stop:1 #2563eb);
+            color: white;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: 600;
+            border: none;
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #60a5fa, stop:1 #3b82f6);
+        }
+        QPushButton:pressed {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #2563eb, stop:1 #1d4ed8);
+        }
+
+        /* Inputs */
+        QComboBox, QLineEdit, QTextEdit, QSpinBox {
+            background-color: #ffffff;
+            color: #1a1f24;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+        QComboBox:hover, QLineEdit:hover, QTextEdit:hover, QSpinBox:hover {
+            border-color: #2563eb;
+            background-color: #f9fafb;
+        }
+        QComboBox::down-arrow {
+            image: none;
+            border: 2px solid #1a1f24;
+            width: 6px; height: 6px;
+            border-top: none; border-left: none;
+            transform: rotate(45deg);
+        }
+
+        /* Tables / Lists */
+        QTableWidget, QListWidget {
+            background-color: #ffffff;
+            alternate-background-color: #f3f4f6;
+            color: #1a1f24;
+            border: 1px solid #d0d7de;
+            border-radius: 8px;
+        }
+        QTableWidget::item, QListWidget::item {
+            padding: 6px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        QListWidget::item:hover { background-color: #f1f5f9; }
+        QListWidget::item:selected { background-color: #dbeafe; }
+
+        QHeaderView::section {
+            background: #f1f5f9;
+            color: #1a1f24;
+            font-weight: 600;
+            padding: 8px;
+            border: none;
+            border-right: 1px solid #d0d7de;
+        }
+
+        /* Dialogs & MessageBox */
+        QDialog, QMessageBox {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #ffffff, stop:1 #f3f4f6);
+            color: #1a1f24;
+            border: 1px solid #d0d7de;
+            border-radius: 12px;
+        }
+        QMessageBox QLabel {
+            background: transparent;
+            color: black;
+            font-size: 14px;
+            border: none;
+        }
+        QMessageBox QPushButton {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #3b82f6, stop:1 #2563eb);
+            color: white;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: 600;
+        }
+        QMessageBox QPushButton:hover {
+            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                        stop:0 #60a5fa, stop:1 #3b82f6);
+        }
+        QMenu {
+            background-color: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 8px;
+            padding: 6px;
+        }
+        QMenu::item {
+            padding: 6px 20px;
+            color: #24292f;
+            border-radius: 6px;
+        }
+        QMenu::item:selected {
+            background-color: #3b82f6;   /* hover effect */
+            color: white;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #eaeef2;
+            margin: 4px 0;
+        }
+        """
 
 class WarpDownloadThread(QThread):
     progress = Signal(int)
@@ -234,7 +526,7 @@ class UpdateChecker(QObject):
                 out = subprocess.check_output(
                     [str(warp_cli_path), "--version"],
                     text=True,
-                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                    **safe_subprocess_args()
                 )
                 version = out.strip().split()[-1]
                 return version, warp_cli_path, True
@@ -243,7 +535,7 @@ class UpdateChecker(QObject):
 
         try:
             if shutil.which("warp-cli"):
-                out = subprocess.check_output(["warp-cli", "--version"], text=True)
+                out = subprocess.check_output(["warp-cli", "--version"], text=True, **safe_subprocess_args())
                 version = out.strip().split()[-1]
                 return version, Path(shutil.which("warp-cli")), False
         except (IOError, subprocess.SubprocessError):
@@ -353,13 +645,11 @@ class WarpStatusHandler(QThread):
 
     @staticmethod
     def extract_status_reason(status):
-        data = status.split()
-        try:
-            reason_index = data.index("Reason:")
-            reason_text = " ".join(data[reason_index + 1:])
+        match = re.search(r"Reason:\s*(.*)", status)
+        if match:
+            reason_text = match.group(1).strip()
             return 'No Network' if 'No Network' in reason_text else reason_text
-        except (ValueError, IndexError):
-            return "Failed"
+        return "Failed"
 
 
 class WarpStatsHandler(QThread):
@@ -441,6 +731,7 @@ class WarpStatsHandler(QThread):
 
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
+    mode_changed = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -452,9 +743,14 @@ class SettingsHandler(QThread):
     def save_settings(self, key, value):
         self.settings.setValue(key, value)
         self.settings.sync()
+        if key == "mode":
+            self.mode_changed.emit(value)
 
     def get(self, key, default=None):
-        return self.settings.value(key, default)
+        value = self.settings.value(key, default)
+        if isinstance(default, bool):
+            return to_bool(value)
+        return value
 
     def get_all_settings(self):
         return {
@@ -644,11 +940,6 @@ class ExclusionManager(QDialog):
         self.setWindowTitle("Add Exclusion")
         self.setFixedSize(320, 240)
 
-        # Apply modern styling
-        palette = self.palette()
-        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        self.setStyleSheet(self.get_modern_style(is_dark_mode))
-
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -668,78 +959,6 @@ class ExclusionManager(QDialog):
         layout.addWidget(self.submit_button, alignment=Qt.AlignCenter)
 
         self.setLayout(layout)
-
-    def get_modern_style(self, is_dark_mode):
-        if is_dark_mode:
-            return """
-                QDialog {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0d1117, stop: 1 #161b22);
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 12px;
-                }
-                QComboBox, QLineEdit {
-                    background-color: #21262d;
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 8px;
-                    padding: 10px;
-                    font-size: 14px;
-                }
-                QComboBox:hover, QLineEdit:hover {
-                    border-color: #58a6ff;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 8px;
-                    border: none;
-                    font-weight: 600;
-                    font-size: 14px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                }
-            """
-        else:
-            return """
-                QDialog {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 12px;
-                }
-                QComboBox, QLineEdit {
-                    background-color: #ffffff;
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 8px;
-                    padding: 10px;
-                    font-size: 14px;
-                }
-                QComboBox:hover, QLineEdit:hover {
-                    border-color: #0969da;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2da44e, stop: 1 #238636);
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 8px;
-                    border: none;
-                    font-weight: 600;
-                    font-size: 14px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #2da44e);
-                }
-            """
 
     def is_valid_ip(self, value):
         try:
@@ -788,7 +1007,6 @@ class AdvancedSettings(QDialog):
     def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Advanced Settings")
-        self.setStyleSheet(self.get_stylesheet())
         self.setFixedSize(460, 460)
 
         self.settings_handler = settings_handler
@@ -1162,6 +1380,8 @@ class SettingsPage(QWidget):
         modes_group.setLayout(modes_layout)
         main_layout.addWidget(modes_group)
 
+        self.settings_handler.mode_changed.connect(self.update_mode_dropdown)
+
         # DNS Section
         dns_group = self.create_groupbox("DNS Settings")
         dns_layout = QGridLayout()
@@ -1180,7 +1400,6 @@ class SettingsPage(QWidget):
         advanced_group = self.create_groupbox("Advanced Settings")
         advanced_layout = QGridLayout()
         advanced_settings_button = QPushButton("Configure Advanced Settings")
-        advanced_settings_button.setStyleSheet(self.get_stylesheet())
         advanced_settings_button.clicked.connect(self.open_advanced_settings)
         advanced_layout.addWidget(advanced_settings_button, 1, 2)
         advanced_layout.addItem(QSpacerItem(10, 15), 0, 0)
@@ -1188,7 +1407,11 @@ class SettingsPage(QWidget):
         main_layout.addWidget(advanced_group)
 
         self.setLayout(main_layout)
-        self.setStyleSheet(self.get_stylesheet())
+
+    def update_mode_dropdown(self, new_mode):
+        self.modes_dropdown.blockSignals(True)
+        self.modes_dropdown.setCurrentText(new_mode)
+        self.modes_dropdown.blockSignals(False)
 
     def open_advanced_settings(self):
         dialog = AdvancedSettings(self.settings_handler, self)
@@ -1196,7 +1419,6 @@ class SettingsPage(QWidget):
 
     def create_groupbox(self, title):
         groupbox = QGroupBox(title)
-        groupbox.setStyleSheet(self.get_stylesheet())
         return groupbox
 
     def set_dns_mode(self):
@@ -1269,6 +1491,13 @@ class SettingsPage(QWidget):
             if cmd.returncode == 0:
                 self.current_mode = selected_mode
                 self.settings_handler.save_settings("mode", selected_mode)
+
+                main_window = self.window()
+                if isinstance(main_window, MainWindow):
+                    for action in main_window.modes_group.actions():
+                        if action.text() == selected_mode:
+                            action.setChecked(True)
+
                 QMessageBox.information(self, "Mode Changed",f"Mode set to: {selected_mode}")
             else:
                 QMessageBox.warning(
@@ -1279,139 +1508,6 @@ class SettingsPage(QWidget):
             QMessageBox.warning(self, "Error", f"Command failed: {e}")
             self.modes_dropdown.setCurrentText(self.current_mode)
 
-    def get_stylesheet(self):
-        palette = QApplication.palette()
-        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-
-        if is_dark_mode:
-            return """
-                QWidget {
-                    background-color: transparent;
-                    color: #f0f6fc;
-                    font-size: 13px;
-                }
-                QGroupBox {
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 12px;
-                    padding: 12px;
-                    margin-top: 10px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                    color: #58a6ff;
-                }
-                QComboBox {
-                    background-color: #21262d;
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 8px;
-                    padding: 8px 12px;
-                    min-height: 20px;
-                }
-                QComboBox:hover {
-                    border-color: #58a6ff;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 20px;
-                }
-                QComboBox::down-arrow {
-                    image: none;
-                    border: 2px solid #f0f6fc;
-                    width: 6px;
-                    height: 6px;
-                    border-top: none;
-                    border-left: none;
-                    transform: rotate(45deg);
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                    color: white;
-                    border-radius: 8px;
-                    padding: 10px 16px;
-                    font-weight: 600;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                }
-                QPushButton:pressed {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #1f7a2e, stop: 1 #1a6928);
-                }
-            """
-        else:
-            return """
-                QWidget {
-                    background-color: transparent;
-                    color: #24292f;
-                    font-size: 13px;
-                }
-                QGroupBox {
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 12px;
-                    padding: 12px;
-                    margin-top: 10px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                    color: #0969da;
-                }
-                QComboBox {
-                    background-color: #ffffff;
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 8px;
-                    padding: 8px 12px;
-                    min-height: 20px;
-                }
-                QComboBox:hover {
-                    border-color: #0969da;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 20px;
-                }
-                QComboBox::down-arrow {
-                    image: none;
-                    border: 2px solid #24292f;
-                    width: 6px;
-                    height: 6px;
-                    border-top: none;
-                    border-left: none;
-                    transform: rotate(45deg);
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2da44e, stop: 1 #238636);
-                    color: white;
-                    border-radius: 8px;
-                    padding: 10px 16px;
-                    font-weight: 600;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #2da44e);
-                }
-                QPushButton:pressed {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                }
-            """
-
 
 class MainWindow(QMainWindow):
 
@@ -1419,8 +1515,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"PyWarp {CURRENT_VERSION}")
 
+        self.color_icon = QIcon(":/logo.png")
+        self.gray_icon = QIcon(":/logo_gray.png")
+
+        ThemeManager.apply()
+
         try:
-            self.setWindowIcon(QIcon(":/logo.png"))
+            self.setWindowIcon(self.color_icon)
         except:
             self.setWindowIcon(QIcon())
 
@@ -1428,16 +1529,11 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.Window)
         self.current_error_box = None
 
-        self.setup_tray()
-
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(10)
-
-        palette = QApplication.palette()
-        self.is_dark_mode = palette.color(QPalette.Window).lightness() < 128
 
         # Status frame
         status_frame = QFrame()
@@ -1502,20 +1598,6 @@ class MainWindow(QMainWindow):
         self.stats_table.setSelectionMode(QAbstractItemView.NoSelection)
         self.stats_table.setFocusPolicy(Qt.NoFocus)
         self.stats_table.setMouseTracking(False)
-        self.stats_table.setStyleSheet("""
-            QTableWidget {
-                font-family: 'Segoe UI';
-                font-size: 12pt;
-                font-weight: normal;
-            }
-            QTableWidget::item:hover {
-                background-color: transparent;
-            }
-            QTableWidget::item:selected {
-                background-color: transparent;
-                color: inherit;
-            }
-        """)
 
         stats_labels = [
             "Protocol", "IPv4 Endpoint", "IPv6 Endpoint", "Last Handshake",
@@ -1532,7 +1614,9 @@ class MainWindow(QMainWindow):
         self.settings_handler.start()
         settings_widget = SettingsPage(settings_handler=self.settings_handler)
         self.stacked_widget.addWidget(settings_widget)
-        self.silent_mode = self.settings_handler.get("silent_mode", 'false')
+        self.silent_mode = to_bool(self.settings_handler.get("silent_mode", False))
+
+        self.setup_tray()
 
         # Buttons
         for idx, btn_text in enumerate(["Network Stats", "Settings", "Protocol"]):
@@ -1564,7 +1648,6 @@ class MainWindow(QMainWindow):
         self.stats_checker.stats_signal.connect(self.update_stats_display)
         self.stats_checker.start()
 
-        self.setStyleSheet(self.get_styles())
 
     def closeEvent(self, event):
         msg_box = QMessageBox(self)
@@ -1612,16 +1695,44 @@ class MainWindow(QMainWindow):
 
     def setup_tray(self):
         try:
-            self.tray_icon = QSystemTrayIcon(QIcon(":/logo.png"), self)
+            self.tray_icon = QSystemTrayIcon(self.gray_icon, self)
         except:
             self.tray_icon = QSystemTrayIcon(QIcon(), self)
 
         self.tray_icon.setToolTip("PyWarp - CloudFlare Warp GUI")
         tray_menu = QMenu(self)
-
         show_action = QAction("Show App", self)
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
+        tray_menu.addSeparator()
+
+        # Connect/Disconnect Action
+        self.toggle_connection_action = QAction("Connect", self)
+        self.toggle_connection_action.triggered.connect(self.toggle_connection_from_tray)
+        tray_menu.addAction(self.toggle_connection_action)
+
+        # Silent Mode Action
+        self.silent_mode_action = QAction("Silent Mode", self, checkable=True)
+        self.silent_mode_action.setChecked(bool(self.silent_mode))
+        self.silent_mode_action.toggled.connect(self.toggle_silent_mode)
+        tray_menu.addAction(self.silent_mode_action)
+
+        # Modes Submenu
+        modes_menu = QMenu("Set Mode", self)
+        self.modes_group = QActionGroup(self)
+        self.modes_group.setExclusive(True)
+        modes_list = ["warp", "doh", "warp+doh", "dot", "warp+dot", "proxy", "tunnel_only"]
+        current_mode = self.settings_handler.get("mode", "warp")
+
+        for mode in modes_list:
+            action = QAction(mode, self, checkable=True)
+            action.setChecked(mode == current_mode)
+            action.triggered.connect(lambda checked, m=mode: self.set_warp_mode(m))
+            self.modes_group.addAction(action)
+            modes_menu.addAction(action)
+
+        tray_menu.addMenu(modes_menu)
+        tray_menu.addSeparator()
 
         help_menu = tray_menu.addMenu("Help")
 
@@ -1646,6 +1757,51 @@ class MainWindow(QMainWindow):
             self.showNormal()
             self.raise_()
             self.activateWindow()
+
+    def toggle_connection_from_tray(self):
+        self.toggle_switch.power_button.click()
+
+    def toggle_silent_mode(self, checked: bool):
+        self.silent_mode = bool(checked)
+        self.settings_handler.save_settings("silent_mode", self.silent_mode)
+
+    def set_warp_mode(self, selected_mode):
+        current_mode = self.settings_handler.get("mode", "warp")
+        if selected_mode == current_mode:
+            return
+
+        if selected_mode == "proxy":
+            port_str, ok = QInputDialog.getText(self, "Proxy Port Required",
+                                                "Enter proxy port (1–65535):")
+            if not ok: return
+            try:
+                port = int(port_str)
+                if not (1 <= port <= 65535): raise ValueError
+                set_port_cmd = run_warp_command("warp-cli", "proxy", "port", str(port))
+                if set_port_cmd.returncode != 0:
+                    QMessageBox.warning(self, "Port Set Failed",
+                                        f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}")
+                    return
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Port", "Please enter a valid port number.")
+                return
+
+        try:
+            cmd = run_warp_command("warp-cli", "mode", selected_mode)
+            if cmd.returncode == 0:
+                self.settings_handler.save_settings("mode", selected_mode)
+                self.tray_icon.showMessage("Mode Changed", f"WARP mode set to: {selected_mode}", self.color_icon)
+                settings_widget = self.stacked_widget.widget(1)  # index where SettingsPage is
+                if isinstance(settings_widget, SettingsPage):
+                    settings_widget.modes_dropdown.setCurrentText(selected_mode)
+                for action in self.modes_group.actions():
+                    if action.text() == selected_mode:
+                        action.setChecked(True)
+                        break
+            else:
+                QMessageBox.warning(self, "Error", f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Command failed: {e}")
 
     def parse_with_unit(self, value: str):
         match = re.match(r"([\d.]+)\s*([A-Za-z]*)", value.strip())
@@ -1685,6 +1841,11 @@ class MainWindow(QMainWindow):
         animation.finished.connect(lambda: self._animations.remove(animation))
 
     def update_stats_display(self, stats_list):
+        if hasattr(self, "_animations"):
+            for anim in self._animations[:]:
+                anim.stop()
+            self._animations.clear()
+
         if not stats_list:
             for row in range(8):
                 self.stats_table.setItem(row, 1, QTableWidgetItem(""))
@@ -1806,6 +1967,13 @@ class MainWindow(QMainWindow):
         threading.Thread(target=check_status, daemon=True).start()
 
     def update_status(self, status):
+        if status == 'Connected':
+            self.tray_icon.setIcon(self.color_icon)
+            self.toggle_connection_action.setText("Disconnect")
+        else:
+            self.tray_icon.setIcon(self.gray_icon)
+            self.toggle_connection_action.setText("Connect")
+
         status_messages = {
             'Connected': "Status: <span style='color: green; font-weight: bold;'>Connected</span>",
             'Disconnected': "Status: <span style='color: red; font-weight: bold;'>Disconnected</span>",
@@ -1847,8 +2015,9 @@ class MainWindow(QMainWindow):
         self.ip_label.setText(f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
 
     def show_critical_error(self, title, message):
-        if self.silent_mode == 'true':
+        if self.silent_mode:
             print(f"{title}: {message}")
+            return
         else:
             self.activateWindow()
             self.raise_()
@@ -1891,174 +2060,11 @@ class MainWindow(QMainWindow):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
 
-    def get_styles(self):
-        if self.is_dark_mode:
-            return """
-                QMainWindow { 
-                    background-color: #0d1117; 
-                    color: #f0f6fc;
-                }
-                #statusFrame { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #161b22, stop: 1 #0d1117);
-                    border: 1px solid #30363d;
-                    border-radius: 12px; 
-                    padding: 12px;
-                    margin: 3px;
-                }
-                QPushButton { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                    color: white; 
-                    padding: 10px 16px; 
-                    border-radius: 8px; 
-                    border: none;
-                    font-weight: 600;
-                    font-size: 13px;
-                    min-height: 14px;
-                }
-                QPushButton:hover { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                    transform: translateY(-1px);
-                }
-                QPushButton:pressed {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #1f7a2e, stop: 1 #1a6928);
-                }
-                QPushButton[active="true"] { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                    border: 2px solid #58a6ff;
-                }
-                QLabel { 
-                    font-size: 14px; 
-                    color: #f0f6fc; 
-                    font-weight: 500;
-                }
-                QStackedWidget { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #161b22, stop: 1 #0d1117);
-                    border: 1px solid #30363d;
-                    border-radius: 12px; 
-                    padding: 16px;
-                    margin: 3px;
-                }
-                QTableWidget {
-                    background-color: #0d1117;
-                    alternate-background-color: #161b22;
-                    color: #f0f6fc;
-                    gridline-color: #30363d;
-                    border: 1px solid #30363d;
-                    border-radius: 8px;
-                }
-                QTableWidget::item {
-                    padding: 8px;
-                    border-bottom: 1px solid #21262d;
-                }
-                QHeaderView::section {
-                    background: #21262d;
-                    color: #f0f6fc;
-                    font-weight: 600;
-                    padding: 10px;
-                    border: none;
-                    border-right: 1px solid #30363d;
-                }
-            """
-        else:
-            return """
-                QMainWindow { 
-                    background-color: #fafbfc; 
-                    color: #24292f;
-                }
-                #statusFrame { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    border: 1px solid #d1d9e0;
-                    border-radius: 12px; 
-                    padding: 12px;
-                    margin: 3px;
-                }
-                QPushButton { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2da44e, stop: 1 #238636);
-                    color: white; 
-                    padding: 10px 16px; 
-                    border-radius: 8px; 
-                    border: none;
-                    font-weight: 600;
-                    font-size: 13px;
-                    min-height: 14px;
-                }
-                QPushButton:hover { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #2da44e);
-                    transform: translateY(-1px);
-                }
-                QPushButton:pressed {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                }
-                QPushButton[active="true"] { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #2da44e);
-                    border: 2px solid #0969da;
-                }
-                QLabel { 
-                    font-size: 14px; 
-                    color: #24292f; 
-                    font-weight: 500;
-                }
-                QStackedWidget { 
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    border: 1px solid #d1d9e0;
-                    border-radius: 12px; 
-                    padding: 16px;
-                    margin: 3px;
-                }
-                QTableWidget {
-                    background-color: #ffffff;
-                    alternate-background-color: #f6f8fa;
-                    color: #24292f;
-                    gridline-color: #d1d9e0;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 8px;
-                }
-                QTableWidget::item {
-                    padding: 8px;
-                    border-bottom: 1px solid #eaeef2;
-                }
-                QHeaderView::section {
-                    background: #f6f8fa;
-                    color: #24292f;
-                    font-weight: 600;
-                    padding: 10px;
-                    border: none;
-                    border-right: 1px solid #d1d9e0;
-                }
-            """
-
     def set_protocol(self):
         dlg = QMessageBox(self)
         dlg.setWindowTitle("Change The Protocol")
         dlg.setText("Which protocol do you want to use?")
         dlg.setIcon(QMessageBox.Question)
-
-        base_styles = self.get_styles()
-        dialog_styles = """
-                QLabel {{
-                    color: {label_color};
-                    font-family: Segoe UI;
-                    font-size: 14px;
-                }}
-                QMessageBox {{
-                    background-color: {message_bg_color};
-                }}
-            """.format(
-            label_color="white" if self.is_dark_mode else "black",
-            message_bg_color="#222222" if self.is_dark_mode else "#FFFFFF")
-        dlg.setStyleSheet(base_styles + dialog_styles)
 
         custom_button1 = dlg.addButton("WireGuard", QMessageBox.ActionRole)
         custom_button2 = dlg.addButton("MASQUE", QMessageBox.ActionRole)
@@ -2201,7 +2207,7 @@ class WarpInstaller:
 
     def _is_warp_svc_running_windows(self):
         try:
-            out = subprocess.check_output(["tasklist"], text=True)
+            out = subprocess.check_output(["tasklist"], text=True, **safe_subprocess_args())
             return "warp-svc.exe" in out
         except Exception:
             return False
@@ -2213,7 +2219,8 @@ class WarpInstaller:
                 try:
                     subprocess.Popen([str(warp_svc)],
                                      stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL)
+                                     stderr=subprocess.DEVNULL,
+                                     **safe_subprocess_args())
                 except Exception as e:
                     QMessageBox.critical(self.parent, "Warp Error",
                                          f"Failed to start warp-svc: {e}")
@@ -2231,7 +2238,8 @@ class WarpInstaller:
         try:
             os_name = platform.system()
             if os_name == "Windows":
-                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"], check=True, timeout=600)
+                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"],
+                               check=True, timeout=600, **safe_subprocess_args())
             elif os_name == "Darwin":
                 subprocess.run(["open", file_path], check=True, timeout=60)
             else:
@@ -2283,7 +2291,7 @@ class WarpInstaller:
         for cmd in commands:
             subprocess.run(cmd, check=True, timeout=300)
 
-        distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60, text=True).strip()
+        distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60, text=True, **safe_subprocess_args()).strip()
         repo_cmd = [
             "bash", "-c",
             f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
