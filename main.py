@@ -251,8 +251,8 @@ def load_saved_language(app, settings_handler):
     return load_language(app, saved_lang, settings_handler)
 
 def restart_app():
-    python = sys.executable
-    os.execl(python, python, *sys.argv)
+    subprocess.Popen([sys.executable] + sys.argv)
+    sys.exit(0)
 # -----------------------------------------------------
 
 class ThemeManager:
