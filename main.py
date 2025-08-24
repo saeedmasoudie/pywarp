@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import webbrowser
 import requests
@@ -166,12 +167,24 @@ def show_update_result(message):
 
 
 def check_existing_instance():
+    """Prevents double-running, but allows for a graceful restart."""
     socket = QLocalSocket()
     socket.connectToServer(SERVER_NAME)
-    if socket.waitForConnected(500):
-        logger.info("Tried to double run the application: closed before start")
-        sys.exit(1)
 
+    if socket.waitForConnected(500):
+        if "--restarting" in sys.argv:
+            for i in range(10):
+                time.sleep(0.5)  # Wait 500ms
+                socket.connectToServer(SERVER_NAME)
+                if not socket.waitForConnected(100):
+                    logger.info("Graceful restart successful: old instance closed.")
+                    return
+
+            logger.warning("Restart failed: The previous instance did not close in time.")
+            sys.exit(1)
+        else:
+            logger.info("Application is already running. Exiting new instance.")
+            sys.exit(1)
 
 def get_log_path():
     if sys.platform.startswith("win"):
@@ -216,23 +229,32 @@ def setup_logger():
 def get_log_path():
     return LOG_PATH
 
-
 def restart_app():
     try:
-        if getattr(sys, 'frozen', False):
-            executable = sys.argv[0]
-            args = sys.argv[1:]
-            subprocess.Popen([executable] + args)
-        else:
-            executable = sys.executable
-            args = sys.argv
-            subprocess.Popen([executable] + args)
+        args = sys.argv[1:]
+        command = []
 
+        if getattr(sys, 'frozen', False):
+            command = [sys.argv[0]] + args
+        else:
+            command = [sys.executable] + sys.argv
+
+        command.append("--restarting")
+
+        kwargs = {}
+        if platform.system() == "Windows":
+            DETACHED_PROCESS = 0x00000008
+            kwargs['creationflags'] = DETACHED_PROCESS
+
+        executable_dir = os.path.dirname(os.path.abspath(command[0]))
+        kwargs['cwd'] = executable_dir
+
+        subprocess.Popen(command, **kwargs)
         sys.exit(0)
+
     except Exception as e:
         print(f"Failed to restart application: {e}")
         sys.exit(1)
-
 
 def load_language(app, lang_code="en", settings_handler=None):
     if hasattr(app, "_translator") and app._translator:
