@@ -1,45 +1,41 @@
-name: Build PyWarp Executables
+name: Build & Release PyWarp
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   build-windows:
-    name: Build PyWarp Windows
+    name: Build Windows
     runs-on: windows-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set Up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
       - name: Read Version
         id: version
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Python & Dependencies
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
 
-      - name: Build Executable (Windows)
+      - name: Build Executable
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $output = "pywarp-windows-v$version.exe"
-          $env:NUITKA_DEPENDENCY_SCAN = "1"
-
-          python -m nuitka `
-            main.py `
+          python -m nuitka main.py `
             --standalone `
             --onefile `
             --disable-console `
@@ -60,19 +56,18 @@ jobs:
             --remove-output `
             --assume-yes-for-downloads
 
-      - name: Zip Executable (Windows)
+      - name: Zip Executable
         run: |
           cd dist
           powershell Compress-Archive -Path pywarp-windows-v${{ steps.version.outputs.version }}.exe -DestinationPath pywarp-windows-v${{ steps.version.outputs.version }}.zip
 
-      - name: Upload ZIP (Windows)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: pywarp-windows-v${{ steps.version.outputs.version }}
+          name: pywarp-windows
           path: dist/pywarp-windows-v${{ steps.version.outputs.version }}.zip
 
   build-linux-macos:
-    name: Build PyWarp Linux/macOS
+    name: Build Linux/macOS
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -81,51 +76,45 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set Up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
       - name: Read Version
         id: version
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Python & Dependencies
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
 
-      - name: Build Executable (Linux/macOS)
-        shell: bash
+      - name: Build Executable
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           PLATFORM="${{ matrix.os }}"
           OUTPUT="pywarp-${PLATFORM}-v$VERSION"
-
           FLAGS="--standalone --onefile --remove-output --disable-console --enable-plugin=pyside6"
           if [[ "$PLATFORM" == "macos-latest" ]]; then
             FLAGS+=" --macos-app-icon=assets/logo.icns --macos-create-app-bundle"
           fi
-
-          python -m nuitka \
-            main.py \
-            $FLAGS \
+          python -m nuitka main.py $FLAGS \
             --include-data-dir=assets=assets \
             --output-filename="$OUTPUT"
 
-      - name: Zip Executable (Linux/macOS)
+      - name: Zip Executable
         run: zip pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}.zip pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
 
-      - name: Upload ZIP (Linux/macOS)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
+          name: pywarp-${{ matrix.os }}
           path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}.zip
 
   release:
-    name: Upload ZIPs to Existing Release
+    name: Create Release
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux-macos]
     steps:
@@ -133,27 +122,34 @@ jobs:
 
       - name: Read Version
         id: version
-        shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-zips
+          path: artifacts
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install -y gh
-
-      - name: Upload ZIPs to Release
+      - name: Extract Changelog for Release
+        id: changelog
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="v$VERSION"
-          echo "Uploading ZIPs to release $TAG..."
+          VERSION="v${{ steps.version.outputs.version }}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## " ver {flag=1; next}
+            flag && /^## / {exit}
+            flag {print}
+          ' CHANGELOG.md > RELEASE_NOTES.md
 
-          gh release upload "$TAG" \
-            release-zips/pywarp-windows-v$VERSION/pywarp-windows-v$VERSION.zip \
-            release-zips/pywarp-ubuntu-latest-v$VERSION/pywarp-ubuntu-latest-v$VERSION.zip \
-            release-zips/pywarp-macos-latest-v$VERSION/pywarp-macos-latest-v$VERSION.zip \
-            --clobber
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: PyWarp v${{ steps.version.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/pywarp-windows/*.zip
+            artifacts/pywarp-ubuntu-latest/*.zip
+            artifacts/pywarp-macos-latest/*.zip
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
