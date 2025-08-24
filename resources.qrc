@@ -3,5 +3,6 @@
     <qresource>
         <file>logo.png</file>
         <file>logo_gray.png</file>
+        <file>translations/fa.qm</file>
     </qresource>
 </RCC>
