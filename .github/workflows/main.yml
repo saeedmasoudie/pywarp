@@ -3,6 +3,9 @@ name: Build PyWarp Executables
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build PyWarp Windows
@@ -139,7 +142,7 @@ jobs:
           path: release-zips
 
       - name: Install GitHub CLI
-        run: sudo apt-get install gh
+        run: sudo apt-get install -y gh
 
       - name: Upload ZIPs to Release
         run: |
