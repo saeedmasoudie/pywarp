@@ -216,6 +216,24 @@ def setup_logger():
 def get_log_path():
     return LOG_PATH
 
+
+def restart_app():
+    try:
+        if getattr(sys, 'frozen', False):
+            executable = sys.argv[0]
+            args = sys.argv[1:]
+            subprocess.Popen([executable] + args)
+        else:
+            executable = sys.executable
+            args = sys.argv
+            subprocess.Popen([executable] + args)
+
+        sys.exit(0)
+    except Exception as e:
+        print(f"Failed to restart application: {e}")
+        sys.exit(1)
+
+
 def load_language(app, lang_code="en", settings_handler=None):
     if hasattr(app, "_translator") and app._translator:
         app.removeTranslator(app._translator)
@@ -245,14 +263,6 @@ def load_language(app, lang_code="en", settings_handler=None):
         logger.warning(f"Failed to load translation file from resources for {lang_code}")
         return None
 
-
-def load_saved_language(app, settings_handler):
-    saved_lang = settings_handler.get("language", "en")
-    return load_language(app, saved_lang, settings_handler)
-
-def restart_app():
-    subprocess.Popen([sys.executable] + sys.argv)
-    sys.exit(0)
 # -----------------------------------------------------
 
 class ThemeManager:
@@ -1622,7 +1632,14 @@ class SettingsPage(QWidget):
     def change_language(self):
         lang_code = self.language_dropdown.currentData()
         app = QApplication.instance()
-        load_language(app, lang_code, self.settings_handler)
+
+        if self.settings_handler:
+            self.settings_handler.save_settings("language", lang_code)
+
+        QMessageBox.information(self,
+                                self.tr("Language Change"),
+                                self.tr("The application will now restart to apply the new language settings."))
+
         restart_app()
 
     def change_font(self, font: QFont):
@@ -2617,7 +2634,7 @@ if __name__ == "__main__":
 
     settings_handler = SettingsHandler()
     settings_handler.start()
-    load_saved_language(app, settings_handler)
+    load_language(app, settings_handler)
 
     try:
         app.setWindowIcon(QIcon(":/logo.png"))
