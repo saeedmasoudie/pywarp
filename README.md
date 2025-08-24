@@ -20,11 +20,13 @@
 **Completed:**
 - ✅ Major Fixes
 - ✅ Rework on Theme
+- ✅ Multi Language support
+- ✅ Change Settings Section
 
 **Planned / In Progress:**
 - 🔁 Add Split Tunnel Future
-- 🛠 Change Settings Section
 - 🔗 Add Proxy Chain
+- 🌐 Add Support for Russian and Chinese language
 
 ---
 
