@@ -117,7 +117,7 @@ jobs:
           path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
 
   release:
-    name: Release PyWarp
+    name: Upload Assets to Existing Release
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux-macos]
     steps:
@@ -136,10 +136,11 @@ jobs:
       - name: Install GitHub CLI
         run: sudo apt-get install gh
 
-      - name: Create Draft Release
+      - name: Upload Assets to Release
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v$VERSION"
-          gh release create "$TAG" release-assets/** --title "PyWarp v$VERSION" --draft
+          echo "Uploading assets to release $TAG..."
+          gh release upload "$TAG" release-assets/** --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
