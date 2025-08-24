@@ -1,10 +1,15 @@
-name: Build PyWarp Executables
+name: Build PyWarp v${{ inputs.version }}
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build'
+        required: true
 
 jobs:
   build-windows:
+    name: Build PyWarp Windows v${{ inputs.version }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
@@ -14,23 +19,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Read Version
-        id: version
-        shell: bash
-        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
       - name: Install Python & Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
-          python -m nuitka --version
-          python --version
 
       - name: Build Executable (Windows)
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.version }}"
+          $version = "${{ inputs.version }}"
           $output = "pywarp-windows-v$version.exe"
           $env:NUITKA_DEPENDENCY_SCAN = "1"
 
@@ -56,18 +54,14 @@ jobs:
             --remove-output `
             --assume-yes-for-downloads
 
-          if (!(Test-Path "dist\\$output")) {
-            Write-Host "::error::Windows .exe not created"
-            exit 1
-          }
-
       - name: Upload Executable (Windows)
         uses: actions/upload-artifact@v4
         with:
-          name: pywarp-windows
-          path: dist/pywarp-windows-v${{ steps.version.outputs.version }}.exe
+          name: pywarp-windows-v${{ inputs.version }}
+          path: dist/pywarp-windows-v${{ inputs.version }}.exe
 
   build-linux-macos:
+    name: Build PyWarp ${{ matrix.os }} v${{ inputs.version }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -81,11 +75,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Read Version
-        id: version
-        shell: bash
-        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
       - name: Install Python & Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -95,7 +84,7 @@ jobs:
       - name: Build Executable (Linux/macOS)
         shell: bash
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ inputs.version }}"
           PLATFORM="${{ matrix.os }}"
           OUTPUT="pywarp-${PLATFORM}-v$VERSION"
 
@@ -111,10 +100,48 @@ jobs:
             --output-filename="$OUTPUT"
 
       - name: Make Executable (Linux/macOS)
-        run: chmod +x pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
+        run: chmod +x pywarp-${{ matrix.os }}-v${{ inputs.version }}
 
       - name: Upload Executable (Linux/macOS)
         uses: actions/upload-artifact@v4
         with:
-          name: pywarp-${{ matrix.os }}
-          path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
+          name: pywarp-${{ matrix.os }}-v${{ inputs.version }}
+          path: pywarp-${{ matrix.os }}-v${{ inputs.version }}
+
+  release:
+    name: Release PyWarp v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux-macos]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Install GitHub CLI
+        run: sudo apt-get install gh
+
+      - name: Check if Tag Exists
+        id: check_tag
+        run: |
+          TAG="v${{ inputs.version }}"
+          EXISTS=$(gh release view "$TAG" --json tagName --jq '.tagName' || echo "")
+          echo "exists=$EXISTS" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create or Update Release
+        run: |
+          VERSION="${{ inputs.version }}"
+          TAG="v$VERSION"
+          if [ "${{ steps.check_tag.outputs.exists }}" = "$TAG" ]; then
+            echo "Updating existing release..."
+            gh release upload "$TAG" release-assets/** --clobber
+          else
+            echo "Creating new draft release..."
+            gh release create "$TAG" release-assets/** --title "PyWarp v$VERSION" --draft
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
