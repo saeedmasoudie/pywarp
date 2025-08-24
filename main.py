@@ -229,33 +229,6 @@ def setup_logger():
 def get_log_path():
     return LOG_PATH
 
-def restart_app():
-    try:
-        args = sys.argv[1:]
-        command = []
-
-        if getattr(sys, 'frozen', False):
-            command = [sys.argv[0]] + args
-        else:
-            command = [sys.executable] + sys.argv
-
-        command.append("--restarting")
-
-        kwargs = {}
-        if platform.system() == "Windows":
-            DETACHED_PROCESS = 0x00000008
-            kwargs['creationflags'] = DETACHED_PROCESS
-
-        executable_dir = os.path.dirname(os.path.abspath(command[0]))
-        kwargs['cwd'] = executable_dir
-
-        subprocess.Popen(command, **kwargs)
-        sys.exit(0)
-
-    except Exception as e:
-        print(f"Failed to restart application: {e}")
-        sys.exit(1)
-
 def load_language(app, lang_code="en", settings_handler=None):
     if hasattr(app, "_translator") and app._translator:
         app.removeTranslator(app._translator)
@@ -284,6 +257,10 @@ def load_language(app, lang_code="en", settings_handler=None):
     else:
         logger.warning(f"Failed to load translation file from resources for {lang_code}")
         return None
+
+def load_saved_language(app, settings_handler):
+    saved_lang = settings_handler.get("language", "en")
+    return load_language(app, saved_lang, settings_handler)
 
 # -----------------------------------------------------
 
@@ -1654,15 +1631,12 @@ class SettingsPage(QWidget):
     def change_language(self):
         lang_code = self.language_dropdown.currentData()
         app = QApplication.instance()
-
-        if self.settings_handler:
-            self.settings_handler.save_settings("language", lang_code)
+        load_language(app, lang_code, self.settings_handler)
 
         QMessageBox.information(self,
                                 self.tr("Language Change"),
-                                self.tr("The application will now restart to apply the new language settings."))
+                                self.tr("To apply the new language Please restart the app."))
 
-        restart_app()
 
     def change_font(self, font: QFont):
         font_family = font.family()
@@ -2656,7 +2630,7 @@ if __name__ == "__main__":
 
     settings_handler = SettingsHandler()
     settings_handler.start()
-    load_language(app, settings_handler)
+    load_saved_language(app, settings_handler)
 
     try:
         app.setWindowIcon(QIcon(":/logo.png"))
