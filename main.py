@@ -1187,7 +1187,7 @@ class AdvancedSettings(QDialog):
     def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Advanced Settings"))
-        self.setFixedSize(460, 460)
+        self.setFixedSize(800, 600)
 
         self.settings_handler = settings_handler
         self.current_endpoint = self.settings_handler.get("custom_endpoint", "")
@@ -1197,9 +1197,8 @@ class AdvancedSettings(QDialog):
         exclusion_layout = QVBoxLayout()
 
         self.item_list = QListWidget()
-        self.item_list.setMinimumHeight(150)
-        self.item_list.setMaximumHeight(150)
-        self.item_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.item_list.setMinimumHeight(180)
+        self.item_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         exclusion_layout.addWidget(self.item_list)
 
         button_layout = QHBoxLayout()
@@ -1227,7 +1226,7 @@ class AdvancedSettings(QDialog):
         self.endpoint_input = QComboBox()
         self.endpoint_input.setEditable(True)
         self.endpoint_input.setInsertPolicy(QComboBox.InsertAtTop)
-        self.endpoint_input.setMinimumWidth(250)
+        self.endpoint_input.setMinimumWidth(200)
 
         self.load_endpoint_history()
         self.endpoint_input.setPlaceholderText(self.tr("Set Custom Endpoint"))
@@ -1244,18 +1243,88 @@ class AdvancedSettings(QDialog):
         endpoint_layout.addWidget(self.endpoint_reset_button)
         endpoint_group.setLayout(endpoint_layout)
 
-        # Coming Soon
+        # MASQUE Options
+        masque_group = QGroupBox(self.tr("MASQUE Options"))
+        masque_layout = QHBoxLayout()
+
+        self.masque_input = QComboBox()
+        self.masque_input.setMinimumWidth(200)
+
+        options = [
+            ("h3-only", self.tr("Use only HTTP/3 (fastest, best for modern networks)")),
+            ("h2-only", self.tr("Force HTTP/2 (may help in restrictive networks)")),
+            ("h3-with-h2-fallback", self.tr("Use HTTP/3, fallback to HTTP/2 if needed")),
+        ]
+
+        for value, desc in options:
+            self.masque_input.addItem(value, value)
+            idx = self.masque_input.count() - 1
+            self.masque_input.setItemData(idx, desc, Qt.ToolTipRole)
+
+        current_masque = self.settings_handler.get("masque_option", "")
+        if current_masque:
+            index = self.masque_input.findData(current_masque)
+            if index != -1:
+                self.masque_input.setCurrentIndex(index)
+
+        self.masque_set_button = QPushButton(self.tr("Set"))
+        self.masque_set_button.clicked.connect(self.save_masque_option)
+
+        self.masque_reset_button = QPushButton(self.tr("Reset"))
+        self.masque_reset_button.clicked.connect(self.reset_masque_option)
+
+        masque_layout.addWidget(self.masque_input)
+        masque_layout.addWidget(self.masque_set_button)
+        masque_layout.addWidget(self.masque_reset_button)
+        masque_group.setLayout(masque_layout)
+
+        # App Excludes (coming soon)
         coming_soon_group = QGroupBox(self.tr("App Excludes"))
         coming_soon_layout = QVBoxLayout()
         coming_soon_layout.addWidget(QLabel(self.tr("Coming Soon...")))
         coming_soon_group.setLayout(coming_soon_layout)
 
-        layout = QVBoxLayout()
-        layout.addWidget(exclusion_group)
-        layout.addWidget(endpoint_group)
-        layout.addWidget(coming_soon_group)
-        self.setLayout(layout)
+        # Main grid layout
+        grid = QGridLayout()
+        grid.addWidget(exclusion_group, 0, 0)
+        grid.addWidget(coming_soon_group, 0, 1)
+        grid.addWidget(endpoint_group, 1, 0)
+        grid.addWidget(masque_group, 1, 1)
+
+        self.setLayout(grid)
         self.update_list_view()
+
+    def save_masque_option(self):
+        option = self.masque_input.currentData()
+        if not option:
+            return
+        try:
+            result = run_warp_command("warp-cli", "tunnel", "masque-options", "set", option)
+            if result.returncode != 0:
+                error_line = result.stderr.strip().split("\n")[0]
+                QMessageBox.warning(self, self.tr("Error"), error_line)
+                return
+            self.settings_handler.save_settings("masque_option", option)
+            QMessageBox.information(self, self.tr("Saved"),
+                                    self.tr("MASQUE option set to {}.").format(option))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"),
+                                self.tr("An exception occurred: {}").format(str(e)))
+
+    def reset_masque_option(self):
+        try:
+            result = run_warp_command("warp-cli", "tunnel", "masque-options", "reset")
+            if result.returncode != 0:
+                error_line = result.stderr.strip().split("\n")[0]
+                QMessageBox.warning(self, self.tr("Error"), error_line)
+                return
+            self.settings_handler.save_settings("masque_option", "")
+            self.masque_input.setCurrentIndex(-1)
+            QMessageBox.information(self, self.tr("Reset"),
+                                    self.tr("MASQUE option reset successfully."))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"),
+                                self.tr("Reset failed: {}").format(e))
 
     def open_exclusion_manager(self):
         exclusion_manager = ExclusionManager(self)
@@ -1383,143 +1452,6 @@ class AdvancedSettings(QDialog):
             QMessageBox.information(self, self.tr("Reset"), self.tr("Endpoint reset successfully."))
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Reset failed: {}").format(e))
-
-    def get_stylesheet(self):
-        palette = self.palette()
-        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-
-        if is_dark_mode:
-            return """
-                QDialog {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0d1117, stop: 1 #161b22);
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 12px;
-                }
-                QGroupBox {
-                    border: 1px solid #30363d;
-                    border-radius: 8px;
-                    padding: 12px;
-                    font-weight: 600;
-                    font-size: 14px;
-                    color: #58a6ff;
-                    margin-top: 8px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                }
-                QComboBox, QLineEdit {
-                    background-color: #21262d;
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 6px;
-                    padding: 8px;
-                    font-size: 13px;
-                }
-                QComboBox:hover, QLineEdit:hover {
-                    border-color: #58a6ff;
-                }
-                QListWidget {
-                    background-color: #0d1117;
-                    color: #f0f6fc;
-                    border: 1px solid #30363d;
-                    border-radius: 6px;
-                    font-size: 13px;
-                }
-                QListWidget::item {
-                    padding: 6px;
-                    border-bottom: 1px solid #21262d;
-                }
-                QListWidget::item:hover {
-                    background-color: #161b22;
-                }
-                QListWidget::item:selected {
-                    background-color: #1f6feb;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #238636, stop: 1 #1f7a2e);
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    border: none;
-                    font-weight: 600;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                }
-            """
-        else:
-            return """
-                QDialog {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 12px;
-                }
-                QGroupBox {
-                    border: 1px solid #d1d9e0;
-                    border-radius: 8px;
-                    padding: 12px;
-                    font-weight: 600;
-                    font-size: 14px;
-                    color: #0969da;
-                    margin-top: 8px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                }
-                QComboBox, QLineEdit {
-                    background-color: #ffffff;
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 6px;
-                    padding: 8px;
-                    font-size: 13px;
-                }
-                QComboBox:hover, QLineEdit:hover {
-                    border-color: #0969da;
-                }
-                QListWidget {
-                    background-color: #ffffff;
-                    color: #24292f;
-                    border: 1px solid #d1d9e0;
-                    border-radius: 6px;
-                    font-size: 13px;
-                }
-                QListWidget::item {
-                    padding: 6px;
-                    border-bottom: 1px solid #eaeef2;
-                }
-                QListWidget::item:hover {
-                    background-color: #f6f8fa;
-                }
-                QListWidget::item:selected {
-                    background-color: #dbeafe;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2da44e, stop: 1 #238636);
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    border: none;
-                    font-weight: 600;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #2da44e);
-                }
-            """
 
 
 class SettingsPage(QWidget):
@@ -2501,15 +2433,13 @@ class WarpInstaller:
         if not self._is_warp_svc_running_windows():
             _, warp_svc = self._portable_paths()
             if warp_svc.exists():
-                try:
-                    subprocess.Popen([str(warp_svc)],
-                                     stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL,
-                                     **safe_subprocess_args())
-                except Exception as e:
-                    QMessageBox.critical(self.parent, self.tr("Warp Error"),
-                                         self.tr("Failed to start warp-svc: {}").format(e))
-                    raise
+                subprocess.Popen([str(warp_svc)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 **safe_subprocess_args())
+                for _ in range(5):
+                    time.sleep(1)
+                    if self._is_warp_svc_running_windows():
+                        return
+                raise RuntimeError("warp-svc failed to start")
 
     def on_download_finished(self, success, file_path):
         self.progress_dialog.close()
@@ -2544,12 +2474,22 @@ class WarpInstaller:
     def install_linux_package(self):
         msg_box = QMessageBox(self.parent)
         msg_box.setWindowTitle(self.tr("Linux Installation"))
-        msg_box.setText(self.tr("WARP will be installed via your system's package manager.\n\nDo you want to proceed?"))
-        install_button = msg_box.addButton(self.tr("Install"), QMessageBox.AcceptRole)
+        msg_box.setText(self.tr(
+            "Automatic installation is only partially supported on Linux.\n\n"
+            "For most reliable results, please follow the official Cloudflare guide:\n"
+            "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/\n\n"
+            "Do you want PyWarp to try installing via your package manager?"
+        ))
+        install_button = msg_box.addButton(self.tr("Try Auto Install"), QMessageBox.AcceptRole)
+        manual_button = msg_box.addButton(self.tr("Open Manual Guide"), QMessageBox.ActionRole)
         cancel_button = msg_box.addButton(QMessageBox.Cancel)
         msg_box.exec()
 
-        if msg_box.clickedButton() != install_button:
+        clicked = msg_box.clickedButton()
+        if clicked == manual_button:
+            webbrowser.open(self.get_manual_download_page())
+            return
+        if clicked != install_button:
             sys.exit()
 
         try:
@@ -2559,10 +2499,14 @@ class WarpInstaller:
             elif pm in ("yum", "dnf"):
                 self.install_with_yum_dnf(pm)
             else:
-                QMessageBox.critical(self.parent, self.tr("Unsupported"),
-                                     self.tr("Unsupported package manager for auto install."))
-                sys.exit()
+                QMessageBox.warning(self.parent, self.tr("Unsupported"),
+                                    self.tr("Your package manager is not supported for auto-install.\n"
+                                            "Please use the manual guide instead."))
+                webbrowser.open(self.get_manual_download_page())
+                return
+
             self.register_and_activate_warp()
+
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.parent, self.tr("Installation Failed"),
                                  self.tr("An error occurred:\n{}").format(e))
@@ -2643,12 +2587,12 @@ class WarpInstaller:
 
 
 if __name__ == "__main__":
+    logger, log_path = setup_logger()
+
     check_existing_instance()
     app = QApplication(sys.argv)
     server.listen(SERVER_NAME)
     atexit.register(disconnect_on_exit)
-
-    logger, log_path = setup_logger()
 
     translator = QTranslator()
     app._translator = translator
