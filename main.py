@@ -12,6 +12,7 @@ import threading
 import time
 import traceback
 import webbrowser
+import zipfile
 import requests
 import resources_rc
 from pathlib import Path
@@ -28,8 +29,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 
 CURRENT_VERSION = "1.2.2"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
-WARP_CLI_URL = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp-cli.exe"
-WARP_SVC_URL = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp-svc.exe"
+WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 
@@ -161,10 +161,8 @@ def notify_update(update_type, latest_version, current_version):
         update_thread = threading.Thread(target=update_checker.perform_portable_warp_update, daemon=True)
         update_thread.start()
 
-
 def show_update_result(message):
     QMessageBox.information(None, QCoreApplication.translate("show_update_result", "Update Status"), message)
-
 
 def check_existing_instance():
     """Prevents double-running, but allows for a graceful restart."""
@@ -185,19 +183,6 @@ def check_existing_instance():
         else:
             logger.info("Application is already running. Exiting new instance.")
             sys.exit(1)
-
-def get_log_path():
-    if sys.platform.startswith("win"):
-        base = os.getenv("APPDATA", Path.home())
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Logs"
-    else:
-        base = Path.home() / ".config"
-
-    log_dir = Path(base) / "PyWarp"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "pywarp.log"
-
 
 def setup_logger():
     global LOG_PATH
@@ -693,12 +678,22 @@ class UpdateChecker(QObject):
 
     def _get_latest_versions(self):
         try:
-            response = requests.get(GITHUB_VERSION_URL, timeout=10)
-            response.raise_for_status()
-            lines = response.text.strip().splitlines()
-            return {k.strip(): v.strip() for k, v in (line.split("=", 1) for line in lines if "=" in line)}
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error during update check: {e}")
+            r = requests.get(GITHUB_VERSION_URL, timeout=15)
+            r.raise_for_status()
+            lines = r.text.strip().splitlines()
+            versions = {}
+
+            if lines:
+                versions["pywarp"] = lines[0].strip()
+
+            for line in lines[1:]:
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    versions[key.strip()] = val.strip()
+
+            return versions
+        except Exception as e:
+            logger.error(f"Failed to fetch latest versions: {e}")
             return None
 
     def get_warp_info(self):
@@ -727,24 +722,36 @@ class UpdateChecker(QObject):
 
     def perform_portable_warp_update(self):
         try:
-            cli_path, svc_path = self.installer._portable_paths()
-            cli_temp_path = cli_path.with_suffix(".exe.tmp")
-            svc_temp_path = svc_path.with_suffix(".exe.tmp")
+            zip_path = self.installer.appdata_dir / "warp_assets.zip"
 
-            logger.info("Downloading latest warp-cli.exe...")
-            cli_response = requests.get(WARP_CLI_URL, timeout=60)
-            cli_response.raise_for_status()
-            with open(cli_temp_path, "wb") as f:
-                f.write(cli_response.content)
+            progress = QProgressDialog(self.tr("Updating portable WARP..."), self.tr("Cancel"), 0, 100, self.parent)
+            progress.setWindowTitle(self.tr("Updating"))
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setValue(0)
 
-            logger.info("Downloading latest warp-svc.exe...")
-            svc_response = requests.get(WARP_SVC_URL, timeout=60)
-            svc_response.raise_for_status()
-            with open(svc_temp_path, "wb") as f:
-                f.write(svc_response.content)
+            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+                with open(zip_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                progress.setValue(int(downloaded * 100 / total))
+                            if progress.wasCanceled():
+                                r.close()
+                                zip_path.unlink(missing_ok=True)
+                                self.update_finished.emit(self.tr("❌ Update canceled by user."))
+                                return
 
-            shutil.move(cli_temp_path, cli_path)
-            shutil.move(svc_temp_path, svc_path)
+            progress.setValue(100)
+
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(self.installer.appdata_dir)
+
+            zip_path.unlink(missing_ok=True)
 
             logger.info("Portable WARP update successful!")
             self.update_finished.emit(self.tr("✅ Portable WARP has been successfully updated!"))
@@ -754,13 +761,10 @@ class UpdateChecker(QObject):
             self.update_finished.emit(self.tr("❌ Update failed: {}").format(e))
 
     def _is_newer_version(self, latest, current):
-        try:
-            from packaging import version
-            return version.parse(latest) > version.parse(current)
-        except (ImportError, TypeError):
-            latest_parts = [int(x) for x in latest.split('.')]
-            current_parts = [int(x) for x in current.split('.')]
-            return latest_parts > current_parts
+        def parse(v):
+            return tuple(int(x) for x in v.split(".") if x.isdigit())
+
+        return parse(latest) > parse(current)
 
 
 class WarpStatusHandler(QThread):
@@ -781,7 +785,6 @@ class WarpStatusHandler(QThread):
             loop.close()
 
     async def monitor_status(self):
-        connecting_count = 0
         while self.looping:
             try:
                 process = await asyncio.create_subprocess_exec(
@@ -800,18 +803,8 @@ class WarpStatusHandler(QThread):
                     current_status = self.extract_status(status)
 
                 timeout = self.status_map.get(current_status, 5)
+                self.status_signal.emit(current_status)
 
-                if current_status == "Connecting":
-                    connecting_count += 1
-                    if connecting_count * timeout >= 15:
-                        self.previous_status = None
-                        connecting_count = 0
-                else:
-                    connecting_count = 0
-
-                if self.previous_status != current_status:
-                    self.status_signal.emit(current_status)
-                    self.previous_status = current_status
 
             except Exception as e:
                 logger.error(f"Error checking Warp status: {e}")
@@ -945,6 +938,7 @@ class SettingsHandler(QThread):
 
 class PowerButton(QWidget):
     toggled = Signal(str)
+    command_error_signal = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1031,6 +1025,7 @@ class PowerButton(QWidget):
         self.power_button.setGraphicsEffect(self.glow_effect)
 
         self.power_button.clicked.connect(self.toggle_power)
+        self.command_error_signal.connect(self.show_error_dialog)
 
         self.reset_timer = QTimer(self)
         self.reset_timer.setSingleShot(True)
@@ -1052,7 +1047,8 @@ class PowerButton(QWidget):
                 result = run_warp_command(*command)
                 if not result or result.returncode != 0:
                     error = result.stderr.strip() if result else self.tr("Unknown error")
-                    self.show_error_dialog(self.tr("Command Error"), self.tr("Failed to run command: {}").format(error))
+                    self.command_error_signal.emit(self.tr("Command Error"),
+                                                   self.tr("Failed to run command: {}").format(error))
             finally:
                 self.reset_timer.stop()
                 QTimer.singleShot(500, self.force_status_refresh)
@@ -1788,6 +1784,7 @@ class MainWindow(QMainWindow):
 
         font_name = self.settings_handler.get("font_family", QApplication.font().family())
         ThemeManager.apply(str(font_name))
+        self._last_ui_status = None
 
         try:
             self.setWindowIcon(self.color_icon)
@@ -2218,6 +2215,11 @@ class MainWindow(QMainWindow):
         threading.Thread(target=check_status, daemon=True).start()
 
     def update_status(self, status):
+        if self._last_ui_status == status:
+            return
+
+        self._last_ui_status = status
+
         if status == 'Connected':
             self.tray_icon.setIcon(self.color_icon)
             self.toggle_connection_action.setText(self.tr("Disconnect"))
@@ -2354,7 +2356,6 @@ class WarpInstaller:
         self.appdata_dir.mkdir(parents=True, exist_ok=True)
 
     def tr(self, text):
-        # Helper for translation in this non-QObject class
         return QCoreApplication.translate("WarpInstaller", text)
 
     def is_warp_installed(self):
@@ -2390,6 +2391,10 @@ class WarpInstaller:
         msg_box.setWindowTitle(self.tr("Warp Not Found"))
         msg_box.setText(self.tr("Cloudflare WARP is not installed.\n\nDo you want to install it automatically?"))
 
+        portable_button = None
+        if platform.system() == "Windows":
+            portable_button = msg_box.addButton(self.tr("Portable Install"), QMessageBox.ActionRole)
+
         auto_install_button = msg_box.addButton(self.tr("Auto Install"), QMessageBox.AcceptRole)
         manual_button = msg_box.addButton(self.tr("Manual Install"), QMessageBox.ActionRole)
         retry_button = msg_box.addButton(self.tr("Retry Check"), QMessageBox.DestructiveRole)
@@ -2397,7 +2402,9 @@ class WarpInstaller:
         msg_box.exec()
 
         clicked = msg_box.clickedButton()
-        if clicked == auto_install_button:
+        if clicked == portable_button:
+            self.install_windows_portable_zip()
+        elif clicked == auto_install_button:
             self.start_auto_install()
         elif clicked == manual_button:
             webbrowser.open(self.get_manual_download_page())
@@ -2410,7 +2417,7 @@ class WarpInstaller:
     def start_auto_install(self):
         os_name = platform.system()
         if os_name == "Windows":
-            self.install_windows_portable()
+            self.install_windows_portable_zip()
             return
 
         if self.download_url is None:
@@ -2421,41 +2428,59 @@ class WarpInstaller:
         self.progress_dialog = QProgressDialog(self.tr("Downloading WARP..."), self.tr("Cancel"), 0, 100, self.parent)
         self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
         self.progress_dialog.setWindowModality(Qt.WindowModal)
-        self.progress_dialog.canceled.connect(self.download_thread.abort)
         self.download_thread.progress.connect(self.progress_dialog.setValue)
+        self.progress_dialog.canceled.connect(self.download_thread.abort)
         self.download_thread.finished.connect(self.on_download_finished)
         self.download_thread.start()
         self.progress_dialog.exec()
 
-    def install_windows_portable(self):
+    def install_windows_portable_zip(self):
         try:
-            base_url = "https://github.com/saeedmasoudie/pywarp/releases/latest/download/"
-            for binary in ["warp-cli.exe", "warp-svc.exe"]:
-                url = base_url + binary
-                r = requests.get(url, stream=True, timeout=90)
+            zip_path = self.appdata_dir / "warp_assets.zip"
+
+            progress = QProgressDialog(self.tr("Downloading portable WARP..."), self.tr("Cancel"), 0, 100, self.parent)
+            progress.setWindowTitle(self.tr("Downloading"))
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setValue(0)
+
+            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
                 r.raise_for_status()
-                with open(self.appdata_dir / binary, "wb") as f:
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+                with open(zip_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                progress.setValue(int(downloaded * 100 / total))
+                            if progress.wasCanceled():
+                                r.close()
+                                zip_path.unlink(missing_ok=True)
+                                return
+
+            progress.setValue(100)
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(self.appdata_dir)
+
+            zip_path.unlink(missing_ok=True)
 
             self._ensure_warp_svc_running_windows()
             self.register_and_activate_warp()
 
         except Exception as e:
             QMessageBox.critical(self.parent, self.tr("Warp Install Failed"),
-                                 self.tr("Could not setup portable WARP binaries:\n{}").format(e))
+                                 self.tr("Could not setup portable WARP from ZIP:\n{}").format(e))
             self._fallback_windows_prompt()
 
     def _fallback_windows_prompt(self):
         if self.download_url:
             self.download_thread = WarpDownloadThread(self.download_url)
-            self.progress_dialog = QProgressDialog(self.tr("Downloading WARP (MSI fallback)..."), self.tr("Cancel"), 0,
-                                                   100, self.parent)
+            self.progress_dialog = QProgressDialog(self.tr("Downloading WARP (MSI fallback)..."), self.tr("Cancel"), 0, 100, self.parent)
             self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
             self.progress_dialog.setWindowModality(Qt.WindowModal)
-            self.progress_dialog.canceled.connect(self.download_thread.abort)
             self.download_thread.progress.connect(self.progress_dialog.setValue)
+            self.progress_dialog.canceled.connect(self.download_thread.abort)
             self.download_thread.finished.connect(self.on_download_finished)
             self.download_thread.start()
             self.progress_dialog.exec()
