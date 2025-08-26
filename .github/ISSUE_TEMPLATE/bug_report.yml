@@ -1,0 +1,69 @@
+name: 🐞 Bug Report | گزارش باگ
+description: Report a reproducible issue with PyWARP | گزارش یک مشکل قابل تکرار در PyWARP
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🐞 Bug Report | گزارش باگ
+        Please fill out the following details to help us fix the issue.  
+        لطفاً اطلاعات زیر را برای کمک به رفع مشکل پر کنید.
+
+  - type: input
+    id: title
+    attributes:
+      label: 🔹 Title | عنوان
+      description: Short summary of the bug | خلاصه‌ای از مشکل
+      placeholder: e.g. "WARP fails to connect on Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 Description | توضیحات
+      description: Describe the issue in detail | مشکل را با جزئیات توضیح دهید
+      placeholder: What happened? What did you expect? | چه اتفاقی افتاد؟ انتظار چه چیزی داشتید؟
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 📋 Steps to Reproduce | مراحل بازتولید
+      description: How can we reproduce the bug? | چطور می‌توانیم مشکل را بازتولید کنیم؟
+      placeholder: 1. Run PyWARP  
+                  2. Click on "Connect"  
+                  3. Observe error
+    validations:
+      required: false
+
+  - type: input
+    id: system
+    attributes:
+      label: 💻 System Info | اطلاعات سیستم
+      description: OS, PyWARP version | سیستم عامل، نسخه PyWARP
+      placeholder: Windows 11, PyWARP v1.2.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 📄 Logs | لاگ‌ها
+      description: Paste any relevant logs or error messages | لاگ‌ها یا پیام‌های خطای مرتبط را وارد کنید
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: 🌐 Language | زبان رابط کاربری
+      description: What UI language were you using? | از چه زبانی در رابط کاربری استفاده می‌کردید؟
+      options:
+        - English
+        - فارسی
+        - Other
+    validations:
+      required: false

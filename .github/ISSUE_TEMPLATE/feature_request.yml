@@ -1,0 +1,58 @@
+name: ✨ Feature Request | پیشنهاد ویژگی جدید
+description: Suggest a new feature or improvement for PyWARP | پیشنهاد یک قابلیت یا بهبود برای PyWARP
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✨ Feature Request | پیشنهاد ویژگی جدید
+        Got an idea to make PyWARP better? Let us know!  
+        اگر پیشنهادی برای بهتر شدن PyWARP دارید، خوشحال می‌شویم بشنویم.
+
+  - type: input
+    id: title
+    attributes:
+      label: 🔹 Title | عنوان
+      description: Short summary of your idea | خلاصه‌ای از پیشنهاد شما
+      placeholder: e.g. "Add SOCKS5 proxy support"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 Description | توضیحات
+      description: What would this feature do? Why is it useful? | این قابلیت چه کاری انجام می‌دهد؟ چرا مفید است؟
+      placeholder: Describe the feature and its benefits | ویژگی را توضیح دهید و بگویید چه مزایایی دارد
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 📌 Context | زمینه
+      description: Is this related to a specific use case or problem? | آیا این پیشنهاد مربوط به مشکل یا کاربرد خاصی است؟
+      placeholder: I need this because... | من به این نیاز دارم چون...
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔄 Alternatives | جایگزین‌ها
+      description: Have you tried other solutions? | آیا راه‌حل‌های دیگری را امتحان کرده‌اید؟
+      placeholder: I tried using X but it didn’t work... | من از X استفاده کردم ولی جواب نداد...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 🚦 Priority | اولویت
+      description: How important is this feature to you? | این ویژگی چقدر برای شما مهم است؟
+      options:
+        - 🟢 Nice to have | خوبه داشته باشیم
+        - 🟡 Important | مهم
+        - 🔴 Critical | حیاتی
+    validations:
+      required: false
