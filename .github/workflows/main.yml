@@ -73,7 +73,7 @@ jobs:
     name: Build Linux/macOS
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-22.04, macos-latest]
     runs-on: ${{ matrix.os }}
     needs: build-windows
     steps:
