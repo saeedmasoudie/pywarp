@@ -2571,19 +2571,24 @@ class WarpInstaller:
             os_name = platform.system()
             if os_name == "Windows" and not shutil.which("warp-cli"):
                 warp_cli, _ = self._portable_paths()
-                cmd = [str(warp_cli), "register"]
+                cmd_register = [str(warp_cli), "register"]
+                cmd_tos = [str(warp_cli), "accept-tos"]
             else:
-                cmd = ["warp-cli", "register"]
+                cmd_register = ["warp-cli", "register"]
+                cmd_tos = ["warp-cli", "accept-tos"]
 
-            subprocess.run(cmd, check=True, timeout=60)
+            subprocess.run(cmd_register, check=True, timeout=60)
+            subprocess.run(cmd_tos, check=True, timeout=60)
+
             QMessageBox.information(self.parent, self.tr("Warp Ready"),
-                                    self.tr("WARP has been registered successfully!"))
+                                    self.tr("WARP has been registered and TOS accepted successfully!"))
+
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.parent, self.tr("Warp Activation Failed"),
-                                 self.tr("Failed to register WARP: {}").format(e))
+                                 self.tr("Failed to activate WARP: {}").format(e))
         except Exception as e:
             QMessageBox.critical(self.parent, self.tr("Warp Activation Failed"),
-                                 self.tr("Registration error: {}").format(e))
+                                 self.tr("Activation error: {}").format(e))
 
 
 if __name__ == "__main__":
