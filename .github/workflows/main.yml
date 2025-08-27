@@ -118,7 +118,7 @@ jobs:
 
   release:
     name: Create Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [build-windows, build-linux-macos]
     steps:
       - uses: actions/checkout@v3
@@ -152,7 +152,7 @@ jobs:
           prerelease: false
           files: |
             artifacts/pywarp-windows/*.zip
-            artifacts/pywarp-ubuntu-latest/*.zip
+            artifacts/pywarp-ubuntu-22.04/*.zip
             artifacts/pywarp-macos-latest/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
