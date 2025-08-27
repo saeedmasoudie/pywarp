@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.3 - 2025-08-28
+### Changes
+- add masque-options to change protocl settings
+- removed unused functions
+- fixed tos problem on linux and mac
+- add support for linux 22.04
+
 ## v1.2.2 - 2025-08-24
 ### Added
 ### UI & Theme Improvements
