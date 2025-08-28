@@ -100,17 +100,40 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           PLATFORM="${{ matrix.os }}"
           OUTPUT="pywarp-${PLATFORM}-v$VERSION"
-          FLAGS="--standalone --onefile --remove-output --disable-console --enable-plugin=pyside6"
+
           if [[ "$PLATFORM" == "macos-latest" ]]; then
-            FLAGS+=" --macos-app-icon=assets/logo.icns --macos-create-app-bundle"
+            python -m nuitka main.py \
+              --standalone \
+              --remove-output \
+              --disable-console \
+              --enable-plugin=pyside6 \
+              --macos-create-app-bundle \
+              --macos-app-name=PyWarp \
+              --macos-app-icon=assets/logo.icns \
+              --include-data-dir=assets=assets \
+              --include-qt-plugins=all \
+              --output-filename="$OUTPUT"
+          else
+            python -m nuitka main.py \
+              --standalone \
+              --onefile \
+              --remove-output \
+              --disable-console \
+              --enable-plugin=pyside6 \
+              --include-data-dir=assets=assets \
+              --include-qt-plugins=all \
+              --output-filename="$OUTPUT"
           fi
-          python -m nuitka main.py $FLAGS \
-            --include-data-dir=assets=assets \
-            --output-filename="$OUTPUT"
 
       - name: Zip Executable
-        run: zip pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}.zip pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}
-
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PLATFORM="${{ matrix.os }}"
+          if [[ "$PLATFORM" == "macos-latest" ]]; then
+            zip -r pywarp-${PLATFORM}-v$VERSION.zip pywarp-${PLATFORM}-v$VERSION.app
+          else
+            zip pywarp-${PLATFORM}-v$VERSION.zip pywarp-${PLATFORM}-v$VERSION
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.os }}
