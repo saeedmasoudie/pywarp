@@ -8,32 +8,39 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Flake8
+        run: |
+          pip install flake8
+          flake8 main.py
+
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    needs: validate
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
-
       - name: Read Version
         id: version
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
-
       - name: Build Executable
         shell: pwsh
         run: |
@@ -58,91 +65,143 @@ jobs:
             --windows-product-version="$version" `
             --remove-output `
             --assume-yes-for-downloads
-
       - name: Zip Executable
         run: |
           cd dist
           powershell Compress-Archive -Path pywarp-windows-v${{ steps.version.outputs.version }}.exe -DestinationPath pywarp-windows-v${{ steps.version.outputs.version }}.zip
-
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows
           path: dist/pywarp-windows-v${{ steps.version.outputs.version }}.zip
 
-  build-linux-macos:
-    name: Build Linux/macOS
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, macos-latest]
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-22.04
     needs: build-windows
     steps:
       - uses: actions/checkout@v3
-
       - name: Read Version
         id: version
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
-
       - name: Build Executable
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          PLATFORM="${{ matrix.os }}"
-          OUTPUT="pywarp-${PLATFORM}-v$VERSION"
-
-          if [[ "$PLATFORM" == "macos-latest" ]]; then
-            python -m nuitka main.py \
-              --standalone \
-              --remove-output \
-              --disable-console \
-              --enable-plugin=pyside6 \
-              --macos-create-app-bundle \
-              --macos-app-name=PyWarp \
-              --macos-app-icon=assets/logo.icns \
-              --include-data-dir=assets=assets \
-              --include-qt-plugins=all \
-              --output-filename="$OUTPUT"
-          else
-            python -m nuitka main.py \
-              --standalone \
-              --onefile \
-              --remove-output \
-              --disable-console \
-              --enable-plugin=pyside6 \
-              --include-data-dir=assets=assets \
-              --include-qt-plugins=all \
-              --output-filename="$OUTPUT"
-          fi
-
+          python -m nuitka main.py \
+            --standalone \
+            --onefile \
+            --remove-output \
+            --disable-console \
+            --enable-plugin=pyside6 \
+            --include-data-dir=assets=assets \
+            --include-qt-plugins=all \
+            --output-filename="pywarp-ubuntu-v$VERSION"
       - name: Zip Executable
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          PLATFORM="${{ matrix.os }}"
-          if [[ "$PLATFORM" == "macos-latest" ]]; then
-            zip -r pywarp-${PLATFORM}-v$VERSION.zip pywarp-${PLATFORM}-v$VERSION.app
-          else
-            zip pywarp-${PLATFORM}-v$VERSION.zip pywarp-${PLATFORM}-v$VERSION
-          fi
+        run: zip pywarp-ubuntu-v${{ steps.version.outputs.version }}.zip pywarp-ubuntu-v${{ steps.version.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
-          name: pywarp-${{ matrix.os }}
-          path: pywarp-${{ matrix.os }}-v${{ steps.version.outputs.version }}.zip
+          name: pywarp-ubuntu
+          path: pywarp-ubuntu-v${{ steps.version.outputs.version }}.zip
+
+  build-macos-universal:
+    name: Build macOS Universal
+    runs-on: macos-13
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    needs: build-windows
+    steps:
+      - uses: actions/checkout@v3
+      - name: Read Version
+        id: version
+        shell: bash
+        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka==1.9.5
+      - name: Build PyWarp for ${{ matrix.arch }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCH="${{ matrix.arch }}"
+          python -m nuitka main.py \
+            --standalone \
+            --remove-output \
+            --disable-console \
+            --enable-plugin=pyside6 \
+            --macos-create-app-bundle \
+            --macos-app-name=PyWarp \
+            --macos-app-icon=assets/logo.icns \
+            --macos-app-version="$VERSION" \
+            --include-data-dir=assets=assets \
+            --include-qt-plugins=all \
+            --output-filename="pywarp-${ARCH}" \
+            --clang \
+            --macos-target-arch=${ARCH}
+          # Optional for future notarization:
+          # --macos-sign-identity="Developer ID Application: Your Name"
+      - name: Rename Binary
+        run: |
+          mv pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-${{ matrix.arch }}
+          path: pywarp-${{ matrix.arch }}.app
+
+  merge-macos-universal:
+    name: Merge macOS Universal Binary
+    runs-on: macos-13
+    needs: build-macos-universal
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Merge with lipo
+        run: |
+          APP_X86=$(find artifacts -name "pywarp-x86_64.app" -type d)
+          APP_ARM=$(find artifacts -name "pywarp-arm64.app" -type d)
+
+          mkdir -p PyWarp.app/Contents/MacOS
+          lipo -create \
+            "$APP_X86/Contents/MacOS/pywarp-x86_64" \
+            "$APP_ARM/Contents/MacOS/pywarp-arm64" \
+            -output PyWarp.app/Contents/MacOS/pywarp
+          chmod +x PyWarp.app/Contents/MacOS/pywarp
+          cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
+          cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
+          rm -rf "$APP_X86" "$APP_ARM"
+      - name: Create DMG
+        run: |
+          hdiutil create -volname PyWarp -srcfolder PyWarp.app -ov -format UDZO pywarp-macos-universal.dmg
+      - name: Zip Universal App
+        run: zip -r pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip PyWarp.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-macos-universal
+          path: |
+            pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip
+            pywarp-macos-universal.dmg
+      - name: Cleanup
+        run: rm -rf PyWarp.app pywarp-macos-universal.dmg pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip
 
   release:
     name: Create Release
     runs-on: ubuntu-22.04
-    needs: [build-windows, build-linux-macos]
+    needs: [build-windows, build-linux, merge-macos-universal]
     steps:
       - uses: actions/checkout@v3
 
@@ -164,6 +223,7 @@ jobs:
             flag && /^## / {exit}
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
+          echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -174,8 +234,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/pywarp-windows/*.zip
-            artifacts/pywarp-ubuntu-22.04/*.zip
-            artifacts/pywarp-macos-latest/*.zip
+            artifacts/**/pywarp-*.zip
+            artifacts/**/pywarp-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
