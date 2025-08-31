@@ -18,7 +18,7 @@ import resources_rc
 from pathlib import Path
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
-    QTranslator, QCoreApplication
+    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
@@ -55,11 +55,25 @@ def to_bool(v):
 class IpFetcher(QObject):
     ip_ready = Signal(str)
 
+    def __init__(self, settings_handler=None, parent=None):
+        super().__init__(parent)
+        self.settings_handler = settings_handler
+
     def fetch_ip(self):
+        proxies = {}
+        if self.settings_handler:
+            mode = self.settings_handler.get("mode", "warp")
+            if mode == "proxy":
+                port = self.settings_handler.get("proxy_port", "40000")
+                proxies = {
+                    'http': f'socks5://127.0.0.1:{port}',
+                    'https': f'socks5://127.0.0.1:{port}'
+                }
         try:
             response = requests.get('https://api.ipify.org',
                                     params={'format': 'json'},
-                                    timeout=10)
+                                    timeout=10,
+                                    proxies=proxies)
             response.raise_for_status()
             ip = response.json().get('ip', self.tr('Unavailable'))
         except requests.RequestException as e:
@@ -945,136 +959,141 @@ class PowerButton(QWidget):
         self.setFixedSize(150, 150)
 
         self.STATES = {
-            "Connected": {"style": "on", "text": self.tr("ON"), "color": QColor("green")},
-            "Disconnected": {"style": "off", "text": self.tr("OFF"), "color": QColor("red")},
-            "Connecting": {"style": "unknown", "text": "...", "color": QColor("yellow")},
-            "Disconnecting": {"style": "unknown", "text": "...", "color": QColor("yellow")},
-            "No Network": {"style": "off", "text": self.tr("ERR"), "color": QColor("red")},
-            "unknown": {"style": "off", "text": self.tr("ERR"), "color": QColor("red")}
+            "Connected": {"style": "on", "text": self.tr("ON")},
+            "Disconnected": {"style": "off", "text": self.tr("OFF")},
+            "Connecting": {"style": "unknown", "text": "..."},
+            "Disconnecting": {"style": "unknown", "text": "..."},
+            "No Network": {"style": "off", "text": self.tr("ERR")},
+            "unknown": {"style": "unknown", "text": self.tr("ERR")}
         }
 
-        self.current_error_box = None
-        self.state = 'Disconnected'
+        self.state = "Disconnected"
         self._toggle_lock = False
+        self.current_error_box = None
 
         palette = QApplication.palette()
         is_dark_mode = palette.color(QPalette.Window).lightness() < 128
         self.theme = "dark" if is_dark_mode else "light"
 
-        # Button styles
         self.button_styles = {
-            "off": {
-                "dark": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0d1117, stop: 1 #161b22);
-                    border: 3px solid #f85149; 
-                    color: #f85149;
-                    font-weight: 700;
-                """,
-                "light": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    border: 3px solid #d1242f; 
-                    color: #d1242f;
-                    font-weight: 700;
-                """
-            },
-            "unknown": {
-                "dark": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0d1117, stop: 1 #161b22);
-                    border: 3px solid #f0883e; 
-                    color: #f0883e;
-                    font-weight: 700;
-                """,
-                "light": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    border: 3px solid #d15704; 
-                    color: #d15704;
-                    font-weight: 700;
-                """
-            },
-            "on": {
-                "dark": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0d1117, stop: 1 #161b22);
-                    border: 3px solid #3fb950; 
-                    color: #3fb950;
-                    font-weight: 700;
-                """,
-                "light": """
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #ffffff, stop: 1 #f6f8fa);
-                    border: 3px solid #2da44e; 
-                    color: #2da44e;
-                    font-weight: 700;
-                """
-            }
+            "off": {"dark": {"border": "#f85149", "text": "#f85149"},
+                    "light": {"border": "#d1242f", "text": "#d1242f"}},
+            "unknown": {"dark": {"border": "#f0883e", "text": "#f0883e"},
+                        "light": {"border": "#f97316", "text": "#f97316"}},
+            "on": {"dark": {"border": "#3fb950", "text": "#3fb950"}, "light": {"border": "#2da44e", "text": "#2da44e"}}
+        }
+
+        self.gradient_colors = {
+            "off": ("#fdecea", "#f9d6d0") if self.theme == "light" else ("#2b1010", "#1a0707"),
+            "unknown": ("#fff4e6", "#ffe6cc") if self.theme == "light" else ("#3a2110", "#1f1208"),
+            "on": ("#e6f5ea", "#d1efd4") if self.theme == "light" else ("#1b2a1f", "#0f1b12")
         }
 
         self.power_button = QPushButton("...", self)
         self.power_button.setGeometry(25, 25, 100, 100)
+        self.power_button.setFont(QFont("Arial", 20, QFont.Bold))
         self.power_button.setStyleSheet("border-radius: 50px; font-size: 24px;")
-        self.power_button.setFont(QFont("Arial", 16, QFont.Bold))
 
         self.glow_effect = QGraphicsDropShadowEffect()
         self.glow_effect.setBlurRadius(50)
-        self.glow_effect.setColor(Qt.yellow)
         self.glow_effect.setOffset(0, 0)
         self.power_button.setGraphicsEffect(self.glow_effect)
+
+        self.connecting_dots = 0
+        self.connecting_timer = QTimer()
+        self.connecting_timer.setInterval(500)
+        self.connecting_timer.timeout.connect(self.update_dots)
+
+        self.glow_animation = QPropertyAnimation(self.glow_effect, b"blurRadius")
+        self.glow_animation.setStartValue(20)
+        self.glow_animation.setEndValue(50)
+        self.glow_animation.setDuration(800)
+        self.glow_animation.setLoopCount(-1)
+
+        self.glow_color_anim = QVariantAnimation()
+        self.glow_color_anim.setStartValue(QColor("#f97316"))
+        self.glow_color_anim.setEndValue(QColor("#ffb347"))
+        self.glow_color_anim.setDuration(800)
+        self.glow_color_anim.setLoopCount(-1)
+        self.glow_color_anim.valueChanged.connect(self.update_glow_color)
 
         self.power_button.clicked.connect(self.toggle_power)
         self.command_error_signal.connect(self.show_error_dialog)
 
-        self.reset_timer = QTimer(self)
-        self.reset_timer.setSingleShot(True)
-        self.reset_timer.timeout.connect(self.reset_button_state)
+    def update_dots(self):
+        self.connecting_dots = (self.connecting_dots + 1) % 4
+        self.power_button.setText("." * self.connecting_dots)
+
+    def get_glow_color(self, style_key):
+        color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("text", "#999999")
+        qcolor = QColor(color)
+        qcolor.setAlpha(200 if style_key == "unknown" else 255)
+        return qcolor
+
+    def update_glow_color(self, color):
+        if isinstance(color, QColor):
+            color.setAlpha(200)
+            self.glow_effect.setColor(color)
+
+    def apply_style(self, style_key, text):
+        border_color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("border", "#999999")
+        text_color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("text", "#999999")
+        bg_start, bg_end = self.gradient_colors.get(style_key, ("#ffffff", "#f6f8fa"))
+
+        self.power_button.setStyleSheet(f"""
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 {bg_start}, stop:1 {bg_end});
+            border: 4px solid {border_color};
+            color: {text_color};
+            font-weight: 700;
+            border-radius: 50px;
+            font-size: 24px;
+        """)
+
+        if style_key == "unknown" and text == "...":
+            if not self.connecting_timer.isActive():
+                self.connecting_timer.start()
+            if self.glow_animation.state() != QAbstractAnimation.Running:
+                self.glow_animation.start()
+            if self.glow_color_anim.state() != QAbstractAnimation.Running:
+                self.glow_color_anim.start()
+        else:
+            self.connecting_timer.stop()
+            self.glow_animation.stop()
+            self.glow_color_anim.stop()
+            self.glow_effect.setBlurRadius(50 if style_key != "unknown" else 30)
+            self.glow_effect.setColor(self.get_glow_color(style_key))
+            self.power_button.setText(text)
+
+    def update_button_state(self, new_state):
+        self.state = new_state
+        config = self.STATES.get(new_state, self.STATES["unknown"])
+        if not self._toggle_lock:
+            self.power_button.setDisabled(new_state not in ["Connected", "Disconnected"])
+        self.apply_style(config["style"], config["text"])
 
     def toggle_power(self):
         if self._toggle_lock:
             return
         self._toggle_lock = True
         self.power_button.setDisabled(True)
-        self.apply_style("unknown", "...", QColor("yellow"))
+        self.apply_style("unknown", "...")
 
         def toggle():
             try:
-                self.reset_timer.start(15000)
-                command = ["warp-cli", "connect"] if self.state == "Disconnected" else ["warp-cli", "disconnect"]
-                self.toggled.emit("Connecting") if command != ["warp-cli", "disconnect"] else self.toggled.emit(
-                    "Disconnected")
+                command = ["warp-cli", "connect"] if self.state in ["Disconnected", "No Network"] else ["warp-cli",
+                                                                                                        "disconnect"]
+                self.toggled.emit("Connecting" if command[1] == "connect" else "Disconnecting")
                 result = run_warp_command(*command)
                 if not result or result.returncode != 0:
                     error = result.stderr.strip() if result else self.tr("Unknown error")
                     self.command_error_signal.emit(self.tr("Command Error"),
                                                    self.tr("Failed to run command: {}").format(error))
             finally:
-                self.reset_timer.stop()
+                self._toggle_lock = False
                 QTimer.singleShot(500, self.force_status_refresh)
 
         threading.Thread(target=toggle, daemon=True).start()
-
-    def update_button_state(self, new_state):
-        self.state = new_state
-        config = self.STATES.get(new_state, self.STATES["unknown"])
-
-        if new_state in ["Connected", "Disconnected", "Connecting"]:
-            self._toggle_lock = False
-            self.power_button.setDisabled(False)
-        else:
-            self._toggle_lock = True
-            self.power_button.setDisabled(True)
-
-        self.apply_style(config["style"], config["text"], config["color"])
-
-    def apply_style(self, style_key, text, glow_color):
-        stylesheet = self.button_styles.get(style_key, {}).get(self.theme, "")
-        self.power_button.setStyleSheet(stylesheet + "border-radius: 50px; font-size: 24px;")
-        self.power_button.setText(text)
-        self.glow_effect.setColor(glow_color)
-        self.power_button.update()
-        self.update()
 
     def reset_button_state(self):
         if self._toggle_lock:
@@ -1096,7 +1115,6 @@ class PowerButton(QWidget):
     def show_error_dialog(self, title, message):
         if self.current_error_box:
             self.current_error_box.close()
-
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning if title == self.tr("Warning") else QMessageBox.Critical)
         box.setWindowTitle(title)
@@ -2174,7 +2192,7 @@ class MainWindow(QMainWindow):
         if status in ['Connected', 'Disconnected']:
             self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
             self.ip_fetcher_thread = QThread()
-            self.ip_fetcher = IpFetcher()
+            self.ip_fetcher = IpFetcher(settings_handler=self.settings_handler)
             self.ip_fetcher.moveToThread(self.ip_fetcher_thread)
 
             self.ip_fetcher_thread.started.connect(self.ip_fetcher.fetch_ip)

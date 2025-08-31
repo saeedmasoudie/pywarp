@@ -152,8 +152,6 @@ jobs:
             --output-filename="pywarp-${ARCH}" \
             --clang \
             --macos-target-arch=${ARCH}
-          # Optional for future notarization:
-          # --macos-sign-identity="Developer ID Application: Your Name"
       - name: Rename Binary
         run: |
           mv pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp-${{ matrix.arch }}
@@ -174,7 +172,6 @@ jobs:
         run: |
           APP_X86=$(find artifacts -name "pywarp-x86_64.app" -type d)
           APP_ARM=$(find artifacts -name "pywarp-arm64.app" -type d)
-
           mkdir -p PyWarp.app/Contents/MacOS
           lipo -create \
             "$APP_X86/Contents/MacOS/pywarp-x86_64" \
@@ -204,16 +201,13 @@ jobs:
     needs: [build-windows, build-linux, merge-macos-universal]
     steps:
       - uses: actions/checkout@v3
-
       - name: Read Version
         id: version
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - name: Extract Changelog for Release
         id: changelog
         run: |
@@ -224,7 +218,42 @@ jobs:
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
+      - name: Generate Checksums and Downloads Section
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
+          LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.zip" | head -n1)
+          MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.zip" | head -n1)
 
+          WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
+          LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
+          MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
+
+          {
+            echo ""
+            echo "### 📦 Downloads"
+            echo ""
+            echo "| Platform | File | SHA256 Checksum |"
+            echo "|----------|------|-----------------|"
+            echo "| 🪟 Windows | [Download EXE](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $WIN_FILE)) | \`$WIN_SHA\` |"
+            echo "| 🐧 Linux | [Download Binary](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $LINUX_FILE)) | \`$LINUX_SHA\` |"
+            echo "| 🍎 macOS | [Download App](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
+            echo ""
+            echo "To verify integrity:"
+            echo "- On macOS/Linux: \`shasum -a 256 [file]\`"
+            echo "- On Windows (PowerShell): \`Get-FileHash .\\[file] -Algorithm SHA256\`"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 🛡 Is it safe?"
+            echo ""
+            echo "Yes. Some antivirus tools may falsely flag the \`.exe\` because it’s unsigned and built with Nuitka."
+            echo ""
+            echo "- ✅ Open-source and transparent: [GitHub Repo](https://github.com/${{ github.repository }})  "
+            echo "- 🔐 We're working on signing future releases"
+            echo ""
+            echo "If flagged, you can submit the \`.exe\` to Microsoft as a false positive or build it yourself from source."
+          } >> RELEASE_NOTES.md
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
