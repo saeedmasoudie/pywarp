@@ -148,7 +148,7 @@ jobs:
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="$VERSION" \
             --include-data-dir=assets=assets \
-            --include-qt-plugins=all \
+            --include-qt-plugins=iconengines,imageformats,platforms,styles,tls,sqldrivers \
             --noinclude-dlls=libqsqlmimer.dylib \
             --output-filename="pywarp-${ARCH}" \
             --clang \
