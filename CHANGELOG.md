@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.4 - 2025-09-03
+### Changes
+- show correct ip when its on proxy mode
+- make button style better
+- avoid some crashes on button states
+- update and upgrade the macos and linux builds
+
 ## v1.2.3 - 2025-08-28
 ### Changes
 - add masque-options to change protocl settings
