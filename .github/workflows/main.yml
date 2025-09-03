@@ -157,7 +157,8 @@ jobs:
             --output-filename="pywarp-${ARCH}" \
             --clang \
             --macos-target-arch=${ARCH} \
-            --assume-yes-for-downloads
+            --assume-yes-for-downloads \
+            --disable-ccache
       - name: Rename Binary
         run: |
           APP="pywarp-${{ matrix.arch }}.app"
