@@ -105,12 +105,14 @@ jobs:
             --include-data-dir=assets=assets \
             --include-qt-plugins=all \
             --output-filename="pywarp-ubuntu-v$VERSION"
-      - name: Zip Executable
-        run: zip pywarp-ubuntu-v${{ steps.version.outputs.version }}.zip pywarp-ubuntu-v${{ steps.version.outputs.version }}
+      - name: Create tar.gz
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          tar -czvf pywarp-ubuntu-v$VERSION.tar.gz pywarp-ubuntu-v$VERSION
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-ubuntu
-          path: pywarp-ubuntu-v${{ steps.version.outputs.version }}.zip
+          path: pywarp-ubuntu-v${{ steps.version.outputs.version }}.tar.gz
 
   build-macos-universal:
     name: Build macOS Universal
@@ -135,6 +137,7 @@ jobs:
           pip install -r requirements.txt
           pip install nuitka==1.9.5
       - name: Build PyWarp for ${{ matrix.arch }}
+        timeout-minutes: 60
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ARCH="${{ matrix.arch }}"
@@ -153,7 +156,8 @@ jobs:
             --noinclude-dlls=libssl.dylib \
             --output-filename="pywarp-${ARCH}" \
             --clang \
-            --macos-target-arch=${ARCH}
+            --macos-target-arch=${ARCH} \
+            --assume-yes-for-downloads
       - name: Rename Binary
         run: |
           mv pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp-${{ matrix.arch }}
@@ -186,16 +190,12 @@ jobs:
       - name: Create DMG
         run: |
           hdiutil create -volname PyWarp -srcfolder PyWarp.app -ov -format UDZO pywarp-macos-universal.dmg
-      - name: Zip Universal App
-        run: zip -r pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip PyWarp.app
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
-          path: |
-            pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip
-            pywarp-macos-universal.dmg
+          path: pywarp-macos-universal.dmg
       - name: Cleanup
-        run: rm -rf PyWarp.app pywarp-macos-universal.dmg pywarp-macos-universal-v${{ needs.build-windows.outputs.version }}.zip
+        run: rm -rf PyWarp.app pywarp-macos-universal.dmg
 
   release:
     name: Create Release
@@ -224,8 +224,8 @@ jobs:
         run: |
           VERSION="v${{ steps.version.outputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
-          LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.zip" | head -n1)
-          MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.zip" | head -n1)
+          LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
+          MAC_FILE=$(find artifacts -name "pywarp-macos-universal.dmg" | head -n1)
 
           WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
           LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
@@ -239,7 +239,7 @@ jobs:
             echo "|----------|------|-----------------|"
             echo "| 🪟 Windows | [Download EXE](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $WIN_FILE)) | \`$WIN_SHA\` |"
             echo "| 🐧 Linux | [Download Binary](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $LINUX_FILE)) | \`$LINUX_SHA\` |"
-            echo "| 🍎 macOS | [Download App](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
+            echo "| 🍎 macOS | [Download DMG](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
             echo ""
             echo "To verify integrity:"
             echo "- On macOS/Linux: \`shasum -a 256 [file]\`"
@@ -266,6 +266,7 @@ jobs:
           prerelease: false
           files: |
             artifacts/**/pywarp-*.zip
+            artifacts/**/pywarp-*.tar.gz
             artifacts/**/pywarp-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
