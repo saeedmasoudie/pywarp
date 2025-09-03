@@ -160,7 +160,9 @@ jobs:
             --assume-yes-for-downloads
       - name: Rename Binary
         run: |
-          mv pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp pywarp-${{ matrix.arch }}.app/Contents/MacOS/pywarp-${{ matrix.arch }}
+          APP="pywarp-${{ matrix.arch }}.app"
+          BIN=$(ls "$APP/Contents/MacOS")
+          mv "$APP/Contents/MacOS/$BIN" "$APP/Contents/MacOS/pywarp-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
