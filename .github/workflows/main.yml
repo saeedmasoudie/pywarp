@@ -18,7 +18,7 @@ jobs:
       - name: Run Flake8
         run: |
           pip install flake8
-          flake8 main.py
+          flake8
 
   build-windows:
     name: Build Windows
