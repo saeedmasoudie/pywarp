@@ -192,14 +192,17 @@ jobs:
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
             echo "❌ Error: One or both .app bundles not found."
+            find artifacts
             exit 1
           fi
 
-          BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -perm +111 | head -n1)"
-          BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 | head -n1)"
+          BIN_X86="$APP_X86/Contents/MacOS/main"
+          BIN_ARM="$APP_ARM/Contents/MacOS/main"
 
-          if [[ -z "$BIN_X86" || -z "$BIN_ARM" ]]; then
-            echo "❌ Error: Executable not found in one of the .app bundles."
+          if [[ ! -f "$BIN_X86" || ! -f "$BIN_ARM" ]]; then
+            echo "❌ Error: 'main' executable not found in one of the .app bundles."
+            ls "$APP_X86/Contents/MacOS" || true
+            ls "$APP_ARM/Contents/MacOS" || true
             exit 1
           fi
 
