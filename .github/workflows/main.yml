@@ -220,13 +220,15 @@ jobs:
             exit 1
           fi
 
-          BIN_X86="$APP_X86/Contents/MacOS/main"
-          BIN_ARM="$APP_ARM/Contents/MacOS/main"
+          BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -name 'main' | head -n1)"
+          BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -name 'main' | head -n1)"
 
-          if [[ ! -f "$BIN_X86" || ! -f "$BIN_ARM" ]]; then
+          if [[ -z "$BIN_X86" || -z "$BIN_ARM" ]]; then
             echo "❌ Error: 'main' executable not found in one of the .app bundles."
-            ls "$APP_X86/Contents/MacOS" || true
-            ls "$APP_ARM/Contents/MacOS" || true
+            echo "Contents of $APP_X86/Contents/MacOS:"
+            ls "$APP_X86/Contents/MacOS"
+            echo "Contents of $APP_ARM/Contents/MacOS:"
+            ls "$APP_ARM/Contents/MacOS"
             exit 1
           fi
 
