@@ -155,7 +155,6 @@ jobs:
             --noinclude-dlls=libcrypto.dylib \
             --noinclude-dlls=libssl.dylib \
             --output-dir=. \
-            --output-filename="pywarp-${ARCH}.app" \
             --clang \
             --macos-target-arch=${ARCH} \
             --assume-yes-for-downloads \
