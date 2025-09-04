@@ -114,110 +114,87 @@ jobs:
           name: pywarp-ubuntu
           path: pywarp-ubuntu-v${{ steps.version.outputs.version }}.tar.gz
 
-    build-macos-universal:
-      name: Build macOS Universal
-      runs-on: macos-13
-      strategy:
-        matrix:
-          arch: [x86_64, arm64]
-      needs: build-windows
-      steps:
-        - uses: actions/checkout@v3
-        - name: Read Version
-          id: version
-          shell: bash
-          run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-        - name: Set Up Python
-          uses: actions/setup-python@v4
-          with:
-            python-version: "3.11"
-        - name: Install Dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install -r requirements.txt
-            pip install nuitka==1.9.5
-        - name: Build PyWarp for ${{ matrix.arch }}
-          timeout-minutes: 60
-          run: |
-            VERSION="${{ steps.version.outputs.version }}"
-            ARCH="${{ matrix.arch }}"
-            python -m nuitka main.py \
-              --standalone \
-              --remove-output \
-              --disable-console \
-              --enable-plugin=pyside6 \
-              --macos-create-app-bundle \
-              --macos-app-name=PyWarp \
-              --macos-app-icon=assets/logo.icns \
-              --macos-app-version="$VERSION" \
-              --include-data-dir=assets=assets \
-              --include-qt-plugins=iconengines,imageformats,platforms,styles,tls,sqldrivers=libqsqlite.dylib \
-              --noinclude-dlls=libcrypto.dylib \
-              --noinclude-dlls=libssl.dylib \
-              --clang \
-              --macos-target-arch=${ARCH} \
-              --assume-yes-for-downloads \
-              --disable-ccache
-        - name: Rename Bundle + Binary
-          run: |
-            VERSION="${{ steps.version.outputs.version }}"
-            ARCH="${{ matrix.arch }}"
-            APP="main.app"
-            echo "Found app: $APP"
+  build-macos-universal:
+    name: Build macOS Universal
+    runs-on: macos-13
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    needs: build-windows
+    steps:
+      - uses: actions/checkout@v3
+      - name: Read Version
+        id: version
+        shell: bash
+        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka==1.9.5
+      - name: Build PyWarp for ${{ matrix.arch }}
+        timeout-minutes: 60
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCH="${{ matrix.arch }}"
+          python -m nuitka main.py \
+            --standalone \
+            --remove-output \
+            --disable-console \
+            --enable-plugin=pyside6 \
+            --macos-create-app-bundle \
+            --macos-app-name="pywarp-${ARCH}" \
+            --macos-app-icon=assets/logo.icns \
+            --macos-app-version="$VERSION" \
+            --include-data-dir=assets=assets \
+            --include-qt-plugins=iconengines,imageformats,platforms,styles,tls,sqldrivers=libqsqlite.dylib \
+            --noinclude-dlls=libcrypto.dylib \
+            --noinclude-dlls=libssl.dylib \
+            --output-dir=. \
+            --output-filename="pywarp-${ARCH}.app" \
+            --clang \
+            --macos-target-arch=${ARCH} \
+            --assume-yes-for-downloads \
+            --disable-ccache
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-${{ matrix.arch }}
+          path: pywarp-${{ matrix.arch }}.app
 
-            # Fix binary name
-            BIN=$(ls "$APP/Contents/MacOS")
-            mv "$APP/Contents/MacOS/$BIN" "$APP/Contents/MacOS/pywarp-${ARCH}"
-
-            # Rename bundle for this arch
-            mv "$APP" "PyWarp-${ARCH}.app"
-        - uses: actions/upload-artifact@v4
-          with:
-            name: pywarp-${{ matrix.arch }}
-            path: PyWarp-${{ matrix.arch }}.app
-
-    merge-macos-universal:
-      name: Merge macOS Universal Binary
-      runs-on: macos-13
-      needs: build-macos-universal
-      steps:
-        - uses: actions/download-artifact@v4
-          with:
-            path: artifacts
-        - name: Merge with lipo
-          run: |
-            VERSION=$(cat version.txt)
-            APP_X86=$(find artifacts -name "PyWarp-x86_64.app" -type d)
-            APP_ARM=$(find artifacts -name "PyWarp-arm64.app" -type d)
-
-            FINAL="PyWarp-v${VERSION}.app"
-            mkdir -p "$FINAL/Contents/MacOS"
-
-            # Merge binaries into one universal
-            lipo -create \
-              "$APP_X86/Contents/MacOS/pywarp-x86_64" \
-              "$APP_ARM/Contents/MacOS/pywarp-arm64" \
-              -output "$FINAL/Contents/MacOS/pywarp"
-
-            chmod +x "$FINAL/Contents/MacOS/pywarp"
-
-            # Copy resources + Info.plist from ARM build
-            cp -R "$APP_ARM/Contents/Resources" "$FINAL/Contents/"
-            cp "$APP_ARM/Contents/Info.plist" "$FINAL/Contents/"
-
-        - name: Create DMG + ZIP
-          run: |
-            VERSION=$(cat version.txt)
-            APP="PyWarp-v${VERSION}.app"
-            hdiutil create -volname PyWarp -srcfolder "$APP" -ov -format UDZO "pywarp-macos-universal-v${VERSION}.dmg"
-            zip -r "pywarp-macos-universal-v${VERSION}.zip" "$APP"
-
-        - uses: actions/upload-artifact@v4
-          with:
-            name: pywarp-macos-universal
-            path: |
-              pywarp-macos-universal-*.dmg
-              pywarp-macos-universal-*.zip
+  merge-macos-universal:
+    name: Merge macOS Universal Binary
+    runs-on: macos-13
+    needs: build-macos-universal
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Merge with lipo
+        run: |
+          APP_X86=$(find artifacts -name "pywarp-x86_64.app" -type d)
+          APP_ARM=$(find artifacts -name "pywarp-arm64.app" -type d)
+          mkdir -p PyWarp.app/Contents/MacOS
+          lipo -create \
+            "$APP_X86/Contents/MacOS/pywarp-x86_64" \
+            "$APP_ARM/Contents/MacOS/pywarp-arm64" \
+            -output PyWarp.app/Contents/MacOS/pywarp
+          chmod +x PyWarp.app/Contents/MacOS/pywarp
+          cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
+          cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
+          rm -rf "$APP_X86" "$APP_ARM"
+      - name: Create DMG
+        run: |
+          hdiutil create -volname PyWarp -srcfolder PyWarp.app -ov -format UDZO pywarp-macos-universal.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-macos-universal
+          path: pywarp-macos-universal.dmg
+      - name: Cleanup
+        run: rm -rf PyWarp.app pywarp-macos-universal.dmg
 
   release:
     name: Create Release
