@@ -123,19 +123,23 @@ jobs:
     needs: build-windows
     steps:
       - uses: actions/checkout@v3
+
       - name: Read Version
         id: version
         shell: bash
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+
       - name: Set Up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka==1.9.5
+
       - name: Build PyWarp for ${{ matrix.arch }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -158,16 +162,34 @@ jobs:
             --macos-target-arch=${ARCH} \
             --assume-yes-for-downloads \
             --disable-ccache
+
       - name: Rename .app bundle to include version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          mv main.app "pywarp-v$VERSION-${{ matrix.arch }}.app"
+          ARCH="${{ matrix.arch }}"
+          if [[ ! -d main.app ]]; then
+            echo "❌ Error: main.app not found after build."
+            find . -maxdepth 2
+            exit 1
+          fi
+          mv main.app "pywarp-v$VERSION-$ARCH.app"
+
       - name: Zip .app bundle
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          APP_PATH="pywarp-v$VERSION-${{ matrix.arch }}.app"
-          ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
+          ARCH="${{ matrix.arch }}"
+          APP_PATH="pywarp-v$VERSION-$ARCH.app"
+          ZIP_NAME="pywarp-$ARCH.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
+
+      - name: Validate zip before upload
+        run: |
+          ARCH="${{ matrix.arch }}"
+          if [[ ! -f "pywarp-$ARCH.zip" ]]; then
+            echo "❌ Error: zip file not created."
+            exit 1
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
@@ -181,14 +203,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: Unzip .app bundles
         run: |
           unzip artifacts/pywarp-x86_64/pywarp-x86_64.zip -d artifacts/x86
           unzip artifacts/pywarp-arm64/pywarp-arm64.zip -d artifacts/arm
+
       - name: Merge with lipo
         run: |
-          APP_X86="$(find artifacts/x86 -name '*.app' -type d | head -n1)"
-          APP_ARM="$(find artifacts/arm -name '*.app' -type d | head -n1)"
+          APP_X86="$(find artifacts/x86 -name 'pywarp-v*.app' -type d | head -n1)"
+          APP_ARM="$(find artifacts/arm -name 'pywarp-v*.app' -type d | head -n1)"
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
             echo "❌ Error: One or both .app bundles not found."
@@ -213,16 +237,23 @@ jobs:
           cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
           cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
 
-          rm -rf "$APP_X86" "$APP_ARM"
+          VERSION="$(cat version.txt)"
+          mv PyWarp.app "PyWarp-v$VERSION.app"
+
       - name: Create DMG
         run: |
-          hdiutil create -volname PyWarp -srcfolder PyWarp.app -ov -format UDZO pywarp-macos-universal.dmg
+          VERSION="$(cat version.txt)"
+          hdiutil create -volname PyWarp -srcfolder "PyWarp-v$VERSION.app" -ov -format UDZO "pywarp-macos-universal.dmg"
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
           path: pywarp-macos-universal.dmg
+
       - name: Cleanup
-        run: rm -rf PyWarp.app pywarp-macos-universal.dmg
+        run: |
+          rm -rf PyWarp-v*.app pywarp-macos-universal.dmg
+
 
   release:
     name: Create Release
