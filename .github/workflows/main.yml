@@ -183,8 +183,8 @@ jobs:
           path: artifacts
       - name: Unzip .app bundles
         run: |
-          unzip artifacts/pywarp-x86_64.zip -d artifacts/x86
-          unzip artifacts/pywarp-arm64.zip -d artifacts/arm
+          unzip artifacts/pywarp-x86_64/pywarp-x86_64.zip -d artifacts/x86
+          unzip artifacts/pywarp-arm64/pywarp-arm64.zip -d artifacts/arm
       - name: Merge with lipo
         run: |
           APP_X86="$(find artifacts/x86 -name '*.app' -type d | head -n1)"
