@@ -254,20 +254,22 @@ jobs:
         run: |
           rm -rf PyWarp-v*.app pywarp-macos-universal.dmg
 
-
   release:
     name: Create Release
     runs-on: ubuntu-22.04
     needs: [build-windows, build-linux, merge-macos-universal]
     steps:
       - uses: actions/checkout@v3
+
       - name: Read Version
         id: version
         run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: Extract Changelog for Release
         id: changelog
         run: |
@@ -278,6 +280,7 @@ jobs:
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
+
       - name: Generate Checksums and Downloads Section
         run: |
           VERSION="v${{ steps.version.outputs.version }}"
@@ -300,8 +303,8 @@ jobs:
             echo "| 🍎 macOS | [Download DMG](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
             echo ""
             echo "To verify integrity:"
-            echo "- On macOS/Linux: \`shasum -a 256 [file]\`"
-            echo "- On Windows (PowerShell): \`Get-FileHash .\\[file] -Algorithm SHA256\`"
+            echo "- On macOS/Linux: \`shasum -a 256 filename\`"
+            echo "- On Windows (PowerShell): \`Get-FileHash .\\filename -Algorithm SHA256\`"
             echo ""
             echo "---"
             echo ""
@@ -309,11 +312,12 @@ jobs:
             echo ""
             echo "Yes. Some antivirus tools may falsely flag the \`.exe\` because it’s unsigned and built with Nuitka."
             echo ""
-            echo "- ✅ Open-source and transparent: [GitHub Repo](https://github.com/${{ github.repository }})  "
+            echo "- ✅ Open-source and transparent: [GitHub Repo](https://github.com/${{ github.repository }})"
             echo "- 🔐 We're working on signing future releases"
             echo ""
             echo "If flagged, you can submit the \`.exe\` to Microsoft as a false positive or build it yourself from source."
           } >> RELEASE_NOTES.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -323,8 +327,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/**/pywarp-*.zip
-            artifacts/**/pywarp-*.tar.gz
-            artifacts/**/pywarp-*.dmg
+            artifacts/**/pywarp-windows-*.zip
+            artifacts/**/pywarp-ubuntu-*.tar.gz
+            artifacts/**/pywarp-macos-universal.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
