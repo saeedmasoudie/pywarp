@@ -161,7 +161,8 @@ jobs:
             --disable-ccache
       - name: Rename Binary
         run: |
-          APP="pywarp-${{ matrix.arch }}.app"
+          APP=$(find . -maxdepth 2 -type d -name "pywarp-${{ matrix.arch }}.app")
+          echo "Found app: $APP"
           BIN=$(ls "$APP/Contents/MacOS")
           mv "$APP/Contents/MacOS/$BIN" "$APP/Contents/MacOS/pywarp-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
