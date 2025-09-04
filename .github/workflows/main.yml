@@ -161,9 +161,13 @@ jobs:
             --disable-ccache
       - name: Zip .app bundle
         run: |
-          APP_NAME="pywarp-${{ matrix.arch }}.app"
-          ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$ZIP_NAME"
+          APP_PATH="$(find . -maxdepth 1 -name 'pywarp-*.app' -type d | head -n1)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "❌ Error: .app bundle not found."
+            exit 1
+          fi
+          ZIP_NAME="${APP_PATH%.app}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
