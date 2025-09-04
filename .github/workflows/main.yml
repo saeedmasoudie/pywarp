@@ -137,7 +137,6 @@ jobs:
           pip install -r requirements.txt
           pip install nuitka==1.9.5
       - name: Build PyWarp for ${{ matrix.arch }}
-        timeout-minutes: 60
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ARCH="${{ matrix.arch }}"
@@ -159,17 +158,16 @@ jobs:
             --macos-target-arch=${ARCH} \
             --assume-yes-for-downloads \
             --disable-ccache
+      - name: Rename .app bundle to include version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mv main.app "pywarp-v$VERSION-${{ matrix.arch }}.app"
       - name: Zip .app bundle
         run: |
-          APP_PATH="$(find . -type d -name 'pywarp-*.app' | head -n1)"
-          if [[ -z "$APP_PATH" ]]; then
-            echo "❌ Error: .app bundle not found."
-            find .  # Debug: show directory tree
-            exit 1
-          fi
-          ZIP_NAME="${APP_PATH##*/}.zip"
+          VERSION="${{ steps.version.outputs.version }}"
+          APP_PATH="pywarp-v$VERSION-${{ matrix.arch }}.app"
+          ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
@@ -193,7 +191,7 @@ jobs:
           APP_ARM="$(find artifacts/arm -name '*.app' -type d | head -n1)"
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
-            echo "Error: One or both .app bundles not found."
+            echo "❌ Error: One or both .app bundles not found."
             exit 1
           fi
 
@@ -201,7 +199,7 @@ jobs:
           BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 | head -n1)"
 
           if [[ -z "$BIN_X86" || -z "$BIN_ARM" ]]; then
-            echo "Error: Executable not found in one of the .app bundles."
+            echo "❌ Error: Executable not found in one of the .app bundles."
             exit 1
           fi
 
