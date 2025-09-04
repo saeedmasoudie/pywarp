@@ -159,10 +159,15 @@ jobs:
             --macos-target-arch=${ARCH} \
             --assume-yes-for-downloads \
             --disable-ccache
+      - name: Zip .app bundle
+        run: |
+          APP_NAME="pywarp-${{ matrix.arch }}.app"
+          ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$ZIP_NAME"
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
-          path: pywarp-${{ matrix.arch }}.app
+          path: pywarp-${{ matrix.arch }}.zip
 
   merge-macos-universal:
     name: Merge macOS Universal Binary
@@ -172,16 +177,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Unzip .app bundles
+        run: |
+          unzip artifacts/pywarp-x86_64.zip -d artifacts/x86
+          unzip artifacts/pywarp-arm64.zip -d artifacts/arm
       - name: Merge with lipo
         run: |
-          APP_X86="$(find artifacts/pywarp-x86_64 -name '*.app' -type d | head -n1)"
-          APP_ARM="$(find artifacts/pywarp-arm64 -name '*.app' -type d | head -n1)"
+          APP_X86="$(find artifacts/x86 -name '*.app' -type d | head -n1)"
+          APP_ARM="$(find artifacts/arm -name '*.app' -type d | head -n1)"
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
             echo "Error: One or both .app bundles not found."
             exit 1
           fi
-          
+
           BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -perm +111 | head -n1)"
           BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 | head -n1)"
 
