@@ -206,8 +206,10 @@ jobs:
 
       - name: Unzip .app bundles
         run: |
-          unzip artifacts/pywarp-x86_64/pywarp-x86_64.zip -d artifacts/x86
-          unzip artifacts/pywarp-arm64/pywarp-arm64.zip -d artifacts/arm
+          mkdir -p artifacts/x86 artifacts/arm
+          ditto -x -k artifacts/pywarp-x86_64/pywarp-x86_64.zip artifacts/x86
+          ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/arm
+
 
       - name: Merge with lipo
         run: |
