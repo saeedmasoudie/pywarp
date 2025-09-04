@@ -200,6 +200,8 @@ jobs:
     runs-on: macos-13
     needs: build-macos-universal
     steps:
+      - uses: actions/checkout@v3
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
