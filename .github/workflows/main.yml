@@ -174,14 +174,14 @@ jobs:
           path: artifacts
       - name: Merge with lipo
         run: |
-          APP_X86="$(find artifacts -name 'pywarp-x86_64.app' -type d | head -n1)"
-          APP_ARM="$(find artifacts -name 'pywarp-arm64.app' -type d | head -n1)"
+          APP_X86="$(find artifacts/pywarp-x86_64 -name '*.app' -type d | head -n1)"
+          APP_ARM="$(find artifacts/pywarp-arm64 -name '*.app' -type d | head -n1)"
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
             echo "Error: One or both .app bundles not found."
             exit 1
           fi
-
+          
           BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -perm +111 | head -n1)"
           BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 | head -n1)"
 
