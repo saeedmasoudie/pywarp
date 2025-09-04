@@ -174,21 +174,29 @@ jobs:
           path: artifacts
       - name: Merge with lipo
         run: |
-          APP_X86=$(find artifacts -name "pywarp-x86_64.app" -type d)
-          APP_ARM=$(find artifacts -name "pywarp-arm64.app" -type d)
+          APP_X86="$(find artifacts -name 'pywarp-x86_64.app' -type d | head -n1)"
+          APP_ARM="$(find artifacts -name 'pywarp-arm64.app' -type d | head -n1)"
 
-          BIN_X86=$(basename "$(ls "$APP_X86/Contents/MacOS")")
-          BIN_ARM=$(basename "$(ls "$APP_ARM/Contents/MacOS")")
+          if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
+            echo "Error: One or both .app bundles not found."
+            exit 1
+          fi
+
+          BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -perm +111 | head -n1)"
+          BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 | head -n1)"
+
+          if [[ -z "$BIN_X86" || -z "$BIN_ARM" ]]; then
+            echo "Error: Executable not found in one of the .app bundles."
+            exit 1
+          fi
 
           mkdir -p PyWarp.app/Contents/MacOS
-          lipo -create \
-            "$APP_X86/Contents/MacOS/$BIN_X86" \
-            "$APP_ARM/Contents/MacOS/$BIN_ARM" \
-            -output PyWarp.app/Contents/MacOS/pywarp
+          lipo -create "$BIN_X86" "$BIN_ARM" -output PyWarp.app/Contents/MacOS/pywarp
           chmod +x PyWarp.app/Contents/MacOS/pywarp
 
           cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
           cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
+
           rm -rf "$APP_X86" "$APP_ARM"
       - name: Create DMG
         run: |
