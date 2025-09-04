@@ -177,12 +177,17 @@ jobs:
         run: |
           APP_X86=$(find artifacts -name "pywarp-x86_64.app" -type d)
           APP_ARM=$(find artifacts -name "pywarp-arm64.app" -type d)
+
+          BIN_X86=$(basename "$(ls "$APP_X86/Contents/MacOS")")
+          BIN_ARM=$(basename "$(ls "$APP_ARM/Contents/MacOS")")
+
           mkdir -p PyWarp.app/Contents/MacOS
           lipo -create \
-            "$APP_X86/Contents/MacOS/pywarp-x86_64" \
-            "$APP_ARM/Contents/MacOS/pywarp-arm64" \
+            "$APP_X86/Contents/MacOS/$BIN_X86" \
+            "$APP_ARM/Contents/MacOS/$BIN_ARM" \
             -output PyWarp.app/Contents/MacOS/pywarp
           chmod +x PyWarp.app/Contents/MacOS/pywarp
+
           cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
           cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
           rm -rf "$APP_X86" "$APP_ARM"
