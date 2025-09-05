@@ -55,13 +55,23 @@ def to_bool(v):
 class IpFetcher(QObject):
     ip_ready = Signal(str)
 
-    def __init__(self, settings_handler=None, parent=None):
+    def __init__(self, settings_handler=None, status_checker=None, parent=None):
         super().__init__(parent)
         self.settings_handler = settings_handler
+        self.is_connected = False
+        self._retry_count = 0
+        self._max_retries = 3
+        self._retry_timer = QTimer(self)
+        self._retry_timer.setSingleShot(True)
+        self._retry_timer.timeout.connect(self.fetch_ip)
+        status_checker.status_signal.connect(self.update_status)
+
+    def update_status(self, status):
+        self.is_connected = (status == "Connected")
 
     def fetch_ip(self):
         proxies = {}
-        if self.settings_handler:
+        if self.settings_handler and self.is_connected:
             mode = self.settings_handler.get("mode", "warp")
             if mode == "proxy":
                 port = self.settings_handler.get("proxy_port", "40000")
@@ -69,17 +79,31 @@ class IpFetcher(QObject):
                     'http': f'socks5://127.0.0.1:{port}',
                     'https': f'socks5://127.0.0.1:{port}'
                 }
-        try:
-            response = requests.get('https://api.ipify.org',
-                                    params={'format': 'json'},
-                                    timeout=10,
-                                    proxies=proxies)
-            response.raise_for_status()
-            ip = response.json().get('ip', self.tr('Unavailable'))
-        except requests.RequestException as e:
-            ip = self.tr('Unavailable')
-            logger.error(f"Failed to fetch global IP: {e}")
-        self.ip_ready.emit(ip)
+
+        def do_request():
+            try:
+                response = requests.get(
+                    'https://api.ipify.org',
+                    params={'format': 'json'},
+                    timeout=10,
+                    proxies=proxies
+                )
+                response.raise_for_status()
+                ip = response.json().get('ip', self.tr('Unavailable'))
+                self._retry_count = 0
+                self.ip_ready.emit(ip)
+            except requests.RequestException as e:
+                logger.error(f"Failed to fetch global IP: {e}")
+                self.ip_ready.emit(self.tr("Unavailable"))
+
+                if self._retry_count < self._max_retries:
+                    delay = 2000 * (self._retry_count + 1)
+                    self._retry_count += 1
+                    self._retry_timer.start(delay)
+                else:
+                    self._retry_count = 0
+
+        threading.Thread(target=do_request, daemon=True).start()
 
 
 def get_current_protocol():
@@ -946,7 +970,8 @@ class SettingsHandler(QThread):
             "endpoint": self.get("endpoint", ""),
             "dns_mode": self.get("dns_mode", "off"),
             "mode": self.get("mode", "warp"),
-            "silent_mode": self.get("silent_mode", False)
+            "silent_mode": self.get("silent_mode", False),
+            "close_behavior": self.get("close_behavior", "ask")
         }
 
 
@@ -1068,29 +1093,48 @@ class PowerButton(QWidget):
     def update_button_state(self, new_state):
         self.state = new_state
         config = self.STATES.get(new_state, self.STATES["unknown"])
-        if not self._toggle_lock:
-            self.power_button.setDisabled(new_state not in ["Connected", "Disconnected"])
+
+        if new_state in ["Connected", "Disconnected", "Connecting"]:
+            self.power_button.setDisabled(False)
+        else:
+            self.power_button.setDisabled(True)
+
         self.apply_style(config["style"], config["text"])
 
     def toggle_power(self):
-        if self._toggle_lock:
+        if self.state == "Connecting":
+            def cancel_connect():
+                try:
+                    self.toggled.emit("Disconnecting")
+                    result = run_warp_command("warp-cli", "disconnect")
+                    if not result or result.returncode != 0:
+                        error = result.stderr.strip() if result else self.tr("Unknown error")
+                        self.command_error_signal.emit(self.tr("Command Error"),
+                                                       self.tr("Failed to run command: {}").format(error))
+                finally:
+                    QTimer.singleShot(500, self.force_status_refresh)
+
+            threading.Thread(target=cancel_connect, daemon=True).start()
             return
-        self._toggle_lock = True
+
         self.power_button.setDisabled(True)
         self.apply_style("unknown", "...")
 
         def toggle():
             try:
-                command = ["warp-cli", "connect"] if self.state in ["Disconnected", "No Network"] else ["warp-cli",
-                                                                                                        "disconnect"]
-                self.toggled.emit("Connecting" if command[1] == "connect" else "Disconnecting")
+                if self.state in ["Disconnected", "No Network"]:
+                    self.toggled.emit("Connecting")
+                    command = ["warp-cli", "connect"]
+                else:
+                    self.toggled.emit("Disconnecting")
+                    command = ["warp-cli", "disconnect"]
+
                 result = run_warp_command(*command)
                 if not result or result.returncode != 0:
                     error = result.stderr.strip() if result else self.tr("Unknown error")
                     self.command_error_signal.emit(self.tr("Command Error"),
                                                    self.tr("Failed to run command: {}").format(error))
             finally:
-                self._toggle_lock = False
                 QTimer.singleShot(500, self.force_status_refresh)
 
         threading.Thread(target=toggle, daemon=True).start()
@@ -1772,7 +1816,10 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel(self.tr("Status: Disconnected"))
         self.status_label.setFont(QFont("Segoe UI", 12))
 
-        self.ip_label = QLabel(self.tr("IPv4: 0.0.0.0"))
+        self.ip_label = QLabel(
+            self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Detecting...</span>")
+        )
+
         self.ip_label.setFont(QFont("Segoe UI", 12))
         self.ip_label.setToolTip(self.tr("This is your current public IP address."))
 
@@ -1871,18 +1918,40 @@ class MainWindow(QMainWindow):
         self.stats_checker.stats_signal.connect(self.update_stats_display)
         self.stats_checker.start()
 
+        # ip fetcher
+        self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker)
+        self.ip_fetcher.ip_ready.connect(self.update_ip_label)
+
     def closeEvent(self, event):
+        behavior = self.settings_handler.get("close_behavior", "ask")
+
+        if behavior == "hide":
+            event.ignore()
+            self.hide()
+            return
+        elif behavior == "close":
+            event.accept()
+            return
+
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Question)
         msg_box.setWindowTitle(self.tr("Exit Confirmation"))
         msg_box.setText(self.tr("Do you want to close the app or hide it?"))
+
         close_button = msg_box.addButton(self.tr("Close"), QMessageBox.AcceptRole)
         hide_button = msg_box.addButton(self.tr("Hide"), QMessageBox.RejectRole)
+        remember_box = QCheckBox(self.tr("Remember my choice"))
+        msg_box.setCheckBox(remember_box)
         msg_box.exec()
+        
+        chosen = "close" if msg_box.clickedButton() == close_button else "hide"
+        if remember_box.isChecked():
+            self.settings_handler.save_settings("close_behavior", chosen)
+            self.update_close_behavior_menu(chosen)
 
-        if msg_box.clickedButton() == close_button:
+        if chosen == "close":
             event.accept()
-        elif msg_box.clickedButton() == hide_button:
+        else:
             event.ignore()
             self.hide()
 
@@ -1940,6 +2009,20 @@ class MainWindow(QMainWindow):
         self.silent_mode_action.toggled.connect(self.toggle_silent_mode)
         tray_menu.addAction(self.silent_mode_action)
 
+        # Close Behavior submenu
+        close_behavior_menu = QMenu(self.tr("On Close"), self)
+        self.close_behavior_actions = {}
+        for option, label in [("ask", self.tr("Ask Every Time")),
+                              ("hide", self.tr("Always Hide")),
+                              ("close", self.tr("Always Close"))]:
+            action = QAction(label, self, checkable=True)
+            action.setChecked(self.settings_handler.get("close_behavior", "ask") == option)
+            action.triggered.connect(lambda checked, opt=option: self.set_close_behavior(opt))
+            close_behavior_menu.addAction(action)
+            self.close_behavior_actions[option] = action
+
+        tray_menu.addMenu(close_behavior_menu)
+
         # Modes Submenu
         modes_menu = QMenu(self.tr("Set Mode"), self)
         self.modes_group = QActionGroup(self)
@@ -1974,6 +2057,14 @@ class MainWindow(QMainWindow):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
         self.tray_icon.show()
+
+    def set_close_behavior(self, option):
+        self.settings_handler.save_settings("close_behavior", option)
+        self.update_close_behavior_menu(option)
+
+    def update_close_behavior_menu(self, selected_option):
+        for option, action in self.close_behavior_actions.items():
+            action.setChecked(option == selected_option)
 
     def on_tray_icon_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -2164,15 +2255,37 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=check_status, daemon=True).start()
 
+    def on_warp_status_changed(self, status):
+        if status in ["Connected", "Disconnected"]:
+            self.ip_label.setText(
+                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
+            )
+            QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
+        elif status in ["Failed", "No Network"]:
+            self.ip_label.setText(
+                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>")
+            )
+        else:
+            self.ip_label.setText(
+                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
+            )
+
+    def update_ip_label(self, ip):
+        self.ip_label.setText(
+            self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip)
+        )
+
     def update_status(self, status):
         if self._last_ui_status == status:
             return
 
         self._last_ui_status = status
+        self.on_warp_status_changed(status)
 
         if status == 'Connected':
             self.tray_icon.setIcon(self.color_icon)
             self.toggle_connection_action.setText(self.tr("Disconnect"))
+
         else:
             self.tray_icon.setIcon(self.gray_icon)
             self.toggle_connection_action.setText(self.tr("Connect"))
@@ -2184,40 +2297,14 @@ class MainWindow(QMainWindow):
             'Disconnecting': self.tr("Status: <span style='color: orange; font-weight: bold;'>Disconnecting...</span>"),
             'No Network': self.tr("Status: <span style='color: red; font-weight: bold;'>No Network</span>")
         }
-
-        self.status_label.setText(status_messages.get(status,
-                                                      self.tr(
-                                                          "Status: <span style='color: red; font-weight: bold;'>Network Error</span>")))
-
-        if status in ['Connected', 'Disconnected']:
-            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
-            self.ip_fetcher_thread = QThread()
-            self.ip_fetcher = IpFetcher(settings_handler=self.settings_handler)
-            self.ip_fetcher.moveToThread(self.ip_fetcher_thread)
-
-            self.ip_fetcher_thread.started.connect(self.ip_fetcher.fetch_ip)
-            self.ip_fetcher.ip_ready.connect(self.update_ip_label)
-            self.ip_fetcher.ip_ready.connect(self.ip_fetcher_thread.quit)
-            self.ip_fetcher.ip_ready.connect(self.ip_fetcher.deleteLater)
-            self.ip_fetcher_thread.finished.connect(self.ip_fetcher_thread.deleteLater)
-
-            self.ip_fetcher_thread.start()
-        elif status in ['Connecting', 'Disconnecting']:
-            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
-        else:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Not Available</span>"))
-            if status == 'No Network':
-                self.show_critical_error(
-                    self.tr("Failed to Connect"),
-                    self.tr("No active internet connection detected. Please check your network settings."))
-            else:
-                self.show_critical_error(self.tr("Failed to Connect"), status)
+        self.status_label.setText(
+            status_messages.get(
+                status,
+                self.tr("Status: <span style='color: red; font-weight: bold;'>Network Error</span>")
+            )
+        )
 
         self.toggle_switch.update_button_state(status)
-
-    def update_ip_label(self, ip):
-        self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip))
 
     def show_critical_error(self, title, message):
         if self.silent_mode:
