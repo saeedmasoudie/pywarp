@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.6 - 2025-09-07
+### Changes
+- fixed update checker crash problem on v1.2.5
+
 ## v1.2.5 - 2025-09-07
 ### Changes
 - Fixed font rendering issue in Advanced Settings when switching to certain Persian fonts.
