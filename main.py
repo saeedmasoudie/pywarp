@@ -1415,7 +1415,7 @@ class AdvancedSettings(QDialog):
     def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Advanced Settings"))
-        self.setFixedSize(800, 600)
+        self.resize(800, 600)
 
         self.settings_handler = settings_handler
         self.current_endpoint = self.settings_handler.get("custom_endpoint", "")
