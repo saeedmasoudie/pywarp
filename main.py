@@ -1,5 +1,3 @@
-import asyncio
-import atexit
 import ipaddress
 import logging
 import os
@@ -18,8 +16,9 @@ import resources_rc
 from pathlib import Path
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
-    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation
-from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor
+    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation, QProcess, QSize
+from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor, QPainter, QPen, \
+    QPixmap
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
@@ -79,31 +78,21 @@ class IpFetcher(QObject):
                     'http': f'socks5://127.0.0.1:{port}',
                     'https': f'socks5://127.0.0.1:{port}'
                 }
-
         def do_request():
-            try:
-                response = requests.get(
-                    'https://api.ipify.org',
-                    params={'format': 'json'},
-                    timeout=10,
-                    proxies=proxies
-                )
-                response.raise_for_status()
-                ip = response.json().get('ip', self.tr('Unavailable'))
-                self._retry_count = 0
-                self.ip_ready.emit(ip)
-            except requests.RequestException as e:
-                logger.error(f"Failed to fetch global IP: {e}")
-                self.ip_ready.emit(self.tr("Unavailable"))
+            resp = requests.get('https://api.ipify.org', params={'format': 'json'}, timeout=10, proxies=proxies)
+            resp.raise_for_status()
+            return resp.json().get('ip', self.tr('Unavailable'))
 
-                if self._retry_count < self._max_retries:
-                    delay = 2000 * (self._retry_count + 1)
-                    self._retry_count += 1
-                    self._retry_timer.start(delay)
-                else:
-                    self._retry_count = 0
+        self._ip_worker = FunctionWorker(do_request, parent=self)
+        self._ip_worker.finished_signal.connect(lambda r: self._on_ip_result(r))
+        self._ip_worker.start()
 
-        threading.Thread(target=do_request, daemon=True).start()
+    def _on_ip_result(self, result):
+        if isinstance(result, Exception):
+            logger.error(f"Failed to fetch IP: {result}")
+            self.ip_ready.emit(self.tr("Unavailable"))
+        else:
+            self.ip_ready.emit(result)
 
 
 def get_current_protocol():
@@ -136,15 +125,6 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     error_dialog.exec()
 
 
-def disconnect_on_exit():
-    server.removeServer(SERVER_NAME)
-    try:
-        run_warp_command("warp-cli", "disconnect")
-        logger.info("PyWarp quit and Warp disconnected successfully.")
-    except Exception as e:
-        logger.error(f"Failed to disconnect Warp on PyWarp quit: {e}")
-
-
 def safe_subprocess_args():
     if platform.system() == "Windows":
         return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW}
@@ -157,10 +137,18 @@ def run_warp_command(*args):
         return result
     except subprocess.TimeoutExpired:
         logger.error(f"Command timeout: {' '.join(args)}")
-        return None
+        class Dummy:
+            returncode = -1
+            stdout = ""
+            stderr = "timeout"
+        return Dummy()
     except Exception as e:
         logger.error(f"Command failed: {' '.join(args)}: {e}")
-        return None
+        class Dummy:
+            returncode = -1
+            stdout = ""
+            stderr = str(e)
+        return Dummy()
 
 
 def notify_update(update_type, latest_version, current_version):
@@ -411,6 +399,10 @@ class ThemeManager:
         QMessageBox QPushButton:hover {{
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2ea043, stop:1 #238636);
         }}
+        QCheckBox {{
+            background: transparent;
+            color: white;
+        }}
         QMenu {{
             background-color: #161b22;
             border: 1px solid #30363d;
@@ -451,8 +443,6 @@ class ThemeManager:
             font-weight: 500;
             color: #1a1f24;
         }}
-
-        /* GroupBox */
         QGroupBox {{
             font-size: 16px;
             font-weight: 600;
@@ -464,8 +454,6 @@ class ThemeManager:
                         stop:0 #ffffff, stop:1 #f6f8fa);
         }}
         QGroupBox::title {{ color: #2563eb; left: 10px; padding: 0 5px; }}
-
-        /* Buttons */
         QPushButton {{
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                         stop:0 #3b82f6, stop:1 #2563eb);
@@ -483,8 +471,6 @@ class ThemeManager:
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                         stop:0 #2563eb, stop:1 #1d4ed8);
         }}
-
-        /* Inputs */
         QComboBox, QLineEdit, QTextEdit, QSpinBox {{
             background-color: #ffffff;
             color: #1a1f24;
@@ -503,8 +489,6 @@ class ThemeManager:
             border-top: none; border-left: none;
             transform: rotate(45deg);
         }}
-
-        /* Tables / Lists */
         QTableWidget, QListWidget {{
             background-color: #ffffff;
             alternate-background-color: #f3f4f6;
@@ -518,7 +502,6 @@ class ThemeManager:
         }}
         QListWidget::item:hover {{ background-color: #f1f5f9; }}
         QListWidget::item:selected {{ background-color: #dbeafe; }}
-
         QHeaderView::section {{
             background: #f1f5f9;
             color: #1a1f24;
@@ -527,8 +510,6 @@ class ThemeManager:
             border: none;
             border-right: 1px solid #d0d7de;
         }}
-
-        /* Dialogs & MessageBox */
         QDialog, QMessageBox {{
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                         stop:0 #ffffff, stop:1 #f3f4f6);
@@ -554,6 +535,10 @@ class ThemeManager:
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                         stop:0 #60a5fa, stop:1 #3b82f6);
         }}
+        QCheckBox {{
+            background: transparent;
+            color: black;
+        }}
         QMenu {{
             background-color: #ffffff;
             border: 1px solid #d0d7de;
@@ -566,7 +551,7 @@ class ThemeManager:
             border-radius: 6px;
         }}
         QMenu::item:selected {{
-            background-color: #3b82f6;   /* hover effect */
+            background-color: #3b82f6;
             color: white;
         }}
         QMenu::separator {{
@@ -576,6 +561,38 @@ class ThemeManager:
         }}
         """.format(font_name=font_name)
 
+    @staticmethod
+    def overlay_theme():
+        if ThemeManager.is_dark_mode():
+            return {
+                "background": """
+                        background: qlineargradient(
+                            x1:0, y1:0, x2:0, y2:1,
+                            stop:0 #0d1117, stop:1 #161b22
+                        );
+                        color: #f0f6fc;
+                    """,
+                "title": "color: #58a6ff; font-size: 22px; font-weight: bold; background: none;",
+                "subtitle": "color: #8b949e; font-size: 14px; background: none;",
+                "loading": "color: #c9d1d9; font-size: 13px; font-style: italic; background: none;",
+                "logo": "background: none;",
+                "spinner": "#00aaff"
+            }
+        else:
+            return {
+                "background": """
+                        background: qlineargradient(
+                            x1:0, y1:0, x2:0, y2:1,
+                            stop:0 #f9fafb, stop:1 #f3f4f6
+                        );
+                        color: #1a1f24;
+                    """,
+                "title": "color: #2563eb; font-size: 22px; font-weight: bold;",
+                "subtitle": "color: #4b5563; font-size: 14px;",
+                "loading": "color: #374151; font-size: 13px; font-style: italic;",
+                "logo": "background: none;",
+                "spinner": "#2563eb"
+            }
 
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
@@ -805,50 +822,36 @@ class UpdateChecker(QObject):
         return parse(latest) > parse(current)
 
 
-class WarpStatusHandler(QThread):
+class WarpStatusHandler(QObject):
     status_signal = Signal(str)
 
-    def __init__(self, loop=True):
-        super().__init__()
-        self.looping = loop
-        self.previous_status = None
-        self.status_map = {"Connected": 8, "Disconnected": 8, "Connecting": 2}
+    def __init__(self, parent=None, interval=5000):
+        super().__init__(parent)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.check_status)
+        self._timer.start(interval)
+        self.status_map = {"Connected": 8000, "Disconnected": 8000, "Connecting": 2000}
 
-    def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(self.monitor_status())
-        finally:
-            loop.close()
+    def check_status(self):
+        proc = QProcess(self)
+        proc.setProgram("warp-cli")
+        proc.setArguments(["status"])
+        proc.finished.connect(lambda code, st: self._on_finished(proc))
+        proc.start()
 
-    async def monitor_status(self):
-        while self.looping:
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    'warp-cli', 'status',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    **safe_subprocess_args()
-                )
-                stdout, stderr = await process.communicate()
+    def _on_finished(self, proc):
+        out = proc.readAllStandardOutput().data().decode()
+        err = proc.readAllStandardError().data().decode()
+        if proc.exitCode() != 0:
+            logger.error(f"warp-cli status error: {err}")
+            self.status_signal.emit("Failed")
+            return
 
-                if process.returncode != 0:
-                    logger.error(f"warp-cli status error: {stderr.decode()}")
-                    current_status = "Failed"
-                else:
-                    status = stdout.decode()
-                    current_status = self.extract_status(status)
+        current_status = self.extract_status(out)
+        self.status_signal.emit(current_status)
 
-                timeout = self.status_map.get(current_status, 5)
-                self.status_signal.emit(current_status)
-
-
-            except Exception as e:
-                logger.error(f"Error checking Warp status: {e}")
-                timeout = 10
-
-            await asyncio.sleep(timeout)
+        timeout = self.status_map.get(current_status, 5000)
+        self._timer.start(timeout)
 
     def extract_status(self, status):
         for key in self.status_map.keys():
@@ -864,83 +867,68 @@ class WarpStatusHandler(QThread):
             return 'No Network' if 'No Network' in reason_text else reason_text
         return "Failed"
 
+    def stop(self):
+        self._timer.stop()
 
-class WarpStatsHandler(QThread):
+class WarpStatsHandler(QObject):
     stats_signal = Signal(list)
 
-    def __init__(self, status_handler, loop=True):
-        super().__init__()
-        self.looping = loop
-        self.status_handler = status_handler
-        self.status_handler.status_signal.connect(self.update_status)
+    def __init__(self, status_handler, parent=None, interval=10000):
+        super().__init__(parent)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.check_stats)
+        self._timer.start(interval)
         self.warp_connected = False
+        status_handler.status_signal.connect(self.update_status)
 
     def update_status(self, status):
         self.warp_connected = (status == "Connected")
 
-    def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    def check_stats(self):
+        if not self.warp_connected:
+            self.stats_signal.emit([])
+            return
+
+        proc = QProcess(self)
+        proc.setProgram("warp-cli")
+        proc.setArguments(["tunnel", "stats"])
+        proc.finished.connect(lambda code, st: self._on_finished(proc))
+        proc.start()
+
+    def _on_finished(self, proc):
+        out = proc.readAllStandardOutput().data().decode()
+        err = proc.readAllStandardError().data().decode()
+
+        if proc.exitCode() != 0:
+            logger.error(f"Stats error: {err}")
+            self.stats_signal.emit([])
+            return
+
+        stats_output = out.splitlines()
+        if len(stats_output) < 6:
+            logger.error("Unexpected stats output format")
+            self.stats_signal.emit([])
+            return
+
         try:
-            loop.run_until_complete(self.monitor_stats())
-        finally:
-            loop.close()
+            protocol = stats_output[0].split(": ")[1].split(" ")[0]
+            endpoints = stats_output[1].split(': ')[1]
+            handshake_time = stats_output[2].split(': ')[1]
+            data_line = stats_output[3].split('; ')
+            sent = data_line[0].split(':')[1].strip()
+            received = data_line[1].split(':')[1].strip()
+            latency = stats_output[4].split(': ')[1]
+            loss = stats_output[5].split(': ')[1]
 
-    async def monitor_stats(self):
-        while self.looping:
-            if not self.warp_connected:
-                self.stats_signal.emit([])
-                await asyncio.sleep(6)
-                continue
+            self.stats_signal.emit([
+                protocol, endpoints, handshake_time, sent, received, latency, loss
+            ])
+        except (IndexError, ValueError) as e:
+            logger.error(f"Error parsing stats: {e}")
+            self.stats_signal.emit([])
 
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    'warp-cli',
-                    'tunnel',
-                    'stats',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    **safe_subprocess_args())
-                stdout, stderr = await process.communicate()
-
-                if process.returncode != 0:
-                    logger.error(f"Stats error: {stderr.decode()}")
-                    self.stats_signal.emit([])
-                    await asyncio.sleep(10)
-                    continue
-
-                stats_output = stdout.decode().splitlines()
-
-                if len(stats_output) < 6:
-                    logger.error("Unexpected stats output format")
-                    self.stats_signal.emit([])
-                    await asyncio.sleep(30)
-                    continue
-
-                try:
-                    protocol = stats_output[0].split(": ")[1].split(" ")[0]
-                    endpoints = stats_output[1].split(': ')[1]
-                    handshake_time = stats_output[2].split(': ')[1]
-                    data_line = stats_output[3].split('; ')
-                    sent = data_line[0].split(':')[1].strip()
-                    received = data_line[1].split(':')[1].strip()
-                    latency = stats_output[4].split(': ')[1]
-                    loss = stats_output[5].split(': ')[1]
-
-                    self.stats_signal.emit([
-                        protocol, endpoints, handshake_time, sent, received,
-                        latency, loss
-                    ])
-                except (IndexError, ValueError) as e:
-                    logger.error(f"Error parsing stats: {e}")
-                    self.stats_signal.emit([])
-
-            except Exception as e:
-                logger.error(f"Error getting stats: {e}")
-                self.stats_signal.emit([])
-
-            await asyncio.sleep(10)
-
+    def stop(self):
+        self._timer.stop()
 
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
@@ -973,6 +961,176 @@ class SettingsHandler(QThread):
             "silent_mode": self.get("silent_mode", False),
             "close_behavior": self.get("close_behavior", "ask")
         }
+
+class ProtocolWorker(QThread):
+    protocol_ready = Signal(str)
+    def run(self):
+        try:
+            res = run_warp_command('warp-cli', 'settings')
+            if res and res.returncode == 0:
+                out = res.stdout
+                for line in out.splitlines():
+                    if "WARP tunnel protocol:" in line:
+                        self.protocol_ready.emit(line.split(":",1)[1].strip())
+                        return
+                self.protocol_ready.emit("Unknown")
+            else:
+                self.protocol_ready.emit("Error")
+        except Exception:
+            self.protocol_ready.emit("Error")
+
+
+class FunctionWorker(QThread):
+    finished_signal = Signal(object)
+
+    def __init__(self, fn, *args, parent=None, **kwargs):
+        super().__init__(parent)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            result = self.fn(*self.args, **self.kwargs)
+            self.finished_signal.emit(result)
+        except Exception as e:
+            self.finished_signal.emit(e)
+
+class SpinnerWidget(QWidget):
+    def __init__(self, parent=None, lines=12, radius=18, line_length=10,
+                 line_width=4, interval=80, color=None):
+        super().__init__(parent)
+        self._lines = lines
+        self._radius = radius
+        self._line_length = line_length
+        self._line_width = line_width
+        self._angle = 0
+        self._color = QColor(0, 120, 212) if color is None else QColor(color)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self._timer.start(interval)
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setMinimumSize(self.sizeHint())
+
+    def sizeHint(self):
+        size = (self._radius + self._line_length + self._line_width) * 2
+        return QSize(size, size)
+
+    def setColor(self, color):
+        self._color = QColor(color)
+        self.update()
+
+    def _rotate(self):
+        self._angle = (self._angle + 360 / self._lines) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        center = self.rect().center()
+        painter.translate(center.x(), center.y())
+
+        step = 360.0 / self._lines
+        for i in range(self._lines):
+            painter.save()
+            painter.rotate(self._angle + i * step)
+            alpha = int(255 * ((i + 1) / self._lines))
+            c = QColor(self._color)
+            c.setAlpha(alpha)
+            pen = QPen(c, self._line_width, Qt.SolidLine, Qt.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(0, -self._radius, 0, -self._radius + self._line_length)
+            painter.restore()
+
+    def stop(self):
+        if self._timer.isActive():
+            self._timer.stop()
+
+    def start(self):
+        if not self._timer.isActive():
+            self._timer.start()
+
+class LoadingOverlay(QWidget):
+    def __init__(self, parent, icon_path=":/logo.png"):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+
+        self.logo_label = QLabel(self)
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            self.logo_label.setPixmap(pixmap.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        layout.addWidget(self.logo_label, alignment=Qt.AlignCenter)
+
+        self.title_label = QLabel("PyWarp", self)
+        layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
+
+        self.subtitle_label = QLabel(self.tr("Cloudflare Warp GUI"), self)
+        layout.addWidget(self.subtitle_label, alignment=Qt.AlignCenter)
+
+        self.spinner = SpinnerWidget(self)
+        layout.addWidget(self.spinner, alignment=Qt.AlignCenter)
+
+        self.loading_label = QLabel("", self)
+        layout.addWidget(self.loading_label, alignment=Qt.AlignCenter)
+
+        self.loading_texts = [
+            self.tr("Checking Warp service…"),
+            self.tr("Making sure Warp is ready…"),
+            self.tr("Preparing UI…"),
+            self.tr("Syncing settings…"),
+            self.tr("Starting engines…"),
+            self.tr("Almost ready…")
+        ]
+        self.current_index = 0
+
+        self.text_timer = QTimer(self)
+        self.text_timer.timeout.connect(self._update_text)
+
+        self.setVisible(False)
+        if parent:
+            self.setGeometry(parent.rect())
+            self.raise_()
+
+        self.apply_theme()
+
+    def apply_theme(self):
+        theme = ThemeManager.overlay_theme()
+        self.setStyleSheet(theme["background"])
+        self.title_label.setStyleSheet(theme["title"])
+        self.subtitle_label.setStyleSheet(theme["subtitle"])
+        self.loading_label.setStyleSheet(theme["loading"])
+        self.logo_label.setStyleSheet(theme['logo'])
+        self.spinner.setColor(theme["spinner"])
+
+    def _update_text(self):
+        if self.current_index < len(self.loading_texts):
+            self.loading_label.setText(self.loading_texts[self.current_index])
+            self.current_index += 1
+
+        if self.current_index >= len(self.loading_texts):
+            self.text_timer.stop()
+
+    def show(self):
+        if self.parent():
+            self.setGeometry(self.parent().rect())
+        super().show()
+        self.raise_()
+        self.spinner.start()
+        self.current_index = 0
+        self.text_timer.start(1200)
+        self._update_text()
+
+    def hide(self):
+        self.spinner.stop()
+        self.text_timer.stop()
+        super().hide()
 
 
 class PowerButton(QWidget):
@@ -1103,41 +1261,49 @@ class PowerButton(QWidget):
 
     def toggle_power(self):
         if self.state == "Connecting":
-            def cancel_connect():
-                try:
-                    self.toggled.emit("Disconnecting")
-                    result = run_warp_command("warp-cli", "disconnect")
-                    if not result or result.returncode != 0:
-                        error = result.stderr.strip() if result else self.tr("Unknown error")
-                        self.command_error_signal.emit(self.tr("Command Error"),
-                                                       self.tr("Failed to run command: {}").format(error))
-                finally:
-                    QTimer.singleShot(500, self.force_status_refresh)
+            def work():
+                return run_warp_command("warp-cli", "disconnect")
 
-            threading.Thread(target=cancel_connect, daemon=True).start()
+            self._cancel_worker = FunctionWorker(work)
+
+            def done(result):
+                self.toggled.emit("Disconnecting")
+                if not result or result.returncode != 0:
+                    error = result.stderr.strip() if result else self.tr("Unknown error")
+                    self.command_error_signal.emit(
+                        self.tr("Command Error"),
+                        self.tr("Failed to run command: {}").format(error)
+                    )
+                QTimer.singleShot(500, self.force_status_refresh)
+
+            self._cancel_worker.finished_signal.connect(done)
+            self._cancel_worker.start()
             return
 
         self.power_button.setDisabled(True)
         self.apply_style("unknown", "...")
 
-        def toggle():
-            try:
-                if self.state in ["Disconnected", "No Network"]:
-                    self.toggled.emit("Connecting")
-                    command = ["warp-cli", "connect"]
-                else:
-                    self.toggled.emit("Disconnecting")
-                    command = ["warp-cli", "disconnect"]
+        def work():
+            if self.state in ["Disconnected", "No Network"]:
+                return "Connecting", run_warp_command("warp-cli", "connect")
+            else:
+                return "Disconnecting", run_warp_command("warp-cli", "disconnect")
 
-                result = run_warp_command(*command)
-                if not result or result.returncode != 0:
-                    error = result.stderr.strip() if result else self.tr("Unknown error")
-                    self.command_error_signal.emit(self.tr("Command Error"),
-                                                   self.tr("Failed to run command: {}").format(error))
-            finally:
-                QTimer.singleShot(500, self.force_status_refresh)
+        self._toggle_worker = FunctionWorker(work)
 
-        threading.Thread(target=toggle, daemon=True).start()
+        def done(result):
+            phase, cmd_result = result
+            self.toggled.emit(phase)
+            if not cmd_result or cmd_result.returncode != 0:
+                error = cmd_result.stderr.strip() if cmd_result else self.tr("Unknown error")
+                self.command_error_signal.emit(
+                    self.tr("Command Error"),
+                    self.tr("Failed to run command: {}").format(error)
+                )
+            QTimer.singleShot(500, self.force_status_refresh)
+
+        self._toggle_worker.finished_signal.connect(done)
+        self._toggle_worker.start()
 
     def reset_button_state(self):
         if self._toggle_lock:
@@ -1683,10 +1849,10 @@ class SettingsPage(QWidget):
 
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
+        port_to_set = None
 
         if selected_mode == "proxy":
             saved_port = self.settings_handler.get("proxy_port", "40000")
-
             port_str, ok = QInputDialog.getText(
                 self,
                 self.tr("Proxy Port Required"),
@@ -1701,6 +1867,7 @@ class SettingsPage(QWidget):
                 port = int(port_str)
                 if not (1 <= port <= 65535):
                     raise ValueError
+                port_to_set = port
             except ValueError:
                 QMessageBox.warning(
                     self, self.tr("Invalid Port"),
@@ -1709,39 +1876,42 @@ class SettingsPage(QWidget):
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
-            try:
-                set_port_cmd = run_warp_command("warp-cli", "proxy", "port", str(port))
+        self.modes_dropdown.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+
+        def task():
+            if selected_mode == "proxy" and port_to_set:
+                set_port_cmd = run_warp_command("warp-cli", "proxy", "port", str(port_to_set))
                 if set_port_cmd.returncode != 0:
-                    QMessageBox.warning(
-                        self, self.tr("Port Set Failed"),
-                        self.tr("Failed to set proxy port:\n{}").format(set_port_cmd.stderr.strip())
-                    )
-                    logger.error(f"Failed to set proxy port: {set_port_cmd.stderr.strip()}")
-                    self.modes_dropdown.setCurrentText(self.current_mode)
-                    return
+                    raise RuntimeError(f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}")
+                self.settings_handler.save_settings("proxy_port", str(port_to_set))
 
-                self.settings_handler.save_settings("proxy_port", str(port))
-                logger.info(f"Proxy Port set to: {port}")
-
-            except Exception as e:
-                QMessageBox.warning(self, self.tr("Error"), self.tr("Command failed: {}").format(e))
-                logger.error(f"Failed to set proxy port: {e}")
-                self.modes_dropdown.setCurrentText(self.current_mode)
-                return
-
-        try:
             cmd = run_warp_command("warp-cli", "mode", selected_mode)
-            if cmd.returncode == 0:
-                self.current_mode = selected_mode
-                self.settings_handler.save_settings("mode", selected_mode)
+            if cmd.returncode != 0:
+                raise RuntimeError(f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+
+            return selected_mode
+
+        def on_finished(result):
+            QApplication.restoreOverrideCursor()
+            self.modes_dropdown.setEnabled(True)
+
+            if isinstance(result, Exception):
+                logger.error(f"Error setting mode: {result}")
+                QMessageBox.warning(self, self.tr("Error"), str(result))
+                self.modes_dropdown.setCurrentText(self.current_mode)
+            else:
+                successful_mode = result
+                self.current_mode = successful_mode
+                self.settings_handler.save_settings("mode", successful_mode)
 
                 main_window = self.window()
                 if isinstance(main_window, MainWindow):
                     for action in main_window.modes_group.actions():
-                        if action.text() == selected_mode:
+                        if action.text() == successful_mode:
                             action.setChecked(True)
 
-                    if selected_mode == "proxy":
+                    if successful_mode == "proxy":
                         port = self.settings_handler.get("proxy_port", "40000")
                         main_window.info_label.setText(
                             self.tr(
@@ -1751,18 +1921,14 @@ class SettingsPage(QWidget):
                         main_window.info_label.show()
                     else:
                         main_window.info_label.hide()
-                logger.info(f"Successfully set mode to {selected_mode}")
-                QMessageBox.information(self, self.tr("Mode Changed"), self.tr("Mode set to: {}").format(selected_mode))
-            else:
-                logger.error(f"Failed to set mode to {selected_mode} : {cmd.stderr.strip()}")
-                QMessageBox.warning(
-                    self, self.tr("Error"),
-                    self.tr("Failed to set mode to {}:\n{}").format(selected_mode, cmd.stderr.strip())
-                )
-                self.modes_dropdown.setCurrentText(self.current_mode)
-        except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Command failed: {}").format(e))
-            self.modes_dropdown.setCurrentText(self.current_mode)
+
+                logger.info(f"Successfully set mode to {successful_mode}")
+                QMessageBox.information(self, self.tr("Mode Changed"),
+                                        self.tr("Mode set to: {}").format(successful_mode))
+
+        self._worker = FunctionWorker(task, parent=self)
+        self._worker.finished_signal.connect(on_finished)
+        self._worker.start()
 
 
 class MainWindow(QMainWindow):
@@ -1811,8 +1977,6 @@ class MainWindow(QMainWindow):
         status_info = QVBoxLayout()
         status_info.setAlignment(Qt.AlignRight)
 
-        current_protocol = get_current_protocol()
-
         self.status_label = QLabel(self.tr("Status: Disconnected"))
         self.status_label.setFont(QFont("Segoe UI", 12))
 
@@ -1823,8 +1987,7 @@ class MainWindow(QMainWindow):
         self.ip_label.setFont(QFont("Segoe UI", 12))
         self.ip_label.setToolTip(self.tr("This is your current public IP address."))
 
-        self.protocol_label = QLabel(
-            self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(current_protocol))
+        self.protocol_label = QLabel(self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>Detecting...</span>"))
 
         self.source_label = QLabel(
             self.tr("Source: <a href='https://github.com/saeedmasoudie/pywarp' "
@@ -1908,19 +2071,75 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.stacked_widget)
 
+        self._ready_checks = {"status": False, "protocol": False, "ip": False}
+
+        self.loading_overlay = LoadingOverlay(self)
+        self.loading_overlay.show()
+        self._loading_fallback_timer = QTimer(self)
+        self._loading_fallback_timer.setSingleShot(True)
+        self._loading_fallback_timer.timeout.connect(self._force_ready)
+        self._loading_fallback_timer.start(10000)
+
+        QTimer.singleShot(0, self._start_background_tasks)
+
+    def _start_background_tasks(self):
+        # Protocol worker
+        self._protocol_worker = ProtocolWorker(parent=self)
+        self._protocol_worker.protocol_ready.connect(self._on_protocol_ready)
+        self._protocol_worker.start()
+
         # Status checker
-        self.status_checker = WarpStatusHandler(loop=True)
-        self.status_checker.status_signal.connect(self.update_status)
-        self.status_checker.start()
+        self.status_checker = WarpStatusHandler(parent=self)
+        self.status_checker.status_signal.connect(self._on_status_ready)
 
         # Stats checker
-        self.stats_checker = WarpStatsHandler(self.status_checker, loop=True)
+        self.stats_checker = WarpStatsHandler(self.status_checker, parent=self)
         self.stats_checker.stats_signal.connect(self.update_stats_display)
-        self.stats_checker.start()
 
-        # ip fetcher
-        self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker)
-        self.ip_fetcher.ip_ready.connect(self.update_ip_label)
+        # IP fetcher
+        self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
+        self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
+        self.ip_fetcher.fetch_ip()
+
+    def _on_protocol_ready(self, protocol):
+        self.protocol_label.setText(
+            self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(protocol)
+        )
+        self._ready_checks["protocol"] = True
+        self._check_ready()
+
+    def _on_ip_ready(self, ip):
+        self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip))
+        self._ready_checks["ip"] = True
+        self._check_ready()
+
+    def _on_status_ready(self, status):
+        self.update_status(status)
+        self._ready_checks["status"] = True
+        self._check_ready()
+
+    def _check_ready(self):
+        if all(self._ready_checks.values()):
+            try:
+                if hasattr(self, "_loading_fallback_timer"):
+                    self._loading_fallback_timer.stop()
+            except Exception:
+                pass
+            if hasattr(self, "loading_overlay") and self.loading_overlay:
+                self.loading_overlay.hide()
+                self.loading_overlay.deleteLater()
+                self.loading_overlay = None
+
+    def _force_ready(self):
+        logger.warning("Loading overlay fallback: forcing UI ready state.")
+        for k in list(self._ready_checks.keys()):
+            self._ready_checks[k] = True
+        self._check_ready()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "loading_overlay") and self.loading_overlay:
+            self.loading_overlay.setGeometry(self.rect())
 
     def closeEvent(self, event):
         behavior = self.settings_handler.get("close_behavior", "ask")
@@ -1930,27 +2149,41 @@ class MainWindow(QMainWindow):
             self.hide()
             return
         elif behavior == "close":
-            event.accept()
-            return
+            chosen = "close"
+        else:
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setWindowTitle(self.tr("Exit Confirmation"))
+            msg_box.setText(self.tr("Do you want to close the app or hide it?"))
 
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Question)
-        msg_box.setWindowTitle(self.tr("Exit Confirmation"))
-        msg_box.setText(self.tr("Do you want to close the app or hide it?"))
+            close_button = msg_box.addButton(self.tr("Close"), QMessageBox.AcceptRole)
+            hide_button = msg_box.addButton(self.tr("Hide"), QMessageBox.RejectRole)
+            remember_box = QCheckBox(self.tr("Remember my choice"))
+            msg_box.setCheckBox(remember_box)
+            msg_box.exec()
 
-        close_button = msg_box.addButton(self.tr("Close"), QMessageBox.AcceptRole)
-        hide_button = msg_box.addButton(self.tr("Hide"), QMessageBox.RejectRole)
-        remember_box = QCheckBox(self.tr("Remember my choice"))
-        msg_box.setCheckBox(remember_box)
-        msg_box.exec()
-        
-        chosen = "close" if msg_box.clickedButton() == close_button else "hide"
-        if remember_box.isChecked():
-            self.settings_handler.save_settings("close_behavior", chosen)
-            self.update_close_behavior_menu(chosen)
+            chosen = "close" if msg_box.clickedButton() == close_button else "hide"
+            if remember_box.isChecked():
+                self.settings_handler.save_settings("close_behavior", chosen)
+                self.update_close_behavior_menu(chosen)
 
         if chosen == "close":
+            try:
+                if hasattr(self, "_protocol_worker"):
+                    self._protocol_worker.quit()
+                    self._protocol_worker.wait(2000)
+
+                # Disconnect warp-cli
+                run_warp_command("warp-cli", "disconnect")
+                logger.info("PyWarp quit and Warp disconnected successfully.")
+
+                server.removeServer(SERVER_NAME)
+
+            except Exception as e:
+                logger.error("Error during shutdown: %s", e)
+
             event.accept()
+            QApplication.quit()
         else:
             event.ignore()
             self.hide()
@@ -2702,7 +2935,6 @@ if __name__ == "__main__":
     check_existing_instance()
     app = QApplication(sys.argv)
     server.listen(SERVER_NAME)
-    atexit.register(disconnect_on_exit)
 
     translator = QTranslator()
     app._translator = translator
@@ -2728,11 +2960,28 @@ if __name__ == "__main__":
             )
             sys.exit()
 
+    if platform.system() == "Windows" and not shutil.which("warp-cli"):
+        try:
+            installer._ensure_warp_svc_running_windows()
+        except Exception as e:
+            QMessageBox.critical(
+                None,
+                app.translate("__main__", "Warp Service Error"),
+                app.translate("__main__", f"Portable Warp service failed to start:\n{e}")
+            )
+            sys.exit(1)
+
     window = MainWindow(settings_handler=settings_handler)
     window.show()
 
     update_checker = UpdateChecker(installer=installer)
     update_checker.update_available.connect(notify_update)
-    update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
+    update_thread = QThread()
+    update_checker.moveToThread(update_thread)
+    update_thread.started.connect(update_checker.check_for_update)
+    update_checker.update_finished.connect(lambda _: update_thread.quit())
     update_thread.start()
+
+    window._update_checker = update_checker
+    window._update_thread = update_thread
     sys.exit(app.exec())
