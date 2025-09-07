@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.5 - 2025-09-07
+### Changes
+- Fixed font rendering issue in Advanced Settings when switching to certain Persian fonts.
+- Updated Persian language translations for improved clarity and consistency.
+- Removed asyncio usage from handler classes to improve stability.
+- Added a loading screen to accelerate app startup.
+- Replaced raw threads with structured objects in key classes.
+- Switched from threading.Thread to FunctionWorker to prevent runtime crashes.
+- Enhanced power button logic with additional safety checks.
+- Optimized set_mode function for faster execution and improved reliability.
+- Deferred protocol updates using a timer instead of triggering them immediately on launch.
+- Added delayed initialization for objects and threads to reduce startup load.
+- Unified close() and disconnect_on_close() logic into a single, robust shutdown function.
+- Implemented startup safety check for users running Portable Warp.
+- Added "Remember this option" checkbox on close window for user preference retention.
+- Improved IP fetcher class for more accurate and consistent results.
+- Removed incorrect lock on power button during connection state, allowing users to disconnect while connecting.
+
 ## v1.2.4 - 2025-09-03
 ### Changes
 - show correct ip when its on proxy mode

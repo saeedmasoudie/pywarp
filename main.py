@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox)
 
-CURRENT_VERSION = "1.2.4"
+CURRENT_VERSION = "1.2.5"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
