@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox)
 
-CURRENT_VERSION = "1.2.5"
+CURRENT_VERSION = "1.2.6"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
@@ -2976,10 +2976,7 @@ if __name__ == "__main__":
 
     update_checker = UpdateChecker(installer=installer)
     update_checker.update_available.connect(notify_update)
-    update_thread = QThread()
-    update_checker.moveToThread(update_thread)
-    update_thread.started.connect(update_checker.check_for_update)
-    update_checker.update_finished.connect(lambda _: update_thread.quit())
+    update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
     update_thread.start()
 
     window._update_checker = update_checker
