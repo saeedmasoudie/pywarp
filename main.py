@@ -2284,12 +2284,24 @@ class MainWindow(QMainWindow):
         help_menu.addAction(tutorials_action)
 
         exit_action = QAction(self.tr("Exit"), self)
-        exit_action.triggered.connect(self.close)
+        exit_action.triggered.connect(self.close_app_tray)
         tray_menu.addAction(exit_action)
 
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
         self.tray_icon.show()
+
+    def close_app_tray(self):
+        try:
+            if hasattr(self, "_protocol_worker"):
+                self._protocol_worker.quit()
+                self._protocol_worker.wait(2000)
+            run_warp_command("warp-cli", "disconnect")
+            logger.info("PyWarp quit and Warp disconnected successfully.")
+            server.removeServer(SERVER_NAME)
+        except Exception as e:
+            logger.error("Error during shutdown: %s", e)
+        QApplication.quit()
 
     def set_close_behavior(self, option):
         self.settings_handler.save_settings("close_behavior", option)
