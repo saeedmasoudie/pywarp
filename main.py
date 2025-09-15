@@ -2066,9 +2066,17 @@ class MainWindow(QMainWindow):
 
         self.info_label = QLabel("")
         self.info_label.setAlignment(Qt.AlignCenter)
-        self.info_label.hide()
-        main_layout.addWidget(self.info_label)
+        if self.settings_handler.get("mode", "warp") == "proxy":
+            port = self.settings_handler.get("proxy_port", "40000")
+            self.info_label.setText(
+                self.tr(
+                    "Proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
+                    port)
+            )
+        else:
+            self.info_label.hide()
 
+        main_layout.addWidget(self.info_label)
         main_layout.addWidget(self.stacked_widget)
 
         self._ready_checks = {"status": False, "protocol": False, "ip": False}
