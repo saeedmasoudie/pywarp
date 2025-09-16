@@ -82,6 +82,14 @@ This project is licensed under the GNU GPL v3, ensuring all modifications and de
 
 ---
 
+## 🔐 Security
+
+If you discover a security vulnerability in PyWarp, please follow our [security policy](./SECURITY.md) for responsible disclosure.
+
+We accept reports in **English** or **Persian (فارسی)** and aim to respond within 48 hours.
+
+---
+
 ## **Acknowledgments**
 - Inspired by Cloudflare WARP, with extended features that simplify advanced commands.
 - Built with PySide6 for a seamless user experience.
