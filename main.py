@@ -2208,34 +2208,34 @@ class MainWindow(QMainWindow):
         self._loading_fallback_timer.timeout.connect(self._force_ready)
         self._loading_fallback_timer.start(10000)
 
-        self.ip_fetcher = IpFetcher(parent=self)
-        self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
-
         QTimer.singleShot(200, self._start_background_tasks)
 
     def _start_background_tasks(self):
-        QTimer.singleShot(1000, lambda: run_in_worker(fetch_protocol, parent=self,
-                                                      on_done=self._on_protocol_ready,
-                                                      on_error=lambda e: self._on_protocol_ready("Error")))
+        QTimer.singleShot(1000, lambda: run_in_worker(
+            fetch_protocol,
+            parent=self,
+            on_done=self._on_protocol_ready,
+            on_error=lambda e: self._on_protocol_ready("Error")
+        ))
 
         try:
             self.status_checker = WarpStatusHandler(parent=self)
             self.status_checker.status_signal.connect(self._on_status_ready)
-        except Exception as e:
-            print("Status checker failed:", e)
+        except Exception:
+            logger.exception("Status checker failed")
 
         try:
             self.stats_checker = WarpStatsHandler(self.status_checker, parent=self)
             self.stats_checker.stats_signal.connect(self.update_stats_display)
-        except Exception as e:
-            print("Stats checker failed:", e)
+        except Exception:
+            logger.exception("Stats checker failed")
 
         try:
             self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
             self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
             self.ip_fetcher.fetch_ip()
-        except Exception as e:
-            print("IP fetcher failed:", e)
+        except Exception:
+            logger.exception("IP fetcher failed")
 
     def _on_protocol_ready(self, protocol):
         self.protocol_label.setText(
