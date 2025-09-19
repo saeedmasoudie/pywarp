@@ -42,58 +42,12 @@ def format_seconds_to_hms(seconds):
     s = seconds % 60
     return f"{h:02}:{m:02}:{s:02}"
 
-
 def to_bool(v):
     if isinstance(v, bool):
         return v
     if isinstance(v, str):
         return v.strip().lower() in ("1", "true", "yes", "on")
     return bool(v)
-
-
-class IpFetcher(QObject):
-    ip_ready = Signal(str)
-
-    def __init__(self, settings_handler=None, status_checker=None, parent=None):
-        super().__init__(parent)
-        self.settings_handler = settings_handler
-        self.is_connected = False
-        self._retry_count = 0
-        self._max_retries = 3
-        self._retry_timer = QTimer(self)
-        self._retry_timer.setSingleShot(True)
-        self._retry_timer.timeout.connect(self.fetch_ip)
-        status_checker.status_signal.connect(self.update_status)
-
-    def update_status(self, status):
-        self.is_connected = (status == "Connected")
-
-    def fetch_ip(self):
-        proxies = {}
-        if self.settings_handler and self.is_connected:
-            mode = self.settings_handler.get("mode", "warp")
-            if mode == "proxy":
-                port = self.settings_handler.get("proxy_port", "40000")
-                proxies = {
-                    'http': f'socks5://127.0.0.1:{port}',
-                    'https': f'socks5://127.0.0.1:{port}'
-                }
-        def do_request():
-            resp = requests.get('https://api.ipify.org', params={'format': 'json'}, timeout=10, proxies=proxies)
-            resp.raise_for_status()
-            return resp.json().get('ip', self.tr('Unavailable'))
-
-        self._ip_worker = FunctionWorker(do_request, parent=self)
-        self._ip_worker.finished_signal.connect(lambda r: self._on_ip_result(r))
-        self._ip_worker.start()
-
-    def _on_ip_result(self, result):
-        if isinstance(result, Exception):
-            logger.error(f"Failed to fetch IP: {result}")
-            self.ip_ready.emit(self.tr("Unavailable"))
-        else:
-            self.ip_ready.emit(result)
-
 
 def get_current_protocol():
     try:
@@ -272,6 +226,29 @@ def load_language(app, lang_code="en", settings_handler=None):
 def load_saved_language(app, settings_handler):
     saved_lang = settings_handler.get("language", "en")
     return load_language(app, saved_lang, settings_handler)
+
+def fetch_protocol():
+    try:
+        res = run_warp_command("warp-cli", "settings")
+        if res and res.returncode == 0:
+            out = res.stdout
+            for line in out.splitlines():
+                if "WARP tunnel protocol:" in line:
+                    return line.split(":", 1)[1].strip()
+            return "Unknown"
+        return "Error"
+    except Exception as e:
+        logger.error(f"fetch_protocol failed: {e}")
+        return "Error"
+
+def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwargs):
+    worker = GenericWorker(func, *args, parent=parent, **kwargs)
+    if on_done:
+        worker.finished_signal.connect(on_done)
+    if on_error:
+        worker.error_signal.connect(on_error)
+    worker.start()
+    return worker
 
 # -----------------------------------------------------
 
@@ -594,6 +571,135 @@ class ThemeManager:
                 "spinner": "#2563eb"
             }
 
+class GenericWorker(QThread):
+    finished_signal = Signal(object)
+    error_signal = Signal(Exception)
+
+    def __init__(self, func, *args, parent=None, auto_delete=True, **kwargs):
+        super().__init__(parent)
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        self._auto_delete = auto_delete
+
+        if auto_delete:
+            self.finished.connect(self.deleteLater)
+
+    def run(self):
+        try:
+            result = self.func(*self.args, **self.kwargs)
+            self.finished_signal.emit(result)
+        except Exception as e:
+            logger.exception("Worker error in %s", self.func)
+            self.error_signal.emit(e)
+
+
+class AsyncProcess(QObject):
+    finished = Signal(int, str, str)
+    error = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._proc = QProcess(self)
+        self._timeout_timer = QTimer(self)
+        self._timeout_timer.setSingleShot(True)
+        self._timeout_timer.timeout.connect(self._on_timeout)
+
+        self._proc.finished.connect(self._on_finished)
+        self._proc.errorOccurred.connect(self._on_error)
+
+    def run(self, program, args=None, timeout_ms=5000):
+        if self.is_running():
+            return False
+        self._proc.setProgram(program)
+        self._proc.setArguments(args or [])
+        self._proc.start()
+        if timeout_ms:
+            self._timeout_timer.start(timeout_ms)
+        return True
+
+    def is_running(self):
+        return self._proc.state() == QProcess.Running
+
+    def _on_timeout(self):
+        if self.is_running():
+            self._proc.kill()
+        self.error.emit("Timeout")
+
+    def _on_finished(self, exit_code, exit_status):
+        out = self._proc.readAllStandardOutput().data().decode()
+        err = self._proc.readAllStandardError().data().decode()
+        self._timeout_timer.stop()
+        self.finished.emit(exit_code, out, err)
+
+    def _on_error(self, proc_error):
+        self._timeout_timer.stop()
+        self.error.emit(str(proc_error))
+
+class IpFetcher(QObject):
+    ip_ready = Signal(str)
+
+    def __init__(self, settings_handler=None, status_checker=None, parent=None):
+        super().__init__(parent)
+        self.settings_handler = settings_handler
+        self.status_checker = status_checker
+        self.is_connected = False
+        self._worker = None
+        self._retry_timer = QTimer(self)
+        self._retry_timer.setSingleShot(True)
+        self._retry_timer.timeout.connect(self.fetch_ip)
+
+        if self.status_checker is not None:
+            try:
+                self.status_checker.status_signal.connect(self.update_status)
+            except Exception:
+                logger.debug("IpFetcher: status_checker provided but couldn't connect to status_signal")
+
+    def update_status(self, status):
+        self.is_connected = (status == "Connected")
+
+    def fetch_ip(self):
+        proxies = {}
+        if self.settings_handler and getattr(self, "is_connected", False):
+            mode = self.settings_handler.get("mode", "warp")
+            if mode == "proxy":
+                port = self.settings_handler.get("proxy_port", "40000")
+                proxies = {
+                    "http": f"socks5://127.0.0.1:{port}",
+                    "https": f"socks5://127.0.0.1:{port}"
+                }
+
+        def do_request():
+            try:
+                try:
+                    resp = requests.get("https://api.ipify.org", params={"format": "json"}, timeout=8, proxies=proxies)
+                    resp.raise_for_status()
+                    return resp.json().get("ip", "Unavailable")
+                except Exception:
+                    r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=6, proxies=proxies)
+                    for line in r.text.splitlines():
+                        if line.startswith("ip="):
+                            return line.split("=", 1)[1].strip()
+                    return "Unavailable"
+            except Exception as e:
+                logger.debug("IpFetcher.do_request exception: %s", e)
+                return "Unavailable"
+
+        try:
+            if self._worker and getattr(self._worker, "isRunning", None) and self._worker.isRunning():
+                try:
+                    self._worker.terminate()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        self._worker = GenericWorker(do_request, parent=self)
+        self._worker.finished_signal.connect(lambda ip: self.ip_ready.emit(str(ip)))
+        self._worker.error_signal.connect(lambda e: (logger.error("IP fetch error: %s", e), self.ip_ready.emit("Unavailable")))
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._worker.start()
+
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
         super().__init__(parent)
@@ -664,40 +770,54 @@ class LogsWindow(QDialog):
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to clear logs:\n{}").format(e))
 
 
-class WarpDownloadThread(QThread):
+class DownloadWorker(GenericWorker):
     progress = Signal(int)
     finished = Signal(bool, str)
 
-    def __init__(self, url):
-        super().__init__()
+    def __init__(self, url, parent=None):
         self.url = url
         self._abort = False
+        super().__init__(self._download, parent=parent)
+
+        self.finished_signal.connect(self._on_generic_finished)
+        self.error_signal.connect(self._on_error)
+        self.finished.connect(self.deleteLater)
 
     def abort(self):
         self._abort = True
 
-    def run(self):
+    def _download(self):
         try:
-            local_filename = self.url.split('/')[-1]
+            local_filename = self.url.split('/')[-1] or "downloaded.file"
             with requests.get(self.url, stream=True, timeout=30) as r:
                 r.raise_for_status()
-                total_length = int(r.headers.get('content-length', 0))
+                total_length = int(r.headers.get('content-length', 0) or 0)
                 downloaded = 0
                 with open(local_filename, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         if self._abort:
-                            self.finished.emit(False, "")
-                            return
+                            return False, ""
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
                             if total_length > 0:
                                 percent = int(downloaded * 100 / total_length)
                                 self.progress.emit(percent)
-            self.finished.emit(True, local_filename)
+            return True, local_filename
         except Exception as e:
-            logger.error(f"Download error: {e}")
-            self.finished.emit(False, "")
+            logger.exception("DownloadWorker error")
+            return False, ""
+
+    def _on_generic_finished(self, result):
+        try:
+            success, filename = result
+        except Exception:
+            success, filename = False, ""
+        self.finished.emit(bool(success), str(filename))
+
+    def _on_error(self, exc):
+        logger.exception("DownloadWorker caught error in GenericWorker: %s", exc)
+        self.finished.emit(False, "")
 
 
 class UpdateChecker(QObject):
@@ -709,117 +829,136 @@ class UpdateChecker(QObject):
         if not installer:
             raise ValueError("UpdateChecker requires a valid WarpInstaller instance.")
         self.installer = installer
+        self._workers = []
 
-    def check_for_update(self):
-        try:
-            versions = self._get_latest_versions()
-            if not versions:
-                logger.error("Could not retrieve latest version info.")
-                return
+    def start_check(self, delay_ms=3000):
+        """Start update check after window is shown (delayed)."""
+        QTimer.singleShot(delay_ms, self._run_check_for_update)
 
-            latest_pywarp = versions.get("pywarp")
-            if latest_pywarp and self._is_newer_version(latest_pywarp, CURRENT_VERSION):
-                self.update_available.emit("pywarp", latest_pywarp, CURRENT_VERSION)
+    def perform_portable_warp_update(self):
+        worker = run_in_worker(self._portable_update_task,
+                               parent=self,
+                               on_done=lambda _: self._on_worker_done(worker),
+                               on_error=self._on_worker_error)
+        self._workers.append(worker)
 
-            latest_warp = versions.get("warp")
-            local_warp_version, _, is_portable = self.get_warp_info()
+    def _run_check_for_update(self):
+        worker = run_in_worker(self._check_for_update_task,
+                               parent=self,
+                               on_done=lambda _: self._on_worker_done(worker),
+                               on_error=self._on_worker_error)
+        self._workers.append(worker)
 
-            if latest_warp and local_warp_version and self._is_newer_version(latest_warp, local_warp_version):
-                update_type = "warp_portable" if is_portable else "warp_installed"
-                self.update_available.emit(update_type, latest_warp, local_warp_version)
+    def _check_for_update_task(self):
+        """Worker task: fetch versions and compare."""
+        versions = self._get_latest_versions()
+        if not versions:
+            return
 
-        except Exception as e:
-            logger.error(f"Update check failed: {e}")
+        latest_pywarp = versions.get("pywarp")
+        if latest_pywarp and self._is_newer_version(latest_pywarp, CURRENT_VERSION):
+            self.update_available.emit("pywarp", latest_pywarp, CURRENT_VERSION)
+
+        latest_warp = versions.get("warp")
+        local_version, _, is_portable = self.get_warp_info()
+        if latest_warp and local_version and self._is_newer_version(latest_warp, local_version):
+            update_type = "warp_portable" if is_portable else "warp_installed"
+            self.update_available.emit(update_type, latest_warp, local_version)
 
     def _get_latest_versions(self):
+        """Fetch version file from GitHub and parse it into a dict."""
         try:
-            r = requests.get(GITHUB_VERSION_URL, timeout=15)
+            r = requests.get(GITHUB_VERSION_URL, timeout=10)
             r.raise_for_status()
             lines = r.text.strip().splitlines()
-            versions = {}
+            if not lines:
+                return None
 
-            if lines:
-                versions["pywarp"] = lines[0].strip()
-
+            versions = {"pywarp": lines[0].strip()}
             for line in lines[1:]:
                 if "=" in line:
                     key, val = line.split("=", 1)
                     versions[key.strip()] = val.strip()
-
             return versions
-        except Exception as e:
-            logger.error(f"Failed to fetch latest versions: {e}")
+        except Exception:
+            logger.exception("Failed to fetch latest versions")
             return None
 
     def get_warp_info(self):
         try:
             warp_cli_path, _ = self.installer._portable_paths()
             if warp_cli_path.exists():
-                out = subprocess.check_output(
+                version = subprocess.check_output(
                     [str(warp_cli_path), "--version"],
                     text=True,
                     **safe_subprocess_args()
-                )
-                version = out.strip().split()[-1]
+                ).strip().split()[-1]
                 return version, warp_cli_path, True
-        except (IOError, subprocess.SubprocessError):
+        except Exception:
             pass
 
         try:
-            if shutil.which("warp-cli"):
-                out = subprocess.check_output(["warp-cli", "--version"], text=True, **safe_subprocess_args())
-                version = out.strip().split()[-1]
-                return version, Path(shutil.which("warp-cli")), False
-        except (IOError, subprocess.SubprocessError):
+            warp_cli = shutil.which("warp-cli")
+            if warp_cli:
+                version = subprocess.check_output(
+                    [warp_cli, "--version"],
+                    text=True,
+                    **safe_subprocess_args()
+                ).strip().split()[-1]
+                return version, Path(warp_cli), False
+        except Exception:
             pass
 
         return None, None, False
 
-    def perform_portable_warp_update(self):
-        try:
-            zip_path = self.installer.appdata_dir / "warp_assets.zip"
+    def _portable_update_task(self):
+        zip_path = self.installer.appdata_dir / "warp_assets.zip"
 
-            progress = QProgressDialog(self.tr("Updating portable WARP..."), self.tr("Cancel"), 0, 100, self.parent)
-            progress.setWindowTitle(self.tr("Updating"))
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setValue(0)
+        progress = QProgressDialog(
+            self.tr("Updating portable WARP..."),
+            self.tr("Cancel"), 0, 100, self.parent()
+        )
+        progress.setWindowTitle(self.tr("Updating"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setValue(0)
 
-            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
-                r.raise_for_status()
-                total = int(r.headers.get("content-length", 0))
-                downloaded = 0
-                with open(zip_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total:
-                                progress.setValue(int(downloaded * 100 / total))
-                            if progress.wasCanceled():
-                                r.close()
-                                zip_path.unlink(missing_ok=True)
-                                self.update_finished.emit(self.tr("❌ Update canceled by user."))
-                                return
+        with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0))
+            downloaded = 0
+            with open(zip_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        progress.setValue(int(downloaded * 100 / total))
+                    if progress.wasCanceled():
+                        zip_path.unlink(missing_ok=True)
+                        self.update_finished.emit(self.tr("Update canceled by user."))
+                        return
 
-            progress.setValue(100)
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(self.installer.appdata_dir)
+        zip_path.unlink(missing_ok=True)
 
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(self.installer.appdata_dir)
-
-            zip_path.unlink(missing_ok=True)
-
-            logger.info("Portable WARP update successful!")
-            self.update_finished.emit(self.tr("✅ Portable WARP has been successfully updated!"))
-
-        except Exception as e:
-            logger.error(f"Portable WARP update failed: {e}")
-            self.update_finished.emit(self.tr("❌ Update failed: {}").format(e))
+        logger.info("Portable WARP update successful")
+        self.update_finished.emit(self.tr("Portable WARP has been successfully updated!"))
 
     def _is_newer_version(self, latest, current):
         def parse(v):
-            return tuple(int(x) for x in v.split(".") if x.isdigit())
-
+            return [int(x) for x in re.findall(r"\d+", v)]
         return parse(latest) > parse(current)
+
+    def _on_worker_done(self, worker):
+        if worker in self._workers:
+            self._workers.remove(worker)
+        worker.deleteLater()
+
+    def _on_worker_error(self, exc):
+        logger.error(f"Worker error: {exc}")
+        self.update_finished.emit(self.tr("❌ Update failed: {}").format(exc))
 
 
 class WarpStatusHandler(QObject):
@@ -829,57 +968,57 @@ class WarpStatusHandler(QObject):
         super().__init__(parent)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.check_status)
+        self._status_proc = AsyncProcess(self)
+        self._status_proc.finished.connect(self._on_status_finished)
+        self._status_proc.error.connect(self._on_status_error)
+        self.status_map = {
+            "Connected": 8000,
+            "Disconnected": 8000,
+            "Connecting": 2000,
+            "Failed": 5000,
+        }
         self._timer.start(interval)
-        self.status_map = {"Connected": 8000, "Disconnected": 8000, "Connecting": 2000}
 
     def check_status(self):
-        proc = QProcess(self)
-        proc.setProgram("warp-cli")
-        proc.setArguments(["status"])
-        proc.finished.connect(lambda code, st: self._on_finished(proc))
-        proc.start()
+        if not self._status_proc.is_running():
+            self._status_proc.run("warp-cli", ["status"], timeout_ms=5000)
 
-    def _on_finished(self, proc):
-        out = proc.readAllStandardOutput().data().decode()
-        err = proc.readAllStandardError().data().decode()
-        if proc.exitCode() != 0:
-            logger.error(f"warp-cli status error: {err}")
+    def _on_status_finished(self, code, out, err):
+        if code != 0:
             self.status_signal.emit("Failed")
+            self._timer.start(self.status_map["Failed"])
             return
 
-        current_status = self.extract_status(out)
-        self.status_signal.emit(current_status)
+        status = self.extract_status(out)
+        self.status_signal.emit(status)
+        self._timer.start(self.status_map.get(status, 5000))
 
-        timeout = self.status_map.get(current_status, 5000)
-        self._timer.start(timeout)
+    def _on_status_error(self, err_msg):
+        logger.error(f"warp-cli status error: {err_msg}")
+        self.status_signal.emit("Failed")
+        self._timer.start(self.status_map["Failed"])
 
-    def extract_status(self, status):
-        for key in self.status_map.keys():
-            if key in status:
-                return key
-        return self.extract_status_reason(status)
+    def extract_status(self, text: str) -> str:
+        for line in text.splitlines():
+            if "Status update:" in line:
+                return line.split(":", 1)[1].strip()
+        return "Unknown"
 
-    @staticmethod
-    def extract_status_reason(status):
-        match = re.search(r"Reason:\s*(.*)", status)
-        if match:
-            reason_text = match.group(1).strip()
-            return 'No Network' if 'No Network' in reason_text else reason_text
-        return "Failed"
-
-    def stop(self):
-        self._timer.stop()
 
 class WarpStatsHandler(QObject):
     stats_signal = Signal(list)
 
     def __init__(self, status_handler, parent=None, interval=10000):
         super().__init__(parent)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self.check_stats)
-        self._timer.start(interval)
         self.warp_connected = False
         status_handler.status_signal.connect(self.update_status)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.check_stats)
+        self._stats_proc = AsyncProcess(self)
+        self._stats_proc.finished.connect(self._on_stats_finished)
+        self._stats_proc.error.connect(self._on_stats_error)
+        self._timer.start(interval)
 
     def update_status(self, status):
         self.warp_connected = (status == "Connected")
@@ -888,18 +1027,11 @@ class WarpStatsHandler(QObject):
         if not self.warp_connected:
             self.stats_signal.emit([])
             return
+        if not self._stats_proc.is_running():
+            self._stats_proc.run("warp-cli", ["tunnel", "stats"], timeout_ms=5000)
 
-        proc = QProcess(self)
-        proc.setProgram("warp-cli")
-        proc.setArguments(["tunnel", "stats"])
-        proc.finished.connect(lambda code, st: self._on_finished(proc))
-        proc.start()
-
-    def _on_finished(self, proc):
-        out = proc.readAllStandardOutput().data().decode()
-        err = proc.readAllStandardError().data().decode()
-
-        if proc.exitCode() != 0:
+    def _on_stats_finished(self, code, out, err):
+        if code != 0:
             logger.error(f"Stats error: {err}")
             self.stats_signal.emit([])
             return
@@ -912,13 +1044,13 @@ class WarpStatsHandler(QObject):
 
         try:
             protocol = stats_output[0].split(": ")[1].split(" ")[0]
-            endpoints = stats_output[1].split(': ')[1]
-            handshake_time = stats_output[2].split(': ')[1]
-            data_line = stats_output[3].split('; ')
-            sent = data_line[0].split(':')[1].strip()
-            received = data_line[1].split(':')[1].strip()
-            latency = stats_output[4].split(': ')[1]
-            loss = stats_output[5].split(': ')[1]
+            endpoints = stats_output[1].split(": ")[1]
+            handshake_time = stats_output[2].split(": ")[1]
+            data_line = stats_output[3].split("; ")
+            sent = data_line[0].split(":")[1].strip()
+            received = data_line[1].split(":")[1].strip()
+            latency = stats_output[4].split(": ")[1]
+            loss = stats_output[5].split(": ")[1]
 
             self.stats_signal.emit([
                 protocol, endpoints, handshake_time, sent, received, latency, loss
@@ -927,8 +1059,13 @@ class WarpStatsHandler(QObject):
             logger.error(f"Error parsing stats: {e}")
             self.stats_signal.emit([])
 
+    def _on_stats_error(self, err_msg):
+        logger.error(f"warp-cli stats error: {err_msg}")
+        self.stats_signal.emit([])
+
     def stop(self):
         self._timer.stop()
+
 
 class SettingsHandler(QThread):
     settings_signal = Signal(dict)
@@ -962,39 +1099,6 @@ class SettingsHandler(QThread):
             "close_behavior": self.get("close_behavior", "ask")
         }
 
-class ProtocolWorker(QThread):
-    protocol_ready = Signal(str)
-    def run(self):
-        try:
-            res = run_warp_command('warp-cli', 'settings')
-            if res and res.returncode == 0:
-                out = res.stdout
-                for line in out.splitlines():
-                    if "WARP tunnel protocol:" in line:
-                        self.protocol_ready.emit(line.split(":",1)[1].strip())
-                        return
-                self.protocol_ready.emit("Unknown")
-            else:
-                self.protocol_ready.emit("Error")
-        except Exception:
-            self.protocol_ready.emit("Error")
-
-
-class FunctionWorker(QThread):
-    finished_signal = Signal(object)
-
-    def __init__(self, fn, *args, parent=None, **kwargs):
-        super().__init__(parent)
-        self.fn = fn
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-            self.finished_signal.emit(result)
-        except Exception as e:
-            self.finished_signal.emit(e)
 
 class SpinnerWidget(QWidget):
     def __init__(self, parent=None, lines=12, radius=18, line_length=10,
@@ -1264,8 +1368,6 @@ class PowerButton(QWidget):
             def work():
                 return run_warp_command("warp-cli", "disconnect")
 
-            self._cancel_worker = FunctionWorker(work)
-
             def done(result):
                 self.toggled.emit("Disconnecting")
                 if not result or result.returncode != 0:
@@ -1276,20 +1378,27 @@ class PowerButton(QWidget):
                     )
                 QTimer.singleShot(500, self.force_status_refresh)
 
-            self._cancel_worker.finished_signal.connect(done)
-            self._cancel_worker.start()
+            def fail(exc):
+                logger.error(f"Disconnect command failed: {exc}")
+                self.command_error_signal.emit(
+                    self.tr("Command Error"),
+                    self.tr("Exception while disconnecting: {}").format(exc)
+                )
+                QTimer.singleShot(500, self.force_status_refresh)
+
+            self._cancel_worker = run_in_worker(work, parent=self,
+                                                on_done=done,
+                                                on_error=fail)
             return
 
         self.power_button.setDisabled(True)
         self.apply_style("unknown", "...")
 
         def work():
-            if self.state in ["Disconnected", "No Network"]:
+            if self.state == "Disconnected":
                 return "Connecting", run_warp_command("warp-cli", "connect")
             else:
                 return "Disconnecting", run_warp_command("warp-cli", "disconnect")
-
-        self._toggle_worker = FunctionWorker(work)
 
         def done(result):
             phase, cmd_result = result
@@ -1302,8 +1411,17 @@ class PowerButton(QWidget):
                 )
             QTimer.singleShot(500, self.force_status_refresh)
 
-        self._toggle_worker.finished_signal.connect(done)
-        self._toggle_worker.start()
+        def fail(exc):
+            logger.error(f"Toggle command failed: {exc}")
+            self.command_error_signal.emit(
+                self.tr("Command Error"),
+                self.tr("Exception while toggling power: {}").format(exc)
+            )
+            QTimer.singleShot(500, self.force_status_refresh)
+
+        self._toggle_worker = run_in_worker(work, parent=self,
+                                            on_done=done,
+                                            on_error=fail)
 
     def reset_button_state(self):
         if self._toggle_lock:
@@ -1896,39 +2014,41 @@ class SettingsPage(QWidget):
             QApplication.restoreOverrideCursor()
             self.modes_dropdown.setEnabled(True)
 
-            if isinstance(result, Exception):
-                logger.error(f"Error setting mode: {result}")
-                QMessageBox.warning(self, self.tr("Error"), str(result))
-                self.modes_dropdown.setCurrentText(self.current_mode)
-            else:
-                successful_mode = result
-                self.current_mode = successful_mode
-                self.settings_handler.save_settings("mode", successful_mode)
+            successful_mode = result
+            self.current_mode = successful_mode
+            self.settings_handler.save_settings("mode", successful_mode)
 
-                main_window = self.window()
-                if isinstance(main_window, MainWindow):
-                    for action in main_window.modes_group.actions():
-                        if action.text() == successful_mode:
-                            action.setChecked(True)
+            main_window = self.window()
+            if isinstance(main_window, MainWindow):
+                for action in main_window.modes_group.actions():
+                    if action.text() == successful_mode:
+                        action.setChecked(True)
 
-                    if successful_mode == "proxy":
-                        port = self.settings_handler.get("proxy_port", "40000")
-                        main_window.info_label.setText(
-                            self.tr(
-                                "Proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
-                                port)
-                        )
-                        main_window.info_label.show()
-                    else:
-                        main_window.info_label.hide()
+                if successful_mode == "proxy":
+                    port = self.settings_handler.get("proxy_port", "40000")
+                    main_window.info_label.setText(
+                        self.tr(
+                            "Proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>"
+                        ).format(port)
+                    )
+                    main_window.info_label.show()
+                else:
+                    main_window.info_label.hide()
 
-                logger.info(f"Successfully set mode to {successful_mode}")
-                QMessageBox.information(self, self.tr("Mode Changed"),
-                                        self.tr("Mode set to: {}").format(successful_mode))
+            logger.info(f"Successfully set mode to {successful_mode}")
+            QMessageBox.information(self, self.tr("Mode Changed"),
+                                    self.tr("Mode set to: {}").format(successful_mode))
 
-        self._worker = FunctionWorker(task, parent=self)
-        self._worker.finished_signal.connect(on_finished)
-        self._worker.start()
+        def on_error(exc):
+            QApplication.restoreOverrideCursor()
+            self.modes_dropdown.setEnabled(True)
+            logger.error(f"Error setting mode: {exc}")
+            QMessageBox.warning(self, self.tr("Error"), str(exc))
+            self.modes_dropdown.setCurrentText(self.current_mode)
+
+        self._worker = run_in_worker(task, parent=self,
+                                     on_done=on_finished,
+                                     on_error=on_error)
 
 
 class MainWindow(QMainWindow):
@@ -2088,26 +2208,34 @@ class MainWindow(QMainWindow):
         self._loading_fallback_timer.timeout.connect(self._force_ready)
         self._loading_fallback_timer.start(10000)
 
-        QTimer.singleShot(0, self._start_background_tasks)
+        self.ip_fetcher = IpFetcher(parent=self)
+        self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
+
+        QTimer.singleShot(200, self._start_background_tasks)
 
     def _start_background_tasks(self):
-        # Protocol worker
-        self._protocol_worker = ProtocolWorker(parent=self)
-        self._protocol_worker.protocol_ready.connect(self._on_protocol_ready)
-        self._protocol_worker.start()
+        QTimer.singleShot(1000, lambda: run_in_worker(fetch_protocol, parent=self,
+                                                      on_done=self._on_protocol_ready,
+                                                      on_error=lambda e: self._on_protocol_ready("Error")))
 
-        # Status checker
-        self.status_checker = WarpStatusHandler(parent=self)
-        self.status_checker.status_signal.connect(self._on_status_ready)
+        try:
+            self.status_checker = WarpStatusHandler(parent=self)
+            self.status_checker.status_signal.connect(self._on_status_ready)
+        except Exception as e:
+            print("Status checker failed:", e)
 
-        # Stats checker
-        self.stats_checker = WarpStatsHandler(self.status_checker, parent=self)
-        self.stats_checker.stats_signal.connect(self.update_stats_display)
+        try:
+            self.stats_checker = WarpStatsHandler(self.status_checker, parent=self)
+            self.stats_checker.stats_signal.connect(self.update_stats_display)
+        except Exception as e:
+            print("Stats checker failed:", e)
 
-        # IP fetcher
-        self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
-        self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
-        self.ip_fetcher.fetch_ip()
+        try:
+            self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
+            self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
+            self.ip_fetcher.fetch_ip()
+        except Exception as e:
+            print("IP fetcher failed:", e)
 
     def _on_protocol_ready(self, protocol):
         self.protocol_label.setText(
@@ -2510,18 +2638,20 @@ class MainWindow(QMainWindow):
 
     def on_warp_status_changed(self, status):
         if status in ["Connected", "Disconnected"]:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-            )
-            QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
+            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
+            if hasattr(self, "ip_fetcher") and self.ip_fetcher is not None:
+                QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
+            else:
+                try:
+                    self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
+                    self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
+                    QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
+                except Exception as e:
+                    logger.error("Failed to lazy-create ip_fetcher: %s", e)
         elif status in ["Failed", "No Network"]:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>")
-            )
+            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>"))
         else:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>")
-            )
+            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
 
     def update_ip_label(self, ip):
         self.ip_label.setText(
@@ -2714,13 +2844,20 @@ class WarpInstaller:
             self.install_linux_package()
             return
 
-        self.download_thread = WarpDownloadThread(self.download_url)
-        self.progress_dialog = QProgressDialog(self.tr("Downloading WARP..."), self.tr("Cancel"), 0, 100, self.parent)
+        self.download_thread = DownloadWorker(self.download_url, parent=self)
+        self.progress_dialog = QProgressDialog(
+            self.tr("Downloading WARP..."),
+            self.tr("Cancel"),
+            0, 100,
+            self.parent
+        )
         self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
         self.progress_dialog.setWindowModality(Qt.WindowModal)
+
         self.download_thread.progress.connect(self.progress_dialog.setValue)
         self.progress_dialog.canceled.connect(self.download_thread.abort)
         self.download_thread.finished.connect(self.on_download_finished)
+
         self.download_thread.start()
         self.progress_dialog.exec()
 
@@ -2765,13 +2902,20 @@ class WarpInstaller:
 
     def _fallback_windows_prompt(self):
         if self.download_url:
-            self.download_thread = WarpDownloadThread(self.download_url)
-            self.progress_dialog = QProgressDialog(self.tr("Downloading WARP (MSI fallback)..."), self.tr("Cancel"), 0, 100, self.parent)
+            self.download_thread = DownloadWorker(self.download_url, parent=self)
+            self.progress_dialog = QProgressDialog(
+                self.tr("Downloading WARP (MSI fallback)..."),
+                self.tr("Cancel"),
+                0, 100,
+                self.parent
+            )
             self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
             self.progress_dialog.setWindowModality(Qt.WindowModal)
+
             self.download_thread.progress.connect(self.progress_dialog.setValue)
             self.progress_dialog.canceled.connect(self.download_thread.abort)
             self.download_thread.finished.connect(self.on_download_finished)
+
             self.download_thread.start()
             self.progress_dialog.exec()
         else:
@@ -2996,9 +3140,8 @@ if __name__ == "__main__":
 
     update_checker = UpdateChecker(installer=installer)
     update_checker.update_available.connect(notify_update)
-    update_thread = threading.Thread(target=update_checker.check_for_update, daemon=True)
-    update_thread.start()
+    update_checker.start_check(delay_ms=3000)
 
     window._update_checker = update_checker
-    window._update_thread = update_thread
+
     sys.exit(app.exec())
