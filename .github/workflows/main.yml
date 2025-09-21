@@ -196,7 +196,7 @@ jobs:
           path: pywarp-${{ matrix.arch }}.zip
 
   merge-macos-universal:
-    name: Merge macOS Universal Binary
+    name: Merge & Create macOS Universal DMG
     runs-on: macos-13
     needs: build-macos-universal
     steps:
@@ -208,57 +208,67 @@ jobs:
 
       - name: Unzip .app bundles
         run: |
-          mkdir -p artifacts/x86 artifacts/arm
-          ditto -x -k artifacts/pywarp-x86_64/pywarp-x86_64.zip artifacts/x86
-          ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/arm
+          mkdir -p artifacts/unzipped
+          ditto -x -k artifacts/pywarp-x86_64/pywarp-x86_64.zip artifacts/unzipped
+          ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/unzipped
+          echo "Unzipped both .app bundles into artifacts/unzipped"
+          find artifacts/unzipped -maxdepth 2
 
-
-      - name: Merge with lipo
+      - name: Create Universal Binary and Merge Bundles
         run: |
-          APP_X86="$(find artifacts/x86 -name 'pywarp-v*.app' -type d | head -n1)"
-          APP_ARM="$(find artifacts/arm -name 'pywarp-v*.app' -type d | head -n1)"
+          APP_X86=$(find artifacts/unzipped -name '*.app' -path '*x86_64.app' -type d | head -n1)
+          APP_ARM=$(find artifacts/unzipped -name '*.app' -path '*arm64.app' -type d | head -n1)
 
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
-            echo "❌ Error: One or both .app bundles not found."
-            find artifacts
+            echo "Error: One or both .app bundles not found after unzipping."
             exit 1
           fi
 
-          BIN_X86="$(find "$APP_X86/Contents/MacOS" -type f -name 'main' | head -n1)"
-          BIN_ARM="$(find "$APP_ARM/Contents/MacOS" -type f -name 'main' | head -n1)"
+          echo "Found x86_64 app: $APP_X86"
+          echo "Found arm64 app: $APP_ARM"
 
-          if [[ -z "$BIN_X86" || -z "$BIN_ARM" ]]; then
-            echo "❌ Error: 'main' executable not found in one of the .app bundles."
-            echo "Contents of $APP_X86/Contents/MacOS:"
-            ls "$APP_X86/Contents/MacOS"
-            echo "Contents of $APP_ARM/Contents/MacOS:"
-            ls "$APP_ARM/Contents/MacOS"
+          BIN_X86="$APP_X86/Contents/MacOS/main"
+          BIN_ARM="$APP_ARM/Contents/MacOS/main"
+
+          if [[ ! -f "$BIN_X86" || ! -f "$BIN_ARM" ]]; then
+            echo "Error: 'main' executable not found in one or both bundles."
             exit 1
           fi
 
-          mkdir -p PyWarp.app/Contents/MacOS
-          lipo -create "$BIN_X86" "$BIN_ARM" -output PyWarp.app/Contents/MacOS/pywarp
-          chmod +x PyWarp.app/Contents/MacOS/pywarp
+          UNIVERSAL_APP_PATH="$APP_ARM"
+          UNIVERSAL_BIN_PATH="$BIN_ARM"
 
-          cp -R "$APP_ARM/Contents/Resources" PyWarp.app/Contents/
-          cp "$APP_ARM/Contents/Info.plist" PyWarp.app/Contents/
+          echo "Using $UNIVERSAL_APP_PATH as the base for the universal app."
 
-          VERSION="$(cat version.txt)"
-          mv PyWarp.app "PyWarp-v$VERSION.app"
+          echo "Creating universal binary with lipo..."
+          lipo -create "$BIN_X86" "$BIN_ARM" -output "$UNIVERSAL_BIN_PATH"
+          chmod +x "$UNIVERSAL_BIN_PATH"
+
+          echo "Copying x86_64 frameworks and plugins..."
+          if [ -d "$APP_X86/Contents/Frameworks" ]; then
+            cp -R "$APP_X86/Contents/Frameworks/." "$UNIVERSAL_APP_PATH/Contents/Frameworks/"
+          fi
+          if [ -d "$APP_X86/Contents/Plugins" ]; then
+            cp -R "$APP_X86/Contents/Plugins/." "$UNIVERSAL_APP_PATH/Contents/Plugins/"
+          fi
+          
+          VERSION=$(cat version.txt)
+          mv "$UNIVERSAL_APP_PATH" "PyWarp-v$VERSION.app"
+          echo "Successfully created universal app: PyWarp-v$VERSION.app"
 
       - name: Create DMG
         run: |
-          VERSION="$(cat version.txt)"
-          hdiutil create -volname PyWarp -srcfolder "PyWarp-v$VERSION.app" -ov -format UDZO "pywarp-macos-universal.dmg"
+          VERSION=$(cat version.txt)
+          hdiutil create -volname PyWarp -srcfolder "PyWarp-v$VERSION.app" -ov -format UDZO "pywarp-macos-universal-v$VERSION.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
-          path: pywarp-macos-universal.dmg
+          path: pywarp-macos-universal-v*.dmg
 
       - name: Cleanup
         run: |
-          rm -rf PyWarp-v*.app pywarp-macos-universal.dmg
+          rm -rf PyWarp-v*.app pywarp-macos-universal-v*.dmg
 
   release:
     name: Create Release
