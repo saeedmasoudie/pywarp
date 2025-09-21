@@ -65,7 +65,6 @@ def get_current_protocol():
         logger.error(f"Error fetching current protocol: {e}")
         return "Error"
 
-
 def handle_exception(exc_type, exc_value, exc_traceback):
     if exc_type is KeyboardInterrupt:
         sys.exit(0)
@@ -78,16 +77,40 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         traceback.format_exception(exc_type, exc_value, exc_traceback)))
     error_dialog.exec()
 
-
 def safe_subprocess_args():
     if platform.system() == "Windows":
         return {"shell": False, "creationflags": subprocess.CREATE_NO_WINDOW}
     return {"shell": False}
 
+def get_warp_cli_executable() -> str | None:
+    system_path = shutil.which("warp-cli")
+    if system_path:
+        return system_path
+
+    if platform.system() == "Windows":
+        portable_path = Path(os.getenv("APPDATA", "")) / "pywarp" / "warp" / "warp-cli.exe"
+    else:
+        portable_path = Path.home() / ".pywarp" / "warp" / "warp-cli"
+
+    if portable_path.exists():
+        return str(portable_path)
+
+    logger.warning("warp-cli executable not found in system PATH or portable directory.")
+    return None
 
 def run_warp_command(*args):
+    warp_cli_path = get_warp_cli_executable()
+    if not warp_cli_path:
+        class Dummy:
+            returncode = -1
+            stdout = ""
+            stderr = "warp-cli executable not found"
+
+        return Dummy()
+    command = [warp_cli_path] + list(args[1:])
+
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
         return result
     except subprocess.TimeoutExpired:
         logger.error(f"Command timeout: {' '.join(args)}")
@@ -103,7 +126,6 @@ def run_warp_command(*args):
             stdout = ""
             stderr = str(e)
         return Dummy()
-
 
 def notify_update(update_type, latest_version, current_version):
     app = QApplication.instance()
@@ -885,31 +907,26 @@ class UpdateChecker(QObject):
             return None
 
     def get_warp_info(self):
-        try:
-            warp_cli_path, _ = self.installer._portable_paths()
-            if warp_cli_path.exists():
-                version = subprocess.check_output(
-                    [str(warp_cli_path), "--version"],
-                    text=True,
-                    **safe_subprocess_args()
-                ).strip().split()[-1]
-                return version, warp_cli_path, True
-        except Exception:
-            pass
+        warp_cli_path_str = get_warp_cli_executable()
+
+        if not warp_cli_path_str:
+            return None, None, False
 
         try:
-            warp_cli = shutil.which("warp-cli")
-            if warp_cli:
-                version = subprocess.check_output(
-                    [warp_cli, "--version"],
-                    text=True,
-                    **safe_subprocess_args()
-                ).strip().split()[-1]
-                return version, Path(warp_cli), False
-        except Exception:
-            pass
+            version = subprocess.check_output(
+                [warp_cli_path_str, "--version"],
+                text=True,
+                **safe_subprocess_args()
+            ).strip().split()[-1]
 
-        return None, None, False
+            warp_cli_path = Path(warp_cli_path_str)
+            is_portable = "pywarp" in warp_cli_path.parts
+
+            return version, warp_cli_path, is_portable
+
+        except Exception as e:
+            logger.error(f"Failed to get warp version from '{warp_cli_path_str}': {e}")
+            return None, None, False
 
     def _portable_update_task(self):
         zip_path = self.installer.appdata_dir / "warp_assets.zip"
@@ -981,7 +998,11 @@ class WarpStatusHandler(QObject):
 
     def check_status(self):
         if not self._status_proc.is_running():
-            self._status_proc.run("warp-cli", ["status"], timeout_ms=5000)
+            warp_cli_path = get_warp_cli_executable()
+            if warp_cli_path:
+                self._status_proc.run(warp_cli_path, ["status"], timeout_ms=5000)
+            else:
+                self._on_status_error("warp-cli not found")
 
     def _on_status_finished(self, code, out, err):
         if code != 0:
@@ -1028,7 +1049,11 @@ class WarpStatsHandler(QObject):
             self.stats_signal.emit([])
             return
         if not self._stats_proc.is_running():
-            self._stats_proc.run("warp-cli", ["tunnel", "stats"], timeout_ms=5000)
+            warp_cli_path = get_warp_cli_executable()
+            if warp_cli_path:
+                self._stats_proc.run(warp_cli_path, ["tunnel", "stats"], timeout_ms=5000)
+            else:
+                self._on_stats_error("warp-cli not found")
 
     def _on_stats_finished(self, code, out, err):
         if code != 0:
@@ -2865,7 +2890,10 @@ class WarpInstaller:
         try:
             zip_path = self.appdata_dir / "warp_assets.zip"
 
-            progress = QProgressDialog(self.tr("Downloading portable WARP..."), self.tr("Cancel"), 0, 100, self.parent)
+            progress = QProgressDialog(
+                self.tr("Downloading portable WARP..."),
+                self.tr("Cancel"), 0, 100, self.parent
+            )
             progress.setWindowTitle(self.tr("Downloading"))
             progress.setWindowModality(Qt.WindowModal)
             progress.setValue(0)
@@ -2896,8 +2924,10 @@ class WarpInstaller:
             self.register_and_activate_warp()
 
         except Exception as e:
-            QMessageBox.critical(self.parent, self.tr("Warp Install Failed"),
-                                 self.tr("Could not setup portable WARP from ZIP:\n{}").format(e))
+            QMessageBox.critical(
+                self.parent, self.tr("Warp Install Failed"),
+                self.tr("Could not setup portable WARP from ZIP:\n{}").format(e)
+            )
             self._fallback_windows_prompt()
 
     def _fallback_windows_prompt(self):
