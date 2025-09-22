@@ -166,25 +166,42 @@ def notify_update(update_type, latest_version, current_version):
 def show_update_result(message):
     QMessageBox.information(None, QCoreApplication.translate("show_update_result", "Update Status"), message)
 
-def check_existing_instance():
-    """Prevents double-running, but allows for a graceful restart."""
+def handle_new_connection(main_window_class):
+    client = server.nextPendingConnection()
+    if client and client.waitForReadyRead(100):
+        msg = client.readAll().data().decode()
+        if msg == "SHOW" and main_window_class.instance:
+            main_window_class.instance.showNormal()
+            main_window_class.instance.raise_()
+            main_window_class.instance.activateWindow()
+
+def check_existing_instance(main_window_class=None):
     socket = QLocalSocket()
     socket.connectToServer(SERVER_NAME)
 
     if socket.waitForConnected(500):
         if "--restarting" in sys.argv:
-            for i in range(10):
-                time.sleep(0.5)  # Wait 500ms
+            for _ in range(10):
+                time.sleep(0.5)
                 socket.connectToServer(SERVER_NAME)
                 if not socket.waitForConnected(100):
                     logger.info("Graceful restart successful: old instance closed.")
                     return
-
             logger.warning("Restart failed: The previous instance did not close in time.")
             sys.exit(1)
         else:
-            logger.info("Application is already running. Exiting new instance.")
-            sys.exit(1)
+            socket.write(b"SHOW")
+            socket.flush()
+            socket.waitForBytesWritten(100)
+            logger.info("Another instance is running. Activating it instead of starting new.")
+            sys.exit(0)
+    else:
+        if main_window_class:
+            server.removeServer(SERVER_NAME)
+            if not server.listen(SERVER_NAME):
+                logger.error("Failed to start local server for single instance.")
+            else:
+                server.newConnection.connect(lambda: handle_new_connection(main_window_class))
 
 def setup_logger():
     global LOG_PATH
@@ -1932,10 +1949,17 @@ class SettingsPage(QWidget):
         app = QApplication.instance()
         load_language(app, lang_code, self.settings_handler)
 
-        QMessageBox.information(self,
-                                self.tr("Language Change"),
-                                self.tr("To apply the new language Please restart the app."))
-
+        reply = QMessageBox.question(
+            self,
+            self.tr("Language Change"),
+            self.tr("Language will apply after restart. Restart now?"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        if reply == QMessageBox.Yes:
+            main_win = self.window()
+            if hasattr(main_win, "restart_app"):
+                main_win.restart_app()
 
     def change_font(self, font: QFont):
         font_family = font.family()
@@ -2077,8 +2101,11 @@ class SettingsPage(QWidget):
 
 
 class MainWindow(QMainWindow):
+    instance = None
     def __init__(self, settings_handler=None):
         super().__init__()
+        MainWindow.instance = self
+        self.force_exit = False
         self.settings_handler = settings_handler or SettingsHandler()
         if settings_handler is None:
             self.settings_handler.start()
@@ -2262,6 +2289,11 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("IP fetcher failed")
 
+    def restart_app(self):
+        self.force_exit = True
+        QApplication.quit()
+        QProcess.startDetached(sys.executable, sys.argv + ["--restarting"])
+
     def _on_protocol_ready(self, protocol):
         self.protocol_label.setText(
             self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(protocol)
@@ -2303,6 +2335,23 @@ class MainWindow(QMainWindow):
             self.loading_overlay.setGeometry(self.rect())
 
     def closeEvent(self, event):
+        if getattr(self, "force_exit", False):
+            try:
+                if hasattr(self, "_protocol_worker"):
+                    self._protocol_worker.quit()
+                    self._protocol_worker.wait(2000)
+
+                run_warp_command("warp-cli", "disconnect")
+                logger.info("PyWarp quit and Warp disconnected successfully.")
+                server.removeServer(SERVER_NAME)
+
+            except Exception as e:
+                logger.error("Error during shutdown: %s", e)
+
+            event.accept()
+            QApplication.quit()
+            return
+
         behavior = self.settings_handler.get("close_behavior", "ask")
 
         if behavior == "hide":
@@ -2334,10 +2383,8 @@ class MainWindow(QMainWindow):
                     self._protocol_worker.quit()
                     self._protocol_worker.wait(2000)
 
-                # Disconnect warp-cli
                 run_warp_command("warp-cli", "disconnect")
                 logger.info("PyWarp quit and Warp disconnected successfully.")
-
                 server.removeServer(SERVER_NAME)
 
             except Exception as e:
@@ -2453,16 +2500,8 @@ class MainWindow(QMainWindow):
         self.tray_icon.show()
 
     def close_app_tray(self):
-        try:
-            if hasattr(self, "_protocol_worker"):
-                self._protocol_worker.quit()
-                self._protocol_worker.wait(2000)
-            run_warp_command("warp-cli", "disconnect")
-            logger.info("PyWarp quit and Warp disconnected successfully.")
-            server.removeServer(SERVER_NAME)
-        except Exception as e:
-            logger.error("Error during shutdown: %s", e)
-        QApplication.quit()
+        self.force_exit = True
+        self.close()
 
     def set_close_behavior(self, option):
         self.settings_handler.save_settings("close_behavior", option)
@@ -2472,7 +2511,7 @@ class MainWindow(QMainWindow):
         for option, action in self.close_behavior_actions.items():
             action.setChecked(option == selected_option)
 
-    def on_tray_icon_activated(self, reason):
+    def on_tray_icon_activated(self, reason: object) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.showNormal()
             self.raise_()
