@@ -71,8 +71,8 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
     error_dialog = QMessageBox()
     error_dialog.setIcon(QMessageBox.Critical)
-    error_dialog.setWindowTitle(QCoreApplication.translate("handle_exception", "Application Error"))
-    error_dialog.setText(QCoreApplication.translate("handle_exception", "An unexpected error occurred!"))
+    error_dialog.setWindowTitle(QCoreApplication.translate("MainWindow", "Application Error"))
+    error_dialog.setText(QCoreApplication.translate("MainWindow", "An unexpected error occurred!"))
     error_dialog.setDetailedText("".join(
         traceback.format_exception(exc_type, exc_value, exc_traceback)))
     error_dialog.exec()
@@ -131,26 +131,26 @@ def notify_update(update_type, latest_version, current_version):
     app = QApplication.instance()
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
-    msg_box.setWindowTitle(app.translate("notify_update", "Update Available"))
-    manual_update_button = msg_box.addButton(app.translate("notify_update", "Update"), QMessageBox.ActionRole)
-    msg_box.addButton(app.translate("notify_update", "Later"), QMessageBox.RejectRole)
+    msg_box.setWindowTitle(app.translate("UpdateChecker", "Update Available"))
+    manual_update_button = msg_box.addButton(app.translate("UpdateChecker", "Update"), QMessageBox.ActionRole)
+    msg_box.addButton(app.translate("UpdateChecker", "Later"), QMessageBox.RejectRole)
 
     if update_type == "pywarp":
         msg_box.setText(
-            app.translate("notify_update", "A new version of PyWarp is available!\n\nLatest: {}\nCurrent: {}").format(
+            app.translate("UpdateChecker", "A new version of PyWarp is available!\n\nLatest: {}\nCurrent: {}").format(
                 latest_version, current_version))
 
     elif update_type == "warp_installed":
         msg_box.setText(
-            app.translate("notify_update", "A new version of WARP is available!\n\nLatest: {}\nCurrent: {}").format(
+            app.translate("UpdateChecker", "A new version of WARP is available!\n\nLatest: {}\nCurrent: {}").format(
                 latest_version, current_version))
 
     elif update_type == "warp_portable":
         msg_box.setText(
-            app.translate("notify_update",
+            app.translate("UpdateChecker",
                           "A new version of portable WARP is available!\n\nLatest: {}\nCurrent: {}").format(
                 latest_version, current_version))
-        auto_update_button = msg_box.addButton(app.translate("notify_update", "Auto Update"), QMessageBox.AcceptRole)
+        auto_update_button = msg_box.addButton(app.translate("UpdateChecker", "Auto Update"), QMessageBox.AcceptRole)
         msg_box.setDefaultButton(auto_update_button)
         msg_box.removeButton(manual_update_button)
 
@@ -162,9 +162,6 @@ def notify_update(update_type, latest_version, current_version):
     elif 'auto_update_button' in locals() and clicked_button == auto_update_button:
         update_thread = threading.Thread(target=update_checker.perform_portable_warp_update, daemon=True)
         update_thread.start()
-
-def show_update_result(message):
-    QMessageBox.information(None, QCoreApplication.translate("show_update_result", "Update Status"), message)
 
 def handle_new_connection(main_window_class):
     client = server.nextPendingConnection()
@@ -992,7 +989,7 @@ class UpdateChecker(QObject):
 
     def _on_worker_error(self, exc):
         logger.error(f"Worker error: {exc}")
-        self.update_finished.emit(self.tr("❌ Update failed: {}").format(exc))
+        self.update_finished.emit(self.tr("Update failed: {}").format(exc))
 
 
 class WarpStatusHandler(QObject):
@@ -1227,12 +1224,12 @@ class LoadingOverlay(QWidget):
         layout.addWidget(self.loading_label, alignment=Qt.AlignCenter)
 
         self.loading_texts = [
-            self.tr("Checking Warp service…"),
-            self.tr("Making sure Warp is ready…"),
-            self.tr("Preparing UI…"),
-            self.tr("Syncing settings…"),
-            self.tr("Starting engines…"),
-            self.tr("Almost ready…")
+            self.tr("Checking Warp service..."),
+            self.tr("Making sure Warp is ready..."),
+            self.tr("Preparing UI..."),
+            self.tr("Syncing settings..."),
+            self.tr("Starting engines..."),
+            self.tr("Almost ready...")
         ]
         self.current_index = 0
 
@@ -1544,17 +1541,20 @@ class ExclusionManager(QDialog):
 
         exclusion_type = self.selector.currentText().lower()
 
-        if exclusion_type == self.tr("ip").lower() and not self.is_valid_ip(value):
+        ip_keyword = self.tr("ip").lower()
+        domain_keyword = self.tr("domain").lower()
+
+        if exclusion_type == ip_keyword and not self.is_valid_ip(value):
             QMessageBox.warning(self, self.tr("Invalid Input"),
                                 self.tr("Please enter a valid IP address."))
             return
-        elif exclusion_type == self.tr("domain").lower() and not self.is_valid_domain(value):
+        elif exclusion_type == domain_keyword and not self.is_valid_domain(value):
             QMessageBox.warning(self, self.tr("Invalid Input"),
                                 self.tr("Please enter a valid domain name."))
             return
 
         try:
-            command_type = "ip" if exclusion_type == self.tr("ip").lower() else "host"
+            command_type = "ip" if exclusion_type == ip_keyword else "host"
             result = run_warp_command("warp-cli", "tunnel", command_type, "add", value)
 
             if result.returncode == 0:
@@ -1793,7 +1793,8 @@ class AdvancedSettings(QDialog):
         value_cleaned = value_from_list.split('/')[0]
 
         try:
-            command_mode = "ip" if mode == self.tr("ip").lower() else "host"
+            ip_keyword = self.tr("ip").lower()
+            command_mode = "ip" if mode == ip_keyword else "host"
             result = run_warp_command("warp-cli", "tunnel", command_mode, "remove", value_cleaned)
 
             if result.returncode == 0:
@@ -2840,7 +2841,7 @@ class WarpInstaller:
         self.appdata_dir.mkdir(parents=True, exist_ok=True)
 
     def tr(self, text):
-        return QCoreApplication.translate("WarpInstaller", text)
+        return QCoreApplication.translate(self.__class__.__name__, text)
 
     def is_warp_installed(self):
         os_name = platform.system()
@@ -3200,7 +3201,7 @@ if __name__ == "__main__":
             QMessageBox.critical(
                 None,
                 app.translate("__main__", "Warp Service Error"),
-                app.translate("__main__", f"Portable Warp service failed to start:\n{e}")
+                app.translate("__main__", "Portable Warp service failed to start:\n{}").format(e)
             )
             sys.exit(1)
 
