@@ -13,6 +13,7 @@ import webbrowser
 import zipfile
 import requests
 import resources_rc
+from types import SimpleNamespace
 from pathlib import Path
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGroupBox, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox)
 
-CURRENT_VERSION = "1.2.6"
+CURRENT_VERSION = "1.2.7"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
@@ -101,31 +102,21 @@ def get_warp_cli_executable() -> str | None:
 def run_warp_command(*args):
     warp_cli_path = get_warp_cli_executable()
     if not warp_cli_path:
-        class Dummy:
-            returncode = -1
-            stdout = ""
-            stderr = "warp-cli executable not found"
+        return SimpleNamespace(returncode=-1, stdout="", stderr="warp-cli executable not found")
 
-        return Dummy()
     command = [warp_cli_path] + list(args[1:])
 
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30, **safe_subprocess_args())
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=30, **safe_subprocess_args()
+        )
         return result
     except subprocess.TimeoutExpired:
         logger.error(f"Command timeout: {' '.join(args)}")
-        class Dummy:
-            returncode = -1
-            stdout = ""
-            stderr = "timeout"
-        return Dummy()
+        return SimpleNamespace(returncode=-1, stdout="", stderr="timeout")
     except Exception as e:
         logger.error(f"Command failed: {' '.join(args)}: {e}")
-        class Dummy:
-            returncode = -1
-            stdout = ""
-            stderr = str(e)
-        return Dummy()
+        return SimpleNamespace(returncode=-1, stdout="", stderr=str(e))
 
 def notify_update(update_type, latest_version, current_version):
     app = QApplication.instance()
@@ -1071,7 +1062,7 @@ class WarpStatsHandler(QObject):
 
     def _on_stats_finished(self, code, out, err):
         if code != 0:
-            logger.error(f"Stats error: {err}")
+            logger.error(err)
             self.stats_signal.emit([])
             return
 
@@ -1099,7 +1090,7 @@ class WarpStatsHandler(QObject):
             self.stats_signal.emit([])
 
     def _on_stats_error(self, err_msg):
-        logger.error(f"warp-cli stats error: {err_msg}")
+        logger.error(err_msg)
         self.stats_signal.emit([])
 
     def stop(self):

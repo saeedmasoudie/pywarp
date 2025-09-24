@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.7 - 2025-09-24
+### Highlights
+- New auto-restart feature when changing language settings.
+- Improved shutdown flow: tray exit and restart now always force quit instead of hiding.
+- Better reliability for portable `warp-cli` execution.
+
+### Changes
+- Added auto-restart support after language change for a smoother user experience.
+- Fixed tray menu "Exit" option to always quit the app instead of hiding it.
+- Improved close event logic to bypass "hide/close" preference during restart or forced exit.
+- Corrected execution of portable `warp-cli` commands to ensure proper behavior across platforms.
+- Proxy status is now displayed immediately at startup for better clarity.
+- Updated macOS universal build workflow for improved compatibility.
+- Introduced SECURITY.md file with clear instructions for reporting vulnerabilities.
+- General stability and performance improvements across background workers and shutdown flow.
+
 ## v1.2.6 - 2025-09-07
 ### Changes
 - fixed update checker crash problem on v1.2.5
