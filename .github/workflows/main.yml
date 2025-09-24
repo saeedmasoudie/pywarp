@@ -1,13 +1,12 @@
-name: Build & Release PyWarp v${{ env.APP_VERSION }}
+name: Build & Release PyWarp
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*.*.*"
-
-env:
-  APP_VERSION: 1.2.7
+    inputs:
+      version:
+        description: 'The version to build and release'
+        required: true
+        default: '1.2.7'
 
 permissions:
   contents: write
@@ -24,7 +23,7 @@ jobs:
           flake8 . || true
 
   build-windows:
-    name: Build Windows (v${{ env.APP_VERSION }})
+    name: Build Windows
     runs-on: windows-latest
     needs: validate
     steps:
@@ -41,7 +40,8 @@ jobs:
       - name: Build Executable
         shell: pwsh
         run: |
-          $version = "${{ env.APP_VERSION }}"
+          # We now use the version from the manual input.
+          $version = "${{ github.event.inputs.version }}"
           python -m nuitka main.py `
             --standalone `
             --onefile `
@@ -65,14 +65,14 @@ jobs:
       - name: Zip Executable
         run: |
           cd dist
-          powershell Compress-Archive -Path pywarp-windows-v${{ env.APP_VERSION }}.exe -DestinationPath pywarp-windows-v${{ env.APP_VERSION }}.zip
+          powershell Compress-Archive -Path pywarp-windows-v${{ github.event.inputs.version }}.exe -DestinationPath pywarp-windows-v${{ github.event.inputs.version }}.zip
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows
-          path: dist/pywarp-windows-v${{ env.APP_VERSION }}.zip
+          path: dist/pywarp-windows-v${{ github.event.inputs.version }}.zip
 
   build-linux:
-    name: Build Linux (v${{ env.APP_VERSION }})
+    name: Build Linux
     runs-on: ubuntu-22.04
     needs: build-windows
     steps:
@@ -96,17 +96,17 @@ jobs:
             --enable-plugin=pyside6 \
             --include-data-dir=assets=assets \
             --include-qt-plugins=all \
-            --output-filename="pywarp-ubuntu-v${{ env.APP_VERSION }}"
+            --output-filename="pywarp-ubuntu-v${{ github.event.inputs.version }}"
       - name: Create tar.gz
         run: |
-          tar -czvf pywarp-ubuntu-v${{ env.APP_VERSION }}.tar.gz pywarp-ubuntu-v${{ env.APP_VERSION }}
+          tar -czvf pywarp-ubuntu-v${{ github.event.inputs.version }}.tar.gz pywarp-ubuntu-v${{ github.event.inputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-ubuntu
-          path: pywarp-ubuntu-v${{ env.APP_VERSION }}.tar.gz
+          path: pywarp-ubuntu-v${{ github.event.inputs.version }}.tar.gz
 
   build-macos-universal:
-    name: Build macOS Universal (v${{ env.APP_VERSION }})
+    name: Build macOS Universal
     runs-on: macos-13
     strategy:
       matrix:
@@ -133,7 +133,7 @@ jobs:
             --macos-create-app-bundle \
             --macos-app-name="pywarp-${{ matrix.arch }}" \
             --macos-app-icon=assets/logo.icns \
-            --macos-app-version="${{ env.APP_VERSION }}" \
+            --macos-app-version="${{ github.event.inputs.version }}" \
             --include-data-dir=assets=assets \
             --include-qt-plugins=iconengines,imageformats,platforms,styles,tls,sqldrivers=libqsqlite.dylib \
             --noinclude-dlls=libcrypto.dylib \
@@ -150,10 +150,10 @@ jobs:
             find . -maxdepth 2
             exit 1
           fi
-          mv main.app "pywarp-v${{ env.APP_VERSION }}-${{ matrix.arch }}.app"
+          mv main.app "pywarp-v${{ github.event.inputs.version }}-${{ matrix.arch }}.app"
       - name: Zip .app bundle
         run: |
-          APP_PATH="pywarp-v${{ env.APP_VERSION }}-${{ matrix.arch }}.app"
+          APP_PATH="pywarp-v${{ github.event.inputs.version }}-${{ matrix.arch }}.app"
           ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
       - name: Validate zip before upload
@@ -168,7 +168,7 @@ jobs:
           path: pywarp-${{ matrix.arch }}.zip
 
   merge-macos-universal:
-    name: Merge & Create macOS Universal DMG (v${{ env.APP_VERSION }})
+    name: Merge & Create macOS Universal DMG
     runs-on: macos-13
     needs: build-macos-universal
     steps:
@@ -186,60 +186,46 @@ jobs:
         run: |
           APP_X86=$(find artifacts/unzipped -name '*.app' -path '*x86_64.app' -type d | head -n1)
           APP_ARM=$(find artifacts/unzipped -name '*.app' -path '*arm64.app' -type d | head -n1)
-
           if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
             echo "Error: One or both .app bundles not found after unzipping."
             exit 1
           fi
-
-          echo "Found x86_64 app: $APP_X86"
-          echo "Found arm64 app: $APP_ARM"
-
           BIN_X86="$APP_X86/Contents/MacOS/main"
           BIN_ARM="$APP_ARM/Contents/MacOS/main"
-
           if [[ ! -f "$BIN_X86" || ! -f "$BIN_ARM" ]]; then
             echo "Error: 'main' executable not found in one or both bundles."
             exit 1
           fi
-
           UNIVERSAL_APP_PATH="$APP_ARM"
           UNIVERSAL_BIN_PATH="$BIN_ARM"
-
-          echo "Using $UNIVERSAL_APP_PATH as the base for the universal app."
-
-          echo "Creating universal binary with lipo..."
           lipo -create "$BIN_X86" "$BIN_ARM" -output "$UNIVERSAL_BIN_PATH"
           chmod +x "$UNIVERSAL_BIN_PATH"
-
-          echo "Copying x86_64 frameworks and plugins..."
           if [ -d "$APP_X86/Contents/Frameworks" ]; then
             cp -R "$APP_X86/Contents/Frameworks/." "$UNIVERSAL_APP_PATH/Contents/Frameworks/"
           fi
           if [ -d "$APP_X86/Contents/Plugins" ]; then
             cp -R "$APP_X86/Contents/Plugins/." "$UNIVERSAL_APP_PATH/Contents/Plugins/"
           fi
-          
-          mv "$UNIVERSAL_APP_PATH" "PyWarp-v${{ env.APP_VERSION }}.app"
-          echo "Successfully created universal app: PyWarp-v${{ env.APP_VERSION }}.app"
+          mv "$UNIVERSAL_APP_PATH" "PyWarp-v${{ github.event.inputs.version }}.app"
+          echo "Successfully created universal app: PyWarp-v${{ github.event.inputs.version }}.app"
       - name: Create DMG
         run: |
           hdiutil create \
             -volname "PyWarp" \
-            -srcfolder "PyWarp-v${{ env.APP_VERSION }}.app" \
+            -srcfolder "PyWarp-v${{ github.event.inputs.version }}.app" \
             -format UDZO \
             -ov \
-            -o "./pywarp-macos-universal-v${{ env.APP_VERSION }}.dmg"
+            -o "./pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
-          path: pywarp-macos-universal-v${{ env.APP_VERSION }}.dmg
+          path: pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg
       - name: Cleanup
         run: |
           rm -rf PyWarp-v*.app pywarp-macos-universal-v*.dmg
 
   release:
-    name: Create GitHub Release (v${{ env.APP_VERSION }})
+    name: Create GitHub Release
     runs-on: ubuntu-22.04
     needs: [build-windows, build-linux, merge-macos-universal]
     steps:
@@ -249,8 +235,9 @@ jobs:
         with:
           path: artifacts
       - name: Extract Changelog for Release
+        # This assumes your CHANGELOG.md has headers like "## v1.0.1"
         run: |
-          awk -v ver="v${{ env.APP_VERSION }}" '
+          awk -v ver="v${{ github.event.inputs.version }}" '
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
             flag {print}
@@ -258,45 +245,29 @@ jobs:
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
       - name: Generate Checksums and Downloads Section
         run: |
-          VERSION="v${{ env.APP_VERSION }}"
+          VERSION="v${{ github.event.inputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
           MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
-
           WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
           LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
           MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
-
           {
             echo ""
             echo "### 📦 Downloads"
             echo ""
             echo "| Platform | File | SHA256 Checksum |"
             echo "|----------|------|-----------------|"
-            echo "| 🪟 Windows | [Download EXE](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $WIN_FILE)) | \`$WIN_SHA\` |"
-            echo "| 🐧 Linux | [Download Binary](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $LINUX_FILE)) | \`$LINUX_SHA\` |"
+            echo "| 🪟 Windows | [Download ZIP](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $WIN_FILE)) | \`$WIN_SHA\` |"
+            echo "| 🐧 Linux | [Download TAR.GZ](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $LINUX_FILE)) | \`$LINUX_SHA\` |"
             echo "| 🍎 macOS | [Download DMG](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
             echo ""
-            echo "To verify integrity:"
-            echo "- On macOS/Linux: \`shasum -a 256 filename\`"
-            echo "- On Windows (PowerShell): \`Get-FileHash .\\filename -Algorithm SHA256\`"
-            echo ""
-            echo "---"
-            echo ""
-            echo "### 🛡 Is it safe?"
-            echo ""
-            echo "Yes. Some antivirus tools may falsely flag the \`.exe\` because it’s unsigned and built with Nuitka."
-            echo ""
-            echo "- ✅ Open-source and transparent: [GitHub Repo](https://github.com/${{ github.repository }})"
-            echo "- 🔐 We're working on signing future releases"
-            echo ""
-            echo "If flagged, you can submit the \`.exe\` to Microsoft as a false positive or build it yourself from source."
           } >> RELEASE_NOTES.md
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.APP_VERSION }}
-          name: PyWarp v${{ env.APP_VERSION }}
+          tag_name: v${{ github.event.inputs.version }}
+          name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: true
