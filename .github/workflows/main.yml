@@ -50,7 +50,7 @@ jobs:
             --onefile `
             --disable-console `
             --enable-plugin=pyside6 `
-            --nofollow-imports `
+            --follow-imports `
             --noinclude-pytest-mode=nofollow `
             --noinclude-unittest-mode=nofollow `
             --nofollow-import-to=tkinter,test,pydoc `
@@ -304,7 +304,7 @@ jobs:
           VERSION="v${{ steps.version.outputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
-          MAC_FILE=$(find artifacts -name "pywarp-macos-universal.dmg" | head -n1)
+          MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
 
           WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
           LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
@@ -347,7 +347,7 @@ jobs:
           files: |
             artifacts/**/pywarp-windows-*.zip
             artifacts/**/pywarp-ubuntu-*.tar.gz
-            artifacts/**/pywarp-macos-universal.dmg
+            artifacts/**/pywarp-macos-universal-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
