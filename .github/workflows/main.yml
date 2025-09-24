@@ -264,8 +264,9 @@ jobs:
           hdiutil create \
             -volname "PyWarp" \
             -srcfolder "PyWarp-v$VERSION.app" \
-            -ov -format UDZO \
-            -o "pywarp-macos-universal-v$VERSION.dmg"
+            -format UDZO \
+            -ov \
+            -o "./pywarp-macos-universal-v${VERSION}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
