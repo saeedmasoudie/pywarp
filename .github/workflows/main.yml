@@ -252,13 +252,15 @@ jobs:
             cp -R "$APP_X86/Contents/Plugins/." "$UNIVERSAL_APP_PATH/Contents/Plugins/"
           fi
           
-          VERSION=$(cat version.txt)
+          VERSION=$(<version.txt)
+          VERSION=$(echo "$VERSION" | xargs)
           mv "$UNIVERSAL_APP_PATH" "PyWarp-v$VERSION.app"
           echo "Successfully created universal app: PyWarp-v$VERSION.app"
 
       - name: Create DMG
         run: |
-          VERSION=$(cat version.txt)
+          VERSION=$(<version.txt)
+          VERSION=$(echo "$VERSION" | xargs)
           hdiutil create -volname PyWarp -srcfolder "PyWarp-v$VERSION.app" -ov -format UDZO "pywarp-macos-universal-v$VERSION.dmg"
 
       - uses: actions/upload-artifact@v4
