@@ -1,9 +1,14 @@
+import asyncio
+import base64
 import ipaddress
+import json
 import logging
 import os
 import platform
 import re
 import shutil
+import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -230,7 +235,6 @@ def load_language(app, lang_code="en", settings_handler=None):
         if settings_handler:
             settings_handler.save_settings("language", lang_code)
         app.setLayoutDirection(Qt.LeftToRight)
-        logger.info("Language switched to English")
         return None
 
     qm_resource_path = f":/translations/{lang_code}.qm"
@@ -726,6 +730,410 @@ class IpFetcher(QObject):
         self._worker.error_signal.connect(lambda e: (logger.error("IP fetch error: %s", e), self.ip_ready.emit("Unavailable")))
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
+
+
+class SOCKS5ChainedProxyServer:
+
+    def __init__(self, settings_handler, forward_port=41000):
+        self.settings_handler = settings_handler
+        self.forward_port = int(forward_port or 41000)
+        self._thread = None
+        self._loop = None
+        self._server = None
+        self._stopping = threading.Event()
+
+    def _get_external(self):
+        raw = self.settings_handler.get("external_proxy", "")
+        try:
+            external = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            external = {}
+        return external or {}
+
+    def _get_warp_port(self):
+        wp = self.settings_handler.get("proxy_port", "40000")
+        try:
+            return int(wp)
+        except Exception:
+            return 40000
+
+    def check_external_proxy(self, timeout=5):
+        external = self._get_external()
+        if not external.get("host") or not external.get("port"):
+            logger.warning("[ChainedProxy] No external proxy configured.")
+            return False
+
+        warp_port = self._get_warp_port()
+        try:
+            with socket.create_connection(("127.0.0.1", warp_port), timeout=timeout) as s:
+                s.settimeout(timeout)
+                s.sendall(b"\x05\x01\x00")
+                resp = s.recv(2)
+                if len(resp) < 2 or resp[1] == 0xFF:
+                    logger.warning("[ChainedProxy] WARP proxy handshake failed.")
+                    return False
+
+                host = external["host"]
+                port = int(external["port"])
+                if self._is_valid_ipv4(host):
+                    addr = socket.inet_aton(host)
+                    req = b"\x05\x01\x00\x01" + addr + struct.pack(">H", port)
+                else:
+                    host_b = host.encode("idna")
+                    req = b"\x05\x01\x00\x03" + bytes([len(host_b)]) + host_b + struct.pack(">H", port)
+
+                s.sendall(req)
+                rep = s.recv(4)
+                if len(rep) < 4 or rep[1] != 0x00:
+                    logger.warning(f"[ChainedProxy] External proxy {host}:{port} is unreachable via WARP.")
+                    return False
+
+                logger.info(f"[ChainedProxy] External proxy {host}:{port} check succeeded.")
+                return True
+        except Exception as e:
+            logger.error(f"[ChainedProxy] External proxy check failed: {e}")
+            return False
+
+    def check_local_proxy(self, timeout=2):
+        try:
+            with socket.create_connection(("127.0.0.1", self.forward_port), timeout=timeout) as s:
+                s.settimeout(timeout)
+                s.sendall(b"\x05\x01\x00")
+                resp = s.recv(2)
+                ok = len(resp) == 2 and resp[0] == 0x05
+                if ok:
+                    logger.info(f"[ChainedProxy] Local SOCKS5 proxy is listening on 127.0.0.1:{self.forward_port}")
+                else:
+                    logger.warning(f"[ChainedProxy] Local proxy check failed on 127.0.0.1:{self.forward_port}")
+                return ok
+        except Exception:
+            logger.error(f"[ChainedProxy] Local proxy not responding on 127.0.0.1:{self.forward_port}")
+            return False
+
+    def start_background(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stopping.clear()
+        self._thread = threading.Thread(target=self._run_loop_thread, daemon=True)
+        self._thread.start()
+
+    def _run_loop_thread(self):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._loop = loop
+            coro = asyncio.start_server(self._handle_client_async, "127.0.0.1", self.forward_port)
+            self._server = loop.run_until_complete(coro)
+            addr = self._server.sockets[0].getsockname()
+            logger.info(f"[ChainedProxy] SOCKS5 server listening on {addr}")
+            try:
+                loop.run_forever()
+            finally:
+                self._server.close()
+                loop.run_until_complete(self._server.wait_closed())
+                loop.run_until_complete(loop.shutdown_asyncgens())
+        except Exception as e:
+            logger.error(f"[ChainedProxy] Server thread exception: {e}")
+        finally:
+            try:
+                asyncio.set_event_loop(None)
+            except Exception:
+                pass
+            self._loop = None
+            self._server = None
+
+    def stop(self):
+        if self._loop:
+            try:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                logger.info("[ChainedProxy] Server stopped.")
+            except Exception:
+                pass
+        if self._thread:
+            self._thread.join(timeout=2)
+            self._thread = None
+
+    def _is_valid_ipv4(self, v):
+        try:
+            socket.inet_aton(v)
+            return True
+        except Exception:
+            return False
+
+    async def _handle_client_async(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        peer = writer.get_extra_info("peername")
+        logger.info(f"[ChainedProxy] New client {peer} connected.")
+
+        try:
+            data = await reader.readexactly(2)
+            ver, nmethods = data[0], data[1]
+            if ver != 5:
+                writer.close()
+                await writer.wait_closed()
+                return
+            await reader.readexactly(nmethods)
+            writer.write(b"\x05\x00")
+            await writer.drain()
+
+            hdr = await reader.readexactly(4)
+            if len(hdr) < 4 or hdr[1] != 1:  # only CONNECT supported
+                writer.write(b"\x05\x07\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                return
+
+            atyp = hdr[3]
+            if atyp == 1:
+                addr = await reader.readexactly(4)
+                dest_host = socket.inet_ntoa(addr)
+            elif atyp == 3:
+                l = (await reader.readexactly(1))[0]
+                dest_host = (await reader.readexactly(l)).decode("idna")
+            elif atyp == 4:
+                addr = await reader.readexactly(16)
+                dest_host = socket.inet_ntop(socket.AF_INET6, addr)
+            else:
+                writer.close()
+                await writer.wait_closed()
+                return
+            dest_port = struct.unpack(">H", await reader.readexactly(2))[0]
+
+            external = self._get_external()
+            if not external.get("host") or not external.get("port"):
+                writer.write(b"\x05\x01\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                logger.warning(f"[ChainedProxy] No external proxy configured. Closing client {peer}.")
+                return
+
+            warp_port = self._get_warp_port()
+            try:
+                warp_reader, warp_writer = await asyncio.open_connection("127.0.0.1", warp_port)
+            except Exception:
+                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                logger.error(f"[ChainedProxy] Could not connect to WARP proxy on port {warp_port}.")
+                return
+
+            warp_writer.write(b"\x05\x01\x00")
+            await warp_writer.drain()
+            resp = await warp_reader.read(2)
+            if len(resp) < 2 or resp[1] == 0xFF:
+                await self._close_streams(warp_reader, warp_writer)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                logger.error("[ChainedProxy] WARP SOCKS5 handshake refused methods.")
+                return
+
+            ext_host, ext_port = external["host"], int(external["port"])
+            if self._is_valid_ipv4(ext_host):
+                req = b"\x05\x01\x00\x01" + socket.inet_aton(ext_host) + struct.pack(">H", ext_port)
+            else:
+                hb = ext_host.encode("idna")
+                req = b"\x05\x01\x00\x03" + bytes([len(hb)]) + hb + struct.pack(">H", ext_port)
+            warp_writer.write(req)
+            await warp_writer.drain()
+
+            rep = await warp_reader.read(4)
+            if len(rep) < 4 or rep[1] != 0x00:
+                await self._close_streams(warp_reader, warp_writer)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                logger.error(f"[ChainedProxy] WARP could not connect to external proxy {ext_host}:{ext_port}")
+                return
+
+            atyp = rep[3]
+            if atyp == 1:
+                await warp_reader.readexactly(6)
+            elif atyp == 3:
+                l = (await warp_reader.readexactly(1))[0]
+                await warp_reader.readexactly(l + 2)
+            elif atyp == 4:
+                await warp_reader.readexactly(18)
+
+            ext_type = (external.get("type") or "socks5").lower()
+            user = external.get("user") or ""
+            pwd = external.get("pass") or ""
+            ok = False
+            try:
+                if ext_type in ("socks5", "socks5h"):
+                    ok = await self._external_socks5_connect_async(warp_reader, warp_writer, dest_host, dest_port, user, pwd)
+                elif ext_type in ("socks4", "socks4a"):
+                    ok = await self._external_socks4_connect_async(warp_reader, warp_writer, dest_host, dest_port, user)
+                elif ext_type in ("http", "https"):
+                    ok = await self._external_http_connect_async(warp_reader, warp_writer, dest_host, dest_port, user, pwd)
+            except Exception as e:
+                logger.error(f"[ChainedProxy] Error during external proxy handshake: {e}")
+                ok = False
+
+            if not ok:
+                await self._close_streams(warp_reader, warp_writer)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                logger.warning(f"[ChainedProxy] External proxy {ext_type} connect failed for {dest_host}:{dest_port}")
+                return
+
+            writer.write(b"\x05\x00\x00\x01" + b"\x00"*6)
+            await writer.drain()
+            logger.info(f"[ChainedProxy] Proxy chain established: client {peer} -> {dest_host}:{dest_port} via {ext_type}://{ext_host}:{ext_port}")
+
+            async def pipe(reader_src, writer_dst):
+                try:
+                    while True:
+                        data = await reader_src.read(4096)
+                        if not data:
+                            break
+                        writer_dst.write(data)
+                        await writer_dst.drain()
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        writer_dst.close()
+                    except Exception:
+                        pass
+
+            task1 = asyncio.create_task(pipe(reader, warp_writer))
+            task2 = asyncio.create_task(pipe(warp_reader, writer))
+            await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
+
+            logger.info(f"[ChainedProxy] Client {peer} disconnected.")
+
+        except Exception as e:
+            logger.error(f"[ChainedProxy] Exception for client {peer}: {e}")
+            try:
+                writer.close()
+            except Exception:
+                pass
+
+    async def _close_streams(self, r, w):
+        try:
+            w.close()
+            await w.wait_closed()
+        except Exception:
+            pass
+
+    async def _external_socks5_connect_async(self, reader, writer, dest_host, dest_port, username, password):
+        try:
+            # negotiate methods
+            if username:
+                writer.write(b"\x05\x02\x02\x00")
+            else:
+                writer.write(b"\x05\x01\x00")
+            await writer.drain()
+            resp = await reader.readexactly(2)
+            if resp[1] == 0xFF:
+                logger.error("[ChainedProxy] External SOCKS5 server refused all methods.")
+                return False
+            if resp[1] == 0x02:
+                ub, pb = username.encode(), password.encode()
+                auth_msg = b"\x01" + bytes([len(ub)]) + ub + bytes([len(pb)]) + pb
+                writer.write(auth_msg)
+                await writer.drain()
+                arep = await reader.readexactly(2)
+                if arep[1] != 0x00:
+                    logger.error("[ChainedProxy] SOCKS5 authentication failed.")
+                    return False
+
+            # CONNECT request
+            if self._is_valid_ipv4(dest_host):
+                req = b"\x05\x01\x00\x01" + socket.inet_aton(dest_host) + struct.pack(">H", dest_port)
+            else:
+                hb = dest_host.encode("idna")
+                req = b"\x05\x01\x00\x03" + bytes([len(hb)]) + hb + struct.pack(">H", dest_port)
+            writer.write(req)
+            await writer.drain()
+
+            rep = await reader.readexactly(4)
+            if rep[1] != 0x00:
+                logger.error(f"[ChainedProxy] SOCKS5 CONNECT to {dest_host}:{dest_port} failed (REP={rep[1]}).")
+                return False
+
+            atyp = rep[3]
+            if atyp == 1:
+                await reader.readexactly(6)
+            elif atyp == 3:
+                l = (await reader.readexactly(1))[0]
+                await reader.readexactly(l + 2)
+            elif atyp == 4:
+                await reader.readexactly(18)
+
+            logger.info(f"[ChainedProxy] SOCKS5 CONNECT to {dest_host}:{dest_port} successful.")
+            return True
+        except Exception as e:
+            logger.error(f"[ChainedProxy] SOCKS5 handshake exception: {e}")
+            return False
+
+    async def _external_socks4_connect_async(self, reader, writer, dest_host, dest_port, user):
+        try:
+            if self._is_valid_ipv4(dest_host):
+                ipb = socket.inet_aton(dest_host)
+                header = b"\x04\x01" + struct.pack(">H", dest_port) + ipb
+                header += (user.encode() if user else b"") + b"\x00"
+            else:
+                header = b"\x04\x01" + struct.pack(">H", dest_port) + b"\x00\x00\x00\x01"
+                header += (user.encode() if user else b"") + b"\x00"
+                header += dest_host.encode("idna") + b"\x00"
+
+            writer.write(header)
+            await writer.drain()
+            resp = await reader.readexactly(8)
+            ok = resp[1] == 0x5A
+            if ok:
+                logger.info(f"[ChainedProxy] SOCKS4 CONNECT to {dest_host}:{dest_port} successful.")
+            else:
+                logger.error(f"[ChainedProxy] SOCKS4 CONNECT to {dest_host}:{dest_port} failed.")
+            return ok
+        except Exception as e:
+            logger.error(f"[ChainedProxy] SOCKS4 handshake exception: {e}")
+            return False
+
+    async def _external_http_connect_async(self, reader, writer, dest_host, dest_port, user, password):
+        try:
+            auth_hdr = b""
+            if user:
+                creds = f"{user}:{password}".encode("utf-8")
+                auth_hdr = b"Proxy-Authorization: Basic " + base64.b64encode(creds) + b"\r\n"
+
+            req = (
+                b"CONNECT " + dest_host.encode("idna") + b":" + str(dest_port).encode() + b" HTTP/1.1\r\n"
+                + b"Host: " + dest_host.encode("idna") + b":" + str(dest_port).encode() + b"\r\n"
+                + auth_hdr
+                + b"Proxy-Connection: Keep-Alive\r\n\r\n"
+            )
+            writer.write(req)
+            await writer.drain()
+
+            buffer = b""
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                if b"\r\n\r\n" in buffer or b"\n\n" in buffer:
+                    break
+
+            first_line = buffer.splitlines()[0] if buffer.splitlines() else b""
+            if b"200" in first_line:
+                logger.info(f"[ChainedProxy] HTTP CONNECT to {dest_host}:{dest_port} successful.")
+                return True
+
+            logger.error(f"[ChainedProxy] HTTP CONNECT to {dest_host}:{dest_port} failed: {first_line.decode(errors='ignore')}")
+            return False
+        except Exception as e:
+            logger.error(f"[ChainedProxy] HTTP CONNECT exception: {e}")
+            return False
+
 
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
@@ -1663,15 +2071,158 @@ class AdvancedSettings(QDialog):
         coming_soon_layout.addWidget(QLabel(self.tr("Coming Soon...")))
         coming_soon_group.setLayout(coming_soon_layout)
 
-        # Main grid layout
+        # Proxy Chain
+        proxy_group = QGroupBox(self.tr("Proxy Chain"))
+        proxy_layout = QVBoxLayout()
+
+        row1 = QHBoxLayout()
+        self.proxy_host = QLineEdit()
+        self.proxy_host.setPlaceholderText(self.tr("Host"))
+        self.proxy_host.setMinimumWidth(140)
+
+        self.proxy_port = QLineEdit()
+        self.proxy_port.setPlaceholderText(self.tr("Port"))
+        self.proxy_port.setMaximumWidth(80)
+
+        self.proxy_type = QComboBox()
+        self.proxy_type.addItems(["socks5", "socks4", "http"])
+        self.proxy_type.setMaximumWidth(100)
+
+        self.proxy_user = QLineEdit()
+        self.proxy_user.setPlaceholderText(self.tr("User (optional)"))
+        self.proxy_user.setMaximumWidth(120)
+
+        self.proxy_pass = QLineEdit()
+        self.proxy_pass.setPlaceholderText(self.tr("Pass (optional)"))
+        self.proxy_pass.setEchoMode(QLineEdit.Password)
+        self.proxy_pass.setMaximumWidth(120)
+
+        row1.addWidget(QLabel(self.tr("Host:")))
+        row1.addWidget(self.proxy_host)
+        row1.addWidget(QLabel(self.tr("Port:")))
+        row1.addWidget(self.proxy_port)
+        row1.addWidget(QLabel(self.tr("Type:")))
+        row1.addWidget(self.proxy_type)
+        row1.addWidget(QLabel(self.tr("User:")))
+        row1.addWidget(self.proxy_user)
+        row1.addWidget(QLabel(self.tr("Pass:")))
+        row1.addWidget(self.proxy_pass)
+
+        proxy_layout.addLayout(row1)
+
+        row2 = QHBoxLayout()
+
+        self.proxy_local_forward_port = QLineEdit()
+        self.proxy_local_forward_port.setPlaceholderText(self.tr("Local forward port (optional)"))
+        self.proxy_local_forward_port.setMaximumWidth(160)
+        self.proxy_save_btn = QPushButton(self.tr("Save Proxy"))
+
+        row2.addWidget(QLabel(self.tr("Forward Port:")))
+        row2.addWidget(self.proxy_local_forward_port)
+        row2.addStretch()
+        row2.addWidget(self.proxy_save_btn)
+
+        proxy_layout.addLayout(row2)
+
+        proxy_group.setLayout(proxy_layout)
+
         grid = QGridLayout()
         grid.addWidget(exclusion_group, 0, 0)
         grid.addWidget(coming_soon_group, 0, 1)
         grid.addWidget(endpoint_group, 1, 0)
         grid.addWidget(masque_group, 1, 1)
+        grid.addWidget(proxy_group, 2, 0, 1, 2)
 
         self.setLayout(grid)
         self.update_list_view()
+
+        self.proxy_save_btn.clicked.connect(self._save_proxy_settings)
+        self._load_proxy_settings()
+
+    def _load_proxy_settings(self):
+        raw = self.settings_handler.get("external_proxy", "")
+        proxy = {}
+        if isinstance(raw, str) and raw:
+            try:
+                proxy = json.loads(raw)
+            except Exception:
+                proxy = {}
+        elif isinstance(raw, dict):
+            proxy = raw
+
+        self.proxy_host.setText(proxy.get("host", ""))
+        self.proxy_port.setText(str(proxy.get("port", "")) if proxy.get("port", "") != "" else "")
+        self.proxy_user.setText(proxy.get("user", ""))
+        self.proxy_pass.setText(proxy.get("pass", ""))
+        ptype = proxy.get("type", "socks5")
+        idx = self.proxy_type.findText(ptype)
+        if idx != -1:
+            self.proxy_type.setCurrentIndex(idx)
+        else:
+            if self.proxy_type.count():
+                self.proxy_type.setCurrentIndex(0)
+
+        self.proxy_local_forward_port.setText(str(self.settings_handler.get("proxy_chain_local_forward_port", "")))
+
+    def _save_proxy_settings(self):
+        host = self.proxy_host.text().strip()
+        port_text = self.proxy_port.text().strip()
+
+        if not host or not port_text:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Host and port are required for the external proxy."))
+            return
+
+        try:
+            port = int(port_text)
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Port must be a number between 1 and 65535."))
+            return
+
+        # forward port validation
+        local_port_text = self.proxy_local_forward_port.text().strip()
+        try:
+            if local_port_text:
+                forward_port = int(local_port_text)
+                if not (1 <= forward_port <= 65535):
+                    raise ValueError
+            else:
+                forward_port = 41000
+        except ValueError:
+            QMessageBox.warning(self, self.tr("Error"),
+                                self.tr("Local forward port must be a number between 1 and 65535."))
+            return
+
+        warp_port = self.settings_handler.get("proxy_port", "40000")
+        try:
+            warp_port_int = int(warp_port)
+        except Exception:
+            warp_port_int = 40000
+
+        if forward_port == warp_port_int:
+            QMessageBox.warning(self, self.tr("Error"),
+                                self.tr("Forward port must not be the same as the WARP local proxy port."))
+            return
+
+        if forward_port <= 40000:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Forward port must be larger than 40000 (e.g. 41000)."))
+            return
+
+        proxy_dict = {
+            "host": host,
+            "port": port,
+            "user": self.proxy_user.text().strip() or "",
+            "pass": self.proxy_pass.text() or "",
+            "type": self.proxy_type.currentText() or "socks5"
+        }
+
+        try:
+            self.settings_handler.save_settings("external_proxy", json.dumps(proxy_dict))
+            self.settings_handler.save_settings("proxy_chain_local_forward_port", str(forward_port))
+            QMessageBox.information(self, self.tr("Saved"), self.tr("External proxy saved."))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to save proxy settings: {}").format(e))
 
     def save_masque_option(self):
         option = self.masque_input.currentData()
@@ -1853,15 +2404,20 @@ class SettingsPage(QWidget):
         modes_group = self.create_groupbox(self.tr("Modes"))
         modes_layout = QVBoxLayout()
         self.modes_dropdown = QComboBox()
+
         modes_with_tooltips = {
             "warp": self.tr("Full VPN tunnel via Cloudflare. Encrypts all traffic."),
             "doh": self.tr("Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted."),
             "warp+doh": self.tr("VPN tunnel + DNS over HTTPS. Full encryption + secure DNS."),
             "dot": self.tr("Only DNS over TLS (DoT). Secure DNS, no VPN tunnel."),
             "warp+dot": self.tr("VPN tunnel + DNS over TLS. Full encryption + secure DNS."),
-            "proxy": self.tr("Sets up a local proxy (manual port needed). Apps can use it via localhost."),
+            "proxy": self.tr("Sets up a local WARP proxy (manual port needed). Apps can use it via localhost."),
+            "chained_proxy": self.tr(
+                "Starts a local proxy that chains WARP with your configured external proxy."
+            ),
             "tunnel_only": self.tr("Tunnel is created but not used unless manually routed.")
         }
+
         for mode, tooltip in modes_with_tooltips.items():
             self.modes_dropdown.addItem(mode)
             index = self.modes_dropdown.findText(mode)
@@ -2010,6 +2566,16 @@ class SettingsPage(QWidget):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
 
+        # stop any old chained proxy server
+        if hasattr(self, "chained_proxy") and self.chained_proxy:
+            try:
+                self.chained_proxy.stop()
+                logger.info("[ChainedProxy] Previous chained proxy stopped.")
+            except Exception as e:
+                logger.warning(f"[ChainedProxy] Failed to stop previous server: {e}")
+            self.chained_proxy = None
+
+        # --- Normal WARP proxy setup ---
         if selected_mode == "proxy":
             saved_port = self.settings_handler.get("proxy_port", "40000")
             port_str, ok = QInputDialog.getText(
@@ -2035,27 +2601,113 @@ class SettingsPage(QWidget):
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
+        # --- Chained Proxy setup ---
+        if selected_mode == "chained_proxy":
+            raw = self.settings_handler.get("external_proxy", "")
+            try:
+                external = json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                external = {}
+
+            if not external or not external.get("host") or not external.get("port"):
+                QMessageBox.warning(
+                    self, self.tr("Missing Proxy"),
+                    self.tr(
+                        "You must configure an external proxy in Advanced Settings before using Chained Proxy mode.")
+                )
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+            saved_port = self.settings_handler.get("proxy_port", "40000")
+            port_str, ok = QInputDialog.getText(
+                self,
+                self.tr("Warp Proxy Port Required"),
+                self.tr("Enter local WARP proxy port (1–65535):"),
+                text=str(saved_port)
+            )
+            if not ok:
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+            try:
+                port = int(port_str)
+                if not (1 <= port <= 65535):
+                    raise ValueError
+                port_to_set = port
+            except ValueError:
+                QMessageBox.warning(
+                    self, self.tr("Invalid Port"),
+                    self.tr("Please enter a valid port number between 1 and 65535.")
+                )
+                self.modes_dropdown.setCurrentText(self.current_mode)
+                return
+
+        # --- Common start ---
         self.modes_dropdown.setEnabled(False)
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
         def task():
-            if selected_mode == "proxy" and port_to_set:
+            if selected_mode in ("proxy", "chained_proxy") and port_to_set:
                 set_port_cmd = run_warp_command("warp-cli", "proxy", "port", str(port_to_set))
                 if set_port_cmd.returncode != 0:
                     raise RuntimeError(f"Failed to set proxy port:\n{set_port_cmd.stderr.strip()}")
                 self.settings_handler.save_settings("proxy_port", str(port_to_set))
 
-            cmd = run_warp_command("warp-cli", "mode", selected_mode)
-            if cmd.returncode != 0:
-                raise RuntimeError(f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+            if selected_mode == "chained_proxy":
+                cmd = run_warp_command("warp-cli", "mode", "proxy")
+                if cmd.returncode != 0:
+                    raise RuntimeError(f"Failed to set WARP into proxy mode:\n{cmd.stderr.strip()}")
 
-            return selected_mode
+                status_cmd = run_warp_command("warp-cli", "status")
+                if status_cmd.returncode == 0 and "Disconnected" in status_cmd.stdout:
+                    logger.info("[ChainedProxy] WARP is disconnected. Attempting auto-connect...")
+                    connect_cmd = run_warp_command("warp-cli", "connect")
+                    if connect_cmd.returncode != 0:
+                        raise RuntimeError(f"Failed to auto-connect WARP:\n{connect_cmd.stderr.strip()}")
+
+                connected = False
+                for i in range(15):
+                    status_cmd = run_warp_command("warp-cli", "status")
+                    if status_cmd.returncode == 0 and "Connected" in status_cmd.stdout:
+                        connected = True
+                        break
+                    time.sleep(1)
+
+                if not connected:
+                    raise RuntimeError(
+                        "WARP did not reach 'Connected' state in time. Please check your account or try manually.")
+
+                forward_port = self.settings_handler.get("proxy_chain_local_forward_port", "41000")
+                try:
+                    forward_port = int(forward_port)
+                except ValueError:
+                    forward_port = 41000
+
+                if forward_port == port_to_set:
+                    raise RuntimeError("Chained proxy forward port cannot be the same as WARP proxy port.")
+
+                proxy_checker = SOCKS5ChainedProxyServer(self.settings_handler, forward_port)
+                if not proxy_checker.check_external_proxy():
+                    run_warp_command("warp-cli", "mode", "proxy")
+                    self.settings_handler.save_settings("mode", "proxy")
+                    raise RuntimeError("External proxy check failed. Reverted to proxy mode.")
+
+                return ("chained_proxy", forward_port)
+            else:
+                cmd = run_warp_command("warp-cli", "mode", selected_mode)
+                if cmd.returncode != 0:
+                    raise RuntimeError(f"Failed to set mode to {selected_mode}:\n{cmd.stderr.strip()}")
+                return selected_mode
 
         def on_finished(result):
             QApplication.restoreOverrideCursor()
             self.modes_dropdown.setEnabled(True)
 
-            successful_mode = result
+            if isinstance(result, tuple):
+                successful_mode, forward_port = result
+            else:
+                successful_mode, forward_port = result, None
+
             self.current_mode = successful_mode
             self.settings_handler.save_settings("mode", successful_mode)
 
@@ -2066,11 +2718,34 @@ class SettingsPage(QWidget):
                         action.setChecked(True)
 
                 if successful_mode == "proxy":
-                    port = self.settings_handler.get("proxy_port", "40000")
+                    warp_port = self.settings_handler.get("proxy_port", "40000")
                     main_window.info_label.setText(
                         self.tr(
-                            "Proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>"
-                        ).format(port)
+                            "WARP proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
+                            warp_port)
+                    )
+                    main_window.info_label.show()
+
+                elif successful_mode == "chained_proxy":
+                    self.chained_proxy = SOCKS5ChainedProxyServer(self.settings_handler, forward_port)
+                    self.chained_proxy.start_background()
+
+                    if not self.chained_proxy.check_local_proxy():
+                        self.chained_proxy.stop()
+                        run_warp_command("warp-cli", "mode", "proxy")
+                        self.settings_handler.save_settings("mode", "proxy")
+                        self.modes_dropdown.setCurrentText("proxy")
+                        QMessageBox.warning(
+                            self, self.tr("Chained Proxy"),
+                            self.tr("Chained proxy server failed to start. Reverted to proxy mode.")
+                        )
+                        main_window.info_label.hide()
+                        return
+
+                    main_window.info_label.setText(
+                        self.tr(
+                            "Chained proxy (SOCKS5) running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
+                            forward_port)
                     )
                     main_window.info_label.show()
                 else:
@@ -2230,11 +2905,19 @@ class MainWindow(QMainWindow):
 
         self.info_label = QLabel("")
         self.info_label.setAlignment(Qt.AlignCenter)
-        if self.settings_handler.get("mode", "warp") == "proxy":
+        current_mode = self.settings_handler.get("mode", "warp")
+        if current_mode == "proxy":
             port = self.settings_handler.get("proxy_port", "40000")
             self.info_label.setText(
                 self.tr(
                     "Proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
+                    port)
+            )
+        elif current_mode == "chained_proxy":
+            port = self.settings_handler.get("proxy_chain_local_forward_port", "41000")
+            self.info_label.setText(
+                self.tr(
+                    "Chained proxy (SOCKS5) running on 127.0.0.1<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
                     port)
             )
         else:
