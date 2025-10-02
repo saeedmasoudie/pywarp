@@ -12,6 +12,7 @@
 - 🎨 **Dynamic Theme Compatibility**: Automatically adapts to your system's dark/light mode.
 - 🗂 **Resource Integration**: Bundles settings and assets directly into the app with Qt Resource System for portability.
 - ⚡ **Exclude IP/Domain**: Manage exclusions directly from the Advanced Settings.
+- 🔗 **Proxy Chain**: you can add an extra proxy after Warp to expose your own IP and strengthen your privacy.
 
 ---
 
@@ -22,11 +23,12 @@
 - ✅ Rework on Theme
 - ✅ Multi Language support
 - ✅ Change Settings Section
+- ✅ Proxy Chain
 
 **Planned / In Progress:**
-- 🔁 Add Split Tunnel Future
-- 🔗 Add Proxy Chain
-- 🌐 Add Support for Russian and Chinese language
+- 🔁 Split Tunnel Future
+- 🌟 MTM (Masque to Masque)
+- 🌐 Support Russian and Chinese language
 
 ---
 
