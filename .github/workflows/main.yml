@@ -135,9 +135,7 @@ jobs:
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \
             --include-data-dir=assets=assets \
-            --include-qt-plugins=iconengines,imageformats,platforms,styles,tls,sqldrivers=libqsqlite.dylib \
-            --noinclude-dlls=libcrypto.dylib \
-            --noinclude-dlls=libssl.dylib \
+            --include-qt-plugins=all \
             --output-dir=. \
             --clang \
             --macos-target-arch=${{ matrix.arch }} \
@@ -175,6 +173,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: Unzip .app bundles
         run: |
           mkdir -p artifacts/unzipped
@@ -182,6 +181,7 @@ jobs:
           ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/unzipped
           echo "Unzipped both .app bundles into artifacts/unzipped"
           find artifacts/unzipped -maxdepth 2
+
       - name: Create Universal Binary and Merge Bundles
         run: |
           APP_X86=$(find artifacts/unzipped -name '*.app' -path '*x86_64.app' -type d | head -n1)
@@ -200,29 +200,58 @@ jobs:
           UNIVERSAL_BIN_PATH="$BIN_ARM"
           lipo -create "$BIN_X86" "$BIN_ARM" -output "$UNIVERSAL_BIN_PATH"
           chmod +x "$UNIVERSAL_BIN_PATH"
+
           if [ -d "$APP_X86/Contents/Frameworks" ]; then
-            cp -R "$APP_X86/Contents/Frameworks/." "$UNIVERSAL_APP_PATH/Contents/Frameworks/"
+            ditto "$APP_X86/Contents/Frameworks" "$UNIVERSAL_APP_PATH/Contents/Frameworks"
           fi
           if [ -d "$APP_X86/Contents/Plugins" ]; then
-            cp -R "$APP_X86/Contents/Plugins/." "$UNIVERSAL_APP_PATH/Contents/Plugins/"
+            ditto "$APP_X86/Contents/Plugins" "$UNIVERSAL_APP_PATH/Contents/Plugins"
           fi
+
           mv "$UNIVERSAL_APP_PATH" "PyWarp-v${{ github.event.inputs.version }}.app"
           echo "Successfully created universal app: PyWarp-v${{ github.event.inputs.version }}.app"
+
+      - name: Add macOS unsigned instructions
+        run: |
+          cat > README_mac_unsigned.txt << 'EOF'
+          📦 PyWarp for macOS (Unsigned Build)
+
+          This app is not signed with an Apple Developer ID, so macOS GateKeeper will block it by default.
+          To run it, you have two options:
+
+          1. **Right-click → Open**
+            - After downloading and copying `PyWarp.app` from the DMG, right-click on the app and choose "Open".
+            - macOS will warn you that it’s from an unidentified developer. Click **Open** to trust it.
+
+          2. **Remove quarantine attribute (via Terminal)**
+            - Open Terminal.
+            - Run:
+              xattr -dr com.apple.quarantine /Applications/PyWarp.app
+
+          After doing one of the above, PyWarp should launch normally.
+
+          ⚠️ Note: Because the app is unsigned, macOS will show security warnings. 
+          This is normal until the app is code-signed and notarized with Apple.
+          EOF
+
       - name: Create DMG
         run: |
           hdiutil create \
             -volname "PyWarp" \
             -srcfolder "PyWarp-v${{ github.event.inputs.version }}.app" \
+            -srcfolder README_mac_unsigned.txt \
             -format UDZO \
             -ov \
             -o "./pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
           path: pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg
+
       - name: Cleanup
         run: |
-          rm -rf PyWarp-v*.app pywarp-macos-universal-v*.dmg
+          rm -rf PyWarp-v*.app pywarp-macos-universal-v*.dmg README_mac_unsigned.txt
 
   release:
     name: Create GitHub Release
@@ -235,7 +264,6 @@ jobs:
         with:
           path: artifacts
       - name: Extract Changelog for Release
-        # This assumes your CHANGELOG.md has headers like "## v1.0.1"
         run: |
           awk -v ver="v${{ github.event.inputs.version }}" '
             $0 ~ "^## " ver {flag=1; next}
