@@ -876,7 +876,7 @@ class SOCKS5ChainedProxyServer:
             await writer.drain()
 
             hdr = await reader.readexactly(4)
-            if len(hdr) < 4 or hdr[1] != 1:  # only CONNECT supported
+            if len(hdr) < 4 or hdr[1] != 1:
                 writer.write(b"\x05\x07\x00\x01" + b"\x00"*6)
                 await writer.drain()
                 writer.close()
@@ -1005,7 +1005,12 @@ class SOCKS5ChainedProxyServer:
 
             task1 = asyncio.create_task(pipe(reader, warp_writer))
             task2 = asyncio.create_task(pipe(warp_reader, writer))
-            await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
+
+            pending = {task1, task2}
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+
+            for task in pending:
+                task.cancel()
 
             logger.info(f"[ChainedProxy] Client {peer} disconnected.")
 
@@ -1025,7 +1030,6 @@ class SOCKS5ChainedProxyServer:
 
     async def _external_socks5_connect_async(self, reader, writer, dest_host, dest_port, username, password):
         try:
-            # negotiate methods
             if username:
                 writer.write(b"\x05\x02\x02\x00")
             else:
@@ -1045,7 +1049,6 @@ class SOCKS5ChainedProxyServer:
                     logger.error("[ChainedProxy] SOCKS5 authentication failed.")
                     return False
 
-            # CONNECT request
             if self._is_valid_ipv4(dest_host):
                 req = b"\x05\x01\x00\x01" + socket.inet_aton(dest_host) + struct.pack(">H", dest_port)
             else:
@@ -1386,9 +1389,11 @@ class UpdateChecker(QObject):
             self._workers.remove(worker)
         worker.deleteLater()
 
-    def _on_worker_error(self, exc):
+    def _on_worker_error(self, exc, worker):
         logger.error(f"Worker error: {exc}")
         self.update_finished.emit(self.tr("Update failed: {}").format(exc))
+        if worker in self._workers:
+            self._workers.remove(worker)
 
 
 class WarpStatusHandler(QObject):
@@ -2180,7 +2185,6 @@ class AdvancedSettings(QDialog):
             QMessageBox.warning(self, self.tr("Error"), self.tr("Port must be a number between 1 and 65535."))
             return
 
-        # forward port validation
         local_port_text = self.proxy_local_forward_port.text().strip()
         try:
             if local_port_text:
@@ -2566,7 +2570,6 @@ class SettingsPage(QWidget):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
 
-        # stop any old chained proxy server
         if hasattr(self, "chained_proxy") and self.chained_proxy:
             try:
                 self.chained_proxy.stop()
@@ -2575,7 +2578,7 @@ class SettingsPage(QWidget):
                 logger.warning(f"[ChainedProxy] Failed to stop previous server: {e}")
             self.chained_proxy = None
 
-        # --- Normal WARP proxy setup ---
+        # Normal WARP proxy setup
         if selected_mode == "proxy":
             saved_port = self.settings_handler.get("proxy_port", "40000")
             port_str, ok = QInputDialog.getText(
@@ -2601,7 +2604,7 @@ class SettingsPage(QWidget):
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
-        # --- Chained Proxy setup ---
+        # Chained Proxy setup
         if selected_mode == "chained_proxy":
             raw = self.settings_handler.get("external_proxy", "")
             try:
@@ -2642,9 +2645,13 @@ class SettingsPage(QWidget):
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
-        # --- Common start ---
+        progress_dialog = QProgressDialog(self)
+        progress_dialog.setWindowTitle(self.tr("Setting Mode"))
+        progress_dialog.setLabelText(self.tr("Applying new mode... Please wait."))
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setRange(0, 0)
+        progress_dialog.setCancelButton(None)
         self.modes_dropdown.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
 
         def task():
             if selected_mode in ("proxy", "chained_proxy") and port_to_set:
@@ -2666,16 +2673,16 @@ class SettingsPage(QWidget):
                         raise RuntimeError(f"Failed to auto-connect WARP:\n{connect_cmd.stderr.strip()}")
 
                 connected = False
-                for i in range(15):
+                for i in range(10):
                     status_cmd = run_warp_command("warp-cli", "status")
                     if status_cmd.returncode == 0 and "Connected" in status_cmd.stdout:
                         connected = True
                         break
-                    time.sleep(1)
+                    time.sleep(2)
 
                 if not connected:
                     raise RuntimeError(
-                        "WARP did not reach 'Connected' state in time. Please check your account or try manually.")
+                        "WARP did not connect in time. Please check your account or try connecting manually.")
 
                 forward_port = self.settings_handler.get("proxy_chain_local_forward_port", "41000")
                 try:
@@ -2700,7 +2707,7 @@ class SettingsPage(QWidget):
                 return selected_mode
 
         def on_finished(result):
-            QApplication.restoreOverrideCursor()
+            progress_dialog.close()
             self.modes_dropdown.setEnabled(True)
 
             if isinstance(result, tuple):
@@ -2756,7 +2763,7 @@ class SettingsPage(QWidget):
                                     self.tr("Mode set to: {}").format(successful_mode))
 
         def on_error(exc):
-            QApplication.restoreOverrideCursor()
+            progress_dialog.close()
             self.modes_dropdown.setEnabled(True)
             logger.error(f"Error setting mode: {exc}")
             QMessageBox.warning(self, self.tr("Error"), str(exc))
@@ -2765,6 +2772,7 @@ class SettingsPage(QWidget):
         self._worker = run_in_worker(task, parent=self,
                                      on_done=on_finished,
                                      on_error=on_error)
+        progress_dialog.show()
 
 
 class MainWindow(QMainWindow):
