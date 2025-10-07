@@ -2566,6 +2566,15 @@ class SettingsPage(QWidget):
             self.dns_dropdown.setEnabled(True)
             QApplication.restoreOverrideCursor()
 
+    def _wait_for_warp_connected(self, timeout=20):
+        start = time.time()
+        while time.time() - start < timeout:
+            status_cmd = run_warp_command("warp-cli", "status")
+            if status_cmd.returncode == 0 and "Connected" in status_cmd.stdout:
+                return True
+            time.sleep(2)
+        return False
+
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
@@ -2672,17 +2681,9 @@ class SettingsPage(QWidget):
                     if connect_cmd.returncode != 0:
                         raise RuntimeError(f"Failed to auto-connect WARP:\n{connect_cmd.stderr.strip()}")
 
-                connected = False
-                for i in range(10):
-                    status_cmd = run_warp_command("warp-cli", "status")
-                    if status_cmd.returncode == 0 and "Connected" in status_cmd.stdout:
-                        connected = True
-                        break
-                    time.sleep(2)
-
-                if not connected:
+                if not self._wait_for_warp_connected(timeout=20):
                     raise RuntimeError(
-                        "WARP did not connect in time. Please check your account or try connecting manually.")
+                        "WARP did not reach 'Connected' state in time. Please check your connection and retry.")
 
                 forward_port = self.settings_handler.get("proxy_chain_local_forward_port", "41000")
                 try:
