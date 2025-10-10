@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import platform
+import random
 import re
 import shutil
 import socket
@@ -17,6 +18,7 @@ import traceback
 import webbrowser
 import zipfile
 import requests
+import socks
 import resources_rc
 from types import SimpleNamespace
 from pathlib import Path
@@ -30,7 +32,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QDialog, QListWidget, QProgressDialog, QInputDialog, QCheckBox,
-                               QTextEdit, QFontComboBox)
+                               QTextEdit, QFontComboBox, QProgressBar, QListWidgetItem)
 
 CURRENT_VERSION = "1.2.7"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
@@ -226,6 +228,10 @@ def setup_logger():
 def get_log_path():
     return LOG_PATH
 
+def on_about_to_quit():
+    if getattr(window, '_is_restarting', False):
+        QProcess.startDetached(sys.executable, sys.argv)
+
 def load_language(app, lang_code="en", settings_handler=None):
     if hasattr(app, "_translator") and app._translator:
         app.removeTranslator(app._translator)
@@ -280,6 +286,69 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
         worker.error_signal.connect(on_error)
     worker.start()
     return worker
+
+def fetch_and_test_proxies(update_progress, update_status, add_proxy, delay_between=1.5):
+    source_url = "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt"
+    update_status("Fetching proxy list...")
+    working_proxies = []
+
+    # todo: make testing process faster
+    try:
+        r = requests.get(source_url, timeout=8)
+        if r.status_code != 200 or not r.text.strip():
+            update_status("Failed to fetch proxy list or empty list.")
+            return []
+
+        proxies_list = [line.strip() for line in r.text.splitlines() if ":" in line]
+        random.shuffle(proxies_list)
+        total = len(proxies_list)
+        if total == 0:
+            update_status("No proxies found.")
+            return []
+
+        checked = 0
+        for entry in proxies_list:
+            checked += 1
+            host, port = entry.split(":")
+            port = int(port)
+            proxy_dict = {"host": host, "port": port, "type": "socks5", "user": "", "pass": ""}
+
+            update_progress(int((checked / total) * 100))
+            update_status(f"Testing {host}:{port} ...")
+
+            try:
+                s = socks.socksocket()
+                s.set_proxy(socks.SOCKS5, host, port)
+                s.settimeout(4)
+                s.connect(("1.1.1.1", 443))
+                s.close()
+
+                proxies = {
+                    "http": f"socks5://{host}:{port}",
+                    "https": f"socks5://{host}:{port}"
+                }
+                resp = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=4, proxies=proxies)
+                if resp.status_code in (200, 403, 407):
+                    update_status(f"✅ Working: {host}:{port}")
+                    proxy_dict["ping"] = 0
+                    add_proxy(proxy_dict)
+                    working_proxies.append(proxy_dict)
+                else:
+                    update_status(f"❌ Bad status {resp.status_code} for {host}:{port}")
+
+            except Exception as e:
+                update_status(f"❌ Failed: {host}:{port} ({e.__class__.__name__})")
+
+            time.sleep(delay_between)
+
+        update_progress(100)
+        update_status(f"Done. Found {len(working_proxies)} working proxies.")
+        return working_proxies
+
+    except Exception as e:
+        update_status(f"Error fetching proxies: {e}")
+        return []
+
 
 # -----------------------------------------------------
 
@@ -731,6 +800,29 @@ class IpFetcher(QObject):
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
 
+    def get_country_info(self, ip: str) -> dict:
+        result = {"country": "Unknown", "country_code": "", "flag": ""}
+        if not ip or ip.lower() == "unavailable":
+            return result
+
+        try:
+            resp = requests.get(f"http://ip-api.com/json/{ip}?fields=country,countryCode", timeout=4)
+            if resp.status_code == 200:
+                data = resp.json()
+                country = data.get("country") or "Unknown"
+                code = data.get("countryCode") or ""
+                flag = ""
+                if code:
+                    try:
+                        flag = chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
+                    except Exception:
+                        flag = ""
+                result.update({"country": country, "country_code": code, "flag": flag})
+        except Exception as e:
+            logger.debug(f"IpFetcher.get_country_info: {e}")
+
+        return result
+
 
 class SOCKS5ChainedProxyServer:
 
@@ -757,41 +849,88 @@ class SOCKS5ChainedProxyServer:
         except Exception:
             return 40000
 
-    def check_external_proxy(self, timeout=5):
+    def check_external_proxy(self, timeout=6):
         external = self._get_external()
         if not external.get("host") or not external.get("port"):
             logger.warning("[ChainedProxy] No external proxy configured.")
             return False
 
-        warp_port = self._get_warp_port()
+        host = external["host"]
+        port = int(external["port"])
+        proto = (external.get("type") or "socks5").lower()
+        user = external.get("user") or None
+        pwd = external.get("pass") or None
+
+        logger.info(f"[ChainedProxy] Testing external proxy {proto}://{host}:{port} ...")
+
         try:
-            with socket.create_connection(("127.0.0.1", warp_port), timeout=timeout) as s:
+            if proto.startswith("socks"):
+                s = socks.socksocket()
+                s.set_proxy({
+                                "socks5": socks.SOCKS5,
+                                "socks5h": socks.SOCKS5,
+                                "socks4": socks.SOCKS4,
+                                "socks4a": socks.SOCKS4
+                            }.get(proto, socks.SOCKS5),
+                            host, port, True,
+                            username=user, password=pwd)
                 s.settimeout(timeout)
-                s.sendall(b"\x05\x01\x00")
-                resp = s.recv(2)
-                if len(resp) < 2 or resp[1] == 0xFF:
-                    logger.warning("[ChainedProxy] WARP proxy handshake failed.")
-                    return False
+                s.connect(("1.1.1.1", 443))
+                s.close()
 
-                host = external["host"]
-                port = int(external["port"])
-                if self._is_valid_ipv4(host):
-                    addr = socket.inet_aton(host)
-                    req = b"\x05\x01\x00\x01" + addr + struct.pack(">H", port)
+                proxies = {
+                    "http": f"{proto}://{host}:{port}",
+                    "https": f"{proto}://{host}:{port}"
+                }
+                r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=timeout, proxies=proxies)
+                if r.status_code in (200, 403, 407):
+                    logger.info(f"[ChainedProxy] SOCKS proxy {host}:{port} reachable (status {r.status_code}).")
+                    return True
                 else:
-                    host_b = host.encode("idna")
-                    req = b"\x05\x01\x00\x03" + bytes([len(host_b)]) + host_b + struct.pack(">H", port)
-
-                s.sendall(req)
-                rep = s.recv(4)
-                if len(rep) < 4 or rep[1] != 0x00:
-                    logger.warning(f"[ChainedProxy] External proxy {host}:{port} is unreachable via WARP.")
+                    logger.warning(f"[ChainedProxy] SOCKS proxy responded with {r.status_code}.")
                     return False
 
-                logger.info(f"[ChainedProxy] External proxy {host}:{port} check succeeded.")
-                return True
+            elif proto in ("http", "https"):
+                try:
+                    with socket.create_connection((host, port), timeout=timeout) as s:
+                        connect_req = b"CONNECT www.google.com:443 HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
+                        s.sendall(connect_req)
+                        resp = s.recv(1024)
+                        if b"200" in resp:
+                            logger.info(f"[ChainedProxy] HTTP proxy {host}:{port} supports CONNECT tunneling.")
+                        else:
+                            line = resp.splitlines()[0].decode(errors='ignore') if resp else "No response"
+                            logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} rejected CONNECT: {line}")
+                            return False
+                except Exception as e:
+                    logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} CONNECT test failed: {e}")
+                    return False
+
+                proxies = {
+                    "http": f"http://{host}:{port}",
+                    "https": f"http://{host}:{port}"
+                }
+                try:
+                    r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=timeout, proxies=proxies)
+                except requests.exceptions.ProxyError as e:
+                    logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} data test failed: {e}")
+                    return False
+
+                if r.status_code in (200, 403, 407):
+                    logger.info(f"[ChainedProxy] HTTP proxy {host}:{port} functional (status {r.status_code}).")
+                    return True
+                else:
+                    logger.warning(f"[ChainedProxy] HTTP proxy responded with {r.status_code}.")
+                    return False
+
+            else:
+                logger.warning(f"[ChainedProxy] Unknown proxy type: {proto}")
+                return False
+
         except Exception as e:
-            logger.error(f"[ChainedProxy] External proxy check failed: {e}")
+            logger.warning(f"[ChainedProxy] External proxy {host}:{port} test failed: {e}")
+            if "Bad Request" in str(e):
+                logger.warning("[*] Note: The HTTP proxy server may not support CONNECT tunneling.")
             return False
 
     def check_local_proxy(self, timeout=2):
@@ -1971,7 +2110,7 @@ class ExclusionManager(QDialog):
         except subprocess.TimeoutExpired:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Command timed out"))
         except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Command failed: {}").format(e))
+            QMessageBox.warning(self, self.tr("Error"), f"Command failed: {e}")
 
 
 class AdvancedSettings(QDialog):
@@ -2127,8 +2266,47 @@ class AdvancedSettings(QDialog):
         row2.addStretch()
         row2.addWidget(self.proxy_save_btn)
 
-        proxy_layout.addLayout(row2)
+        # free proxy finder
+        row3 = QHBoxLayout()
+        self.find_proxies_btn = QPushButton(self.tr("Find Free Proxies"))
+        self.proxies_progress = QProgressBar()
+        self.proxies_progress.setMinimumWidth(200)
+        self.proxies_progress.setTextVisible(False)
+        self.proxies_status = QLabel("")
+        row3.addWidget(self.find_proxies_btn)
+        row3.addWidget(self.proxies_progress)
+        row3.addWidget(self.proxies_status)
+        proxy_layout.addLayout(row3)
 
+        row4 = QHBoxLayout()
+        self.proxies_list = QListWidget()
+        self.proxies_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.proxies_list.setMinimumHeight(120)
+        self.proxies_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.proxies_list.setStyleSheet("""
+            QListWidget {
+                font-family: Consolas, monospace;
+                font-size: 12px;
+                background-color: #1e1e1e;
+                color: #dddddd;
+                border: 1px solid #444;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d7;
+                color: white;
+            }
+        """)
+
+        self.apply_proxy_btn = QPushButton(self.tr("Apply Selected Proxy"))
+        self.apply_proxy_btn.setEnabled(False)
+        row4.addWidget(self.proxies_list)
+        right_col = QVBoxLayout()
+        right_col.addStretch(1)
+        right_col.addWidget(self.apply_proxy_btn)
+        row4.addLayout(right_col)
+
+        proxy_layout.addLayout(row4)
+        proxy_layout.addLayout(row2)
         proxy_group.setLayout(proxy_layout)
 
         grid = QGridLayout()
@@ -2143,6 +2321,10 @@ class AdvancedSettings(QDialog):
 
         self.proxy_save_btn.clicked.connect(self._save_proxy_settings)
         self._load_proxy_settings()
+
+        self.find_proxies_btn.clicked.connect(self.on_find_proxies_clicked)
+        self.proxies_list.itemSelectionChanged.connect(self.on_proxy_selection_changed)
+        self.apply_proxy_btn.clicked.connect(self.on_apply_selected_proxy)
 
     def _load_proxy_settings(self):
         raw = self.settings_handler.get("external_proxy", "")
@@ -2228,6 +2410,110 @@ class AdvancedSettings(QDialog):
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to save proxy settings: {}").format(e))
 
+    def on_find_proxies_clicked(self):
+        worker = getattr(self, "_proxy_worker", None)
+        if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
+            try:
+                worker.terminate()
+            except Exception:
+                pass
+            self._proxy_worker = None
+            self.find_proxies_btn.setText(self.tr("Find Free Proxies"))
+            self.proxies_status.setText(self.tr("Aborted."))
+            return
+
+        tip_box = QMessageBox(self)
+        tip_box.setIcon(QMessageBox.Information)
+        tip_box.setWindowTitle(self.tr("WARP Connection Recommended"))
+        tip_box.setText(
+            self.tr(
+                "For the best and most accurate proxy testing results:\n\n"
+                "Please ensure WARP is connected in 'WARP Mode' before continuing.\n\n"
+                "This ensures that all proxy checks are tunneled securely through WARP.\n\n"
+                "Would you like to continue anyway?"
+            )
+        )
+        tip_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+        tip_box.button(QMessageBox.Yes).setText(self.tr("Continue"))
+        tip_box.button(QMessageBox.Cancel).setText(self.tr("Cancel"))
+
+        if tip_box.exec() == QMessageBox.Cancel:
+            self.proxies_status.setText(self.tr("Cancelled. Connect WARP and retry."))
+            return
+
+        self.proxies_list.clear()
+        self.proxies_progress.setValue(0)
+        self.proxies_status.setText(self.tr("Starting free proxy scan..."))
+        self.find_proxies_btn.setText(self.tr("Stop"))
+
+        QTimer.singleShot(200, self._start_proxy_worker)
+
+    def _start_proxy_worker(self):
+        try:
+            self._proxy_worker = GenericWorker(
+                fetch_and_test_proxies,
+                self._update_proxy_progress,
+                self._update_proxy_status,
+                self._add_found_proxy,
+                3.0,
+            )
+            self._proxy_worker.finished_signal.connect(self._on_proxies_finished)
+            self._proxy_worker.error_signal.connect(self._on_proxies_error)
+            self._proxy_worker.start()
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to start proxy finder: {}").format(str(e)))
+
+    def _update_proxy_progress(self, value):
+        self.proxies_progress.setValue(value)
+
+    def _update_proxy_status(self, text):
+        self.proxies_status.setText(text)
+
+    def _add_found_proxy(self, proxy):
+        flag = proxy.get("flag", "")
+        country = proxy.get("country", "Unknown")
+        ping = proxy.get("ping", None)
+
+        details = f"{flag}  {proxy['host']}:{proxy['port']}  ({country})"
+        if ping is not None:
+            details += f"  {ping}ms"
+
+        item = QListWidgetItem(details)
+        item.setData(Qt.UserRole, proxy)
+        self.proxies_list.addItem(item)
+
+    def _on_proxies_finished(self, proxies):
+        self.find_proxies_btn.setText(self.tr("Find Free Proxies"))
+        self.proxies_progress.setValue(100)
+        self.apply_proxy_btn.setEnabled(self.proxies_list.count() > 0)
+        self._proxy_worker = None
+
+    def _on_proxies_error(self, e):
+        self.proxies_status.setText(self.tr("Error: ") + str(e))
+        self.find_proxies_btn.setText(self.tr("Find Free Proxies"))
+        self._proxy_worker = None
+
+    def on_proxy_selection_changed(self):
+        self.apply_proxy_btn.setEnabled(bool(self.proxies_list.selectedItems()))
+
+    def on_apply_selected_proxy(self):
+        sel = self.proxies_list.selectedItems()
+        if not sel:
+            return
+        proxy = sel[0].data(Qt.UserRole)
+        self.proxy_host.setText(str(proxy.get("host", "")))
+        self.proxy_port.setText(str(proxy.get("port", "")))
+        idx = self.proxy_type.findText(proxy.get("type", "socks5"))
+        if idx != -1:
+            self.proxy_type.setCurrentIndex(idx)
+        self.proxy_user.setText(proxy.get("user", ""))
+        self.proxy_pass.setText(proxy.get("pass", ""))
+        QMessageBox.information(
+            self,
+            self.tr("Proxy Applied"),
+            self.tr("Proxy applied to inputs. Click Save Proxy to store it."),
+        )
+
     def save_masque_option(self):
         option = self.masque_input.currentData()
         if not option:
@@ -2299,7 +2585,6 @@ class AdvancedSettings(QDialog):
     def update_list_view(self):
         self.item_list.clear()
 
-        # Get IP exclusions
         try:
             result_ip = run_warp_command("warp-cli", "tunnel", "ip", "list")
             if result_ip.returncode == 0:
@@ -2311,7 +2596,6 @@ class AdvancedSettings(QDialog):
         except Exception as e:
             logger.error(f"Error getting IP list: {e}")
 
-        # Get host exclusions
         try:
             result_host = run_warp_command("warp-cli", "tunnel", "host", "list")
             if result_host.returncode == 0:
@@ -2350,7 +2634,7 @@ class AdvancedSettings(QDialog):
                     self, self.tr("Error"),
                     self.tr("Failed to remove {}:\n\n{}").format(mode, result.stderr.strip()))
         except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Command failed: {}").format(e))
+            QMessageBox.warning(self, self.tr("Error"), f"Command failed: {e}")
 
     def reset_list(self):
         try:
@@ -2560,7 +2844,7 @@ class SettingsPage(QWidget):
                 logger.error(f"Failed to Set DNS Mode to {selected_dns} : {cmd.stderr.strip()}")
                 self.dns_dropdown.setCurrentText(self.current_dns_mode)
         except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Command failed: {}").format(e))
+            QMessageBox.warning(self, self.tr("Error"), f"Command failed: {e}")
             self.dns_dropdown.setCurrentText(self.current_dns_mode)
         finally:
             self.dns_dropdown.setEnabled(True)
@@ -2781,6 +3065,7 @@ class MainWindow(QMainWindow):
     def __init__(self, settings_handler=None):
         super().__init__()
         MainWindow.instance = self
+        self._is_restarting = False
         self.force_exit = False
         self.settings_handler = settings_handler or SettingsHandler()
         if settings_handler is None:
@@ -2974,9 +3259,10 @@ class MainWindow(QMainWindow):
             logger.exception("IP fetcher failed")
 
     def restart_app(self):
+        logger.info("Restart requested by user.")
+        self._is_restarting = True
         self.force_exit = True
-        QApplication.quit()
-        QProcess.startDetached(sys.executable, sys.argv + ["--restarting"])
+        self.close()
 
     def _on_protocol_ready(self, protocol):
         self.protocol_label.setText(
@@ -3890,6 +4176,8 @@ if __name__ == "__main__":
 
     window = MainWindow(settings_handler=settings_handler)
     window.show()
+
+    app.aboutToQuit.connect(on_about_to_quit)
 
     update_checker = UpdateChecker(installer=installer)
     update_checker.update_available.connect(notify_update)
