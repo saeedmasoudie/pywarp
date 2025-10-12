@@ -17,6 +17,7 @@ import time
 import traceback
 import webbrowser
 import zipfile
+import aiohttp
 import requests
 import socks
 import resources_rc
@@ -286,69 +287,6 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
         worker.error_signal.connect(on_error)
     worker.start()
     return worker
-
-def fetch_and_test_proxies(update_progress, update_status, add_proxy, delay_between=1.5):
-    source_url = "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt"
-    update_status("Fetching proxy list...")
-    working_proxies = []
-
-    # todo: make testing process faster
-    try:
-        r = requests.get(source_url, timeout=8)
-        if r.status_code != 200 or not r.text.strip():
-            update_status("Failed to fetch proxy list or empty list.")
-            return []
-
-        proxies_list = [line.strip() for line in r.text.splitlines() if ":" in line]
-        random.shuffle(proxies_list)
-        total = len(proxies_list)
-        if total == 0:
-            update_status("No proxies found.")
-            return []
-
-        checked = 0
-        for entry in proxies_list:
-            checked += 1
-            host, port = entry.split(":")
-            port = int(port)
-            proxy_dict = {"host": host, "port": port, "type": "socks5", "user": "", "pass": ""}
-
-            update_progress(int((checked / total) * 100))
-            update_status(f"Testing {host}:{port} ...")
-
-            try:
-                s = socks.socksocket()
-                s.set_proxy(socks.SOCKS5, host, port)
-                s.settimeout(4)
-                s.connect(("1.1.1.1", 443))
-                s.close()
-
-                proxies = {
-                    "http": f"socks5://{host}:{port}",
-                    "https": f"socks5://{host}:{port}"
-                }
-                resp = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=4, proxies=proxies)
-                if resp.status_code in (200, 403, 407):
-                    update_status(f"✅ Working: {host}:{port}")
-                    proxy_dict["ping"] = 0
-                    add_proxy(proxy_dict)
-                    working_proxies.append(proxy_dict)
-                else:
-                    update_status(f"❌ Bad status {resp.status_code} for {host}:{port}")
-
-            except Exception as e:
-                update_status(f"❌ Failed: {host}:{port} ({e.__class__.__name__})")
-
-            time.sleep(delay_between)
-
-        update_progress(100)
-        update_status(f"Done. Found {len(working_proxies)} working proxies.")
-        return working_proxies
-
-    except Exception as e:
-        update_status(f"Error fetching proxies: {e}")
-        return []
-
 
 # -----------------------------------------------------
 
@@ -760,7 +698,7 @@ class IpFetcher(QObject):
 
     def fetch_ip(self):
         proxies = {}
-        if self.settings_handler and getattr(self, "is_connected", False):
+        if self.settings_handler and self.is_connected:
             mode = self.settings_handler.get("mode", "warp")
             if mode == "proxy":
                 port = self.settings_handler.get("proxy_port", "40000")
@@ -770,19 +708,16 @@ class IpFetcher(QObject):
                 }
 
         def do_request():
+            url = "https://ipwho.is/"
             try:
-                try:
-                    resp = requests.get("https://api.ipify.org", params={"format": "json"}, timeout=8, proxies=proxies)
-                    resp.raise_for_status()
-                    return resp.json().get("ip", "Unavailable")
-                except Exception:
-                    r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=6, proxies=proxies)
-                    for line in r.text.splitlines():
-                        if line.startswith("ip="):
-                            return line.split("=", 1)[1].strip()
-                    return "Unavailable"
+                resp = requests.get(url, timeout=8, proxies=proxies)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("success", True):
+                        return data.get("ip", "Unavailable")
+                return "Unavailable"
             except Exception as e:
-                logger.debug("IpFetcher.do_request exception: %s", e)
+                logger.debug(f"IpFetcher.do_request exception: {e}")
                 return "Unavailable"
 
         try:
@@ -796,30 +731,48 @@ class IpFetcher(QObject):
 
         self._worker = GenericWorker(do_request, parent=self)
         self._worker.finished_signal.connect(lambda ip: self.ip_ready.emit(str(ip)))
-        self._worker.error_signal.connect(lambda e: (logger.error("IP fetch error: %s", e), self.ip_ready.emit("Unavailable")))
+        self._worker.error_signal.connect(
+            lambda e: (logger.error(f"IP fetch error: {e}"), self.ip_ready.emit("Unavailable"))
+        )
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
 
     def get_country_info(self, ip: str) -> dict:
-        result = {"country": "Unknown", "country_code": "", "flag": ""}
+        result = {
+            "country": "Unknown",
+            "country_code": "",
+            "flag": "",
+            "region": "",
+            "city": ""
+        }
+
         if not ip or ip.lower() == "unavailable":
             return result
 
         try:
-            resp = requests.get(f"http://ip-api.com/json/{ip}?fields=country,countryCode", timeout=4)
+            resp = requests.get(f"https://ipwho.is/{ip}", timeout=6)
             if resp.status_code == 200:
                 data = resp.json()
-                country = data.get("country") or "Unknown"
-                code = data.get("countryCode") or ""
-                flag = ""
-                if code:
-                    try:
-                        flag = chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
-                    except Exception:
-                        flag = ""
-                result.update({"country": country, "country_code": code, "flag": flag})
+                if data.get("success", True):
+                    country = data.get("country") or "Unknown"
+                    code = data.get("country_code") or ""
+                    region = data.get("region") or ""
+                    city = data.get("city") or ""
+                    flag = ""
+                    if code:
+                        try:
+                            flag = chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
+                        except Exception:
+                            pass
+                    result.update({
+                        "country": country,
+                        "country_code": code,
+                        "flag": flag,
+                        "region": region,
+                        "city": city
+                    })
         except Exception as e:
-            logger.debug(f"IpFetcher.get_country_info: {e}")
+            logger.debug(f"IpFetcher.get_country_info error: {e}")
 
         return result
 
@@ -1275,6 +1228,148 @@ class SOCKS5ChainedProxyServer:
         except Exception as e:
             logger.error(f"[ChainedProxy] HTTP CONNECT exception: {e}")
             return False
+
+
+class ProxyTester(QObject):
+    progress = Signal(int)
+    status = Signal(str)
+    new_proxy = Signal(dict)
+    finished = Signal(list)
+
+    def __init__(self, parent=None,
+                 delay_between=0.0,
+                 max_concurrency=50,
+                 connect_timeout=3,
+                 http_timeout=3):
+        super().__init__(parent)
+        self.delay_between = delay_between
+        self.max_concurrency = max_concurrency
+        self.connect_timeout = connect_timeout
+        self.http_timeout = http_timeout
+        self._cancel_event = asyncio.Event()
+
+    def run(self):
+        return asyncio.run(self._main())
+
+    async def _main(self):
+        self.status.emit("Fetching proxy list...")
+
+        try:
+            r = requests.get(
+                "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+                timeout=8,
+            )
+            r.raise_for_status()
+            proxies_list = [line.strip() for line in r.text.splitlines() if ":" in line]
+            random.shuffle(proxies_list)
+        except Exception as e:
+            self.status.emit(f"Error fetching proxy list: {e}")
+            self.finished.emit([])
+            return []
+
+        total = len(proxies_list)
+        if not total:
+            self.status.emit("No proxies found.")
+            self.finished.emit([])
+            return []
+
+        self.status.emit(f"Testing {total} proxies concurrently (limit {self.max_concurrency})...")
+        working = []
+        connector = aiohttp.TCPConnector(limit=self.max_concurrency, ssl=False)
+        timeout = aiohttp.ClientTimeout(total=self.http_timeout)
+
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            sem = asyncio.Semaphore(self.max_concurrency)
+            completed = 0
+
+            async def worker(entry):
+                nonlocal completed
+                async with sem:
+                    if self._cancel_event.is_set():
+                        return
+                    try:
+                        host, port = entry.split(":")
+                        result = await self._test_single(session, host.strip(), int(port))
+                        completed += 1
+                        self.progress.emit(int((completed / total) * 100))
+                        if result:
+                            self.new_proxy.emit(result)
+                            working.append(result)
+                            self.status.emit(f"✅ Working: {host}:{port}")
+                        else:
+                            self.status.emit(f"❌ Dead: {host}:{port}")
+                    except Exception:
+                        completed += 1
+                        self.progress.emit(int((completed / total) * 100))
+                    if self.delay_between:
+                        await asyncio.sleep(self.delay_between)
+
+            await asyncio.gather(*(worker(p) for p in proxies_list))
+
+        self.status.emit(f"Done. Found {len(working)} working proxies.")
+        self.progress.emit(100)
+        self.finished.emit(working)
+        return working
+
+    async def _test_single(self, session, host, port):
+        proxy_url = f"socks5://{host}:{port}"
+        start = asyncio.get_event_loop().time()
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: self._tcp_check(host, port))
+
+            async with session.get(
+                    "https://1.1.1.1/cdn-cgi/trace",
+                    proxy=proxy_url,
+                    timeout=aiohttp.ClientTimeout(total=self.http_timeout)
+            ) as resp:
+                if resp.status not in (200, 403, 407):
+                    return None
+
+                elapsed = (asyncio.get_event_loop().time() - start) * 1000
+
+                country, code, flag = "Unknown", "", ""
+                try:
+                    async with session.get("https://ipwho.is/", proxy=proxy_url, timeout=5) as geo:
+                        if geo.status == 200:
+                            data = await geo.json()
+                            if data.get("success", True):
+                                country = data.get("country", "Unknown")
+                                code = data.get("country_code", "")
+                                if code:
+                                    flag = (
+                                            chr(ord(code[0].upper()) + 127397)
+                                            + chr(ord(code[1].upper()) + 127397)
+                                    )
+                except Exception:
+                    print(f"Geo lookup failed for {host}:{port} - {e}")
+                    pass
+
+                return {
+                    "host": host,
+                    "port": port,
+                    "type": "socks5",
+                    "user": "",
+                    "pass": "",
+                    "country": country,
+                    "country_code": code,
+                    "flag": flag,
+                    "ping": round(elapsed),
+                }
+
+        except Exception:
+            return None
+
+    def _tcp_check(self, host, port):
+        s = socks.socksocket()
+        s.set_proxy(socks.SOCKS5, host, port)
+        s.settimeout(self.connect_timeout)
+        s.connect(("1.1.1.1", 443))
+        s.close()
+
+    def cancel(self):
+        self._cancel_event.set()
 
 
 class LogsWindow(QDialog):
@@ -2269,10 +2364,16 @@ class AdvancedSettings(QDialog):
         # free proxy finder
         row3 = QHBoxLayout()
         self.find_proxies_btn = QPushButton(self.tr("Find Free Proxies"))
+
         self.proxies_progress = QProgressBar()
         self.proxies_progress.setMinimumWidth(200)
         self.proxies_progress.setTextVisible(False)
-        self.proxies_status = QLabel("")
+
+        self.proxies_status = QLabel(" " * 50)
+        self.proxies_status.setMinimumWidth(300)
+        self.proxies_status.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.proxies_status.setFont(QFont("Consolas", 10))
+
         row3.addWidget(self.find_proxies_btn)
         row3.addWidget(self.proxies_progress)
         row3.addWidget(self.proxies_status)
@@ -2283,19 +2384,6 @@ class AdvancedSettings(QDialog):
         self.proxies_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.proxies_list.setMinimumHeight(120)
         self.proxies_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.proxies_list.setStyleSheet("""
-            QListWidget {
-                font-family: Consolas, monospace;
-                font-size: 12px;
-                background-color: #1e1e1e;
-                color: #dddddd;
-                border: 1px solid #444;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d7;
-                color: white;
-            }
-        """)
 
         self.apply_proxy_btn = QPushButton(self.tr("Apply Selected Proxy"))
         self.apply_proxy_btn.setEnabled(False)
@@ -2411,10 +2499,11 @@ class AdvancedSettings(QDialog):
             QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to save proxy settings: {}").format(e))
 
     def on_find_proxies_clicked(self):
-        worker = getattr(self, "_proxy_worker", None)
-        if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
+        if hasattr(self, "_proxy_worker") and self._proxy_worker is not None and self._proxy_worker.isRunning():
             try:
-                worker.terminate()
+                if hasattr(self, "_tester") and self._tester is not None:
+                    self._tester.cancel()
+                self._proxy_worker.terminate()
             except Exception:
                 pass
             self._proxy_worker = None
@@ -2450,16 +2539,22 @@ class AdvancedSettings(QDialog):
 
     def _start_proxy_worker(self):
         try:
-            self._proxy_worker = GenericWorker(
-                fetch_and_test_proxies,
-                self._update_proxy_progress,
-                self._update_proxy_status,
-                self._add_found_proxy,
-                3.0,
+            self._tester = ProxyTester(
+                delay_between=0.0,
+                max_concurrency=50,
+                connect_timeout=3,
+                http_timeout=3
             )
-            self._proxy_worker.finished_signal.connect(self._on_proxies_finished)
+
+            self._tester.progress.connect(self._update_proxy_progress)
+            self._tester.status.connect(self._update_proxy_status)
+            self._tester.new_proxy.connect(self._add_found_proxy)
+            self._tester.finished.connect(self._on_proxies_finished)
+
+            self._proxy_worker = GenericWorker(self._tester.run)
             self._proxy_worker.error_signal.connect(self._on_proxies_error)
             self._proxy_worker.start()
+
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to start proxy finder: {}").format(str(e)))
 
@@ -2487,6 +2582,8 @@ class AdvancedSettings(QDialog):
         self.proxies_progress.setValue(100)
         self.apply_proxy_btn.setEnabled(self.proxies_list.count() > 0)
         self._proxy_worker = None
+        self._tester = None
+        self.proxies_status.setText(self.tr(f"Scan complete. Found {len(proxies)} working proxies."))
 
     def _on_proxies_error(self, e):
         self.proxies_status.setText(self.tr("Error: ") + str(e))
@@ -2672,6 +2769,15 @@ class AdvancedSettings(QDialog):
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Reset failed: {}").format(e))
 
+    def closeEvent(self, event):
+        if hasattr(self, "_proxy_worker") and self._proxy_worker and self._proxy_worker.isRunning():
+            try:
+                if hasattr(self, "_tester") and self._tester:
+                    self._tester.cancel()
+                self._proxy_worker.terminate()
+            except Exception:
+                pass
+        super().closeEvent(event)
 
 class SettingsPage(QWidget):
     def __init__(self, parent=None, warp_status_handler=None, settings_handler=None):
