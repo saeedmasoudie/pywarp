@@ -3198,7 +3198,6 @@ class SettingsPage(QWidget):
         font_layout.addWidget(self.font_dropdown)
         font_group.setLayout(font_layout)
 
-        # Put 4 groups in a 2x2 grid
         grid.addWidget(modes_group, 0, 0)
         grid.addWidget(dns_group, 0, 1)
         grid.addWidget(language_group, 1, 0)
@@ -3208,7 +3207,6 @@ class SettingsPage(QWidget):
 
         main_layout.addLayout(grid)
 
-        # More Options Section (Logs + Advanced in one row)
         more_group = self.create_groupbox(self.tr("More Options"))
         more_layout = QHBoxLayout()
         logs_button = QPushButton(self.tr("View Logs"))
@@ -3305,42 +3303,53 @@ class SettingsPage(QWidget):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
 
-        if hasattr(self, "chained_proxy") and self.chained_proxy:
-            try:
-                self.chained_proxy.stop()
-                logger.info("[ChainedProxy] Previous chained proxy stopped.")
-            except Exception as e:
-                logger.warning(f"[ChainedProxy] Failed to stop previous server: {e}")
-            self.chained_proxy = None
+        def stop_chained_proxy():
+            if hasattr(self, "chained_proxy") and self.chained_proxy:
+                try:
+                    self.chained_proxy.stop()
+                    logger.info("[ChainedProxy] Previous chained proxy stopped.")
+                except Exception as e:
+                    logger.warning(f"[ChainedProxy] Failed to stop previous server: {e}")
+                self.chained_proxy = None
 
-        # Normal WARP proxy setup
-        if selected_mode == "proxy":
-            saved_port = self.settings_handler.get("proxy_port", "40000")
+        def prompt_for_port(title, message, default):
             port_str, ok = QInputDialog.getText(
                 self,
-                self.tr("Proxy Port Required"),
-                self.tr("Enter proxy port (1–65535):"),
-                text=str(saved_port)
+                self.tr(title),
+                self.tr(message),
+                text=str(default)
             )
             if not ok:
-                self.modes_dropdown.setCurrentText(self.current_mode)
-                return
-
+                return None
             try:
                 port = int(port_str)
                 if not (1 <= port <= 65535):
                     raise ValueError
-                port_to_set = port
+                return port
             except ValueError:
                 QMessageBox.warning(
-                    self, self.tr("Invalid Port"),
+                    self,
+                    self.tr("Invalid Port"),
                     self.tr("Please enter a valid port number between 1 and 65535.")
                 )
+                return None
+
+        def show_warning(title, message):
+            QMessageBox.warning(self, self.tr(title), self.tr(message))
+
+        def show_info(title, message):
+            QMessageBox.information(self, self.tr(title), self.tr(message))
+
+        stop_chained_proxy()
+
+        if selected_mode == "proxy":
+            saved_port = self.settings_handler.get("proxy_port", "40000")
+            port_to_set = prompt_for_port("Proxy Port Required", "Enter proxy port (1–65535):", saved_port)
+            if not port_to_set:
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
-        # Chained Proxy setup
-        if selected_mode == "chained_proxy":
+        elif selected_mode == "chained_proxy":
             raw = self.settings_handler.get("external_proxy", "")
             try:
                 external = json.loads(raw) if isinstance(raw, str) else raw
@@ -3348,35 +3357,15 @@ class SettingsPage(QWidget):
                 external = {}
 
             if not external or not external.get("host") or not external.get("port"):
-                QMessageBox.warning(
-                    self, self.tr("Missing Proxy"),
-                    self.tr(
-                        "You must configure an external proxy in Advanced Settings before using Chained Proxy mode.")
-                )
+                show_warning("Missing Proxy",
+                             "You must configure an external proxy in Advanced Settings before using Chained Proxy mode.")
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
             saved_port = self.settings_handler.get("proxy_port", "40000")
-            port_str, ok = QInputDialog.getText(
-                self,
-                self.tr("Warp Proxy Port Required"),
-                self.tr("Enter local WARP proxy port (1–65535):"),
-                text=str(saved_port)
-            )
-            if not ok:
-                self.modes_dropdown.setCurrentText(self.current_mode)
-                return
-
-            try:
-                port = int(port_str)
-                if not (1 <= port <= 65535):
-                    raise ValueError
-                port_to_set = port
-            except ValueError:
-                QMessageBox.warning(
-                    self, self.tr("Invalid Port"),
-                    self.tr("Please enter a valid port number between 1 and 65535.")
-                )
+            port_to_set = prompt_for_port("Warp Proxy Port Required", "Enter local WARP proxy port (1–65535):",
+                                          saved_port)
+            if not port_to_set:
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
 
@@ -3386,6 +3375,7 @@ class SettingsPage(QWidget):
         progress_dialog.setWindowModality(Qt.WindowModal)
         progress_dialog.setRange(0, 0)
         progress_dialog.setCancelButton(None)
+        progress_dialog.setStyleSheet(ThemeManager.overlay_theme()["background"])
         self.modes_dropdown.setEnabled(False)
 
         def task():
@@ -3408,8 +3398,7 @@ class SettingsPage(QWidget):
                         raise RuntimeError(f"Failed to auto-connect WARP:\n{connect_cmd.stderr.strip()}")
 
                 if not self._wait_for_warp_connected(timeout=20):
-                    raise RuntimeError(
-                        "WARP did not reach 'Connected' state in time. Please check your connection and retry.")
+                    raise RuntimeError("WARP did not reach 'Connected' state in time. Please retry.")
 
                 forward_port = self.settings_handler.get("proxy_chain_local_forward_port", "41000")
                 try:
@@ -3418,7 +3407,7 @@ class SettingsPage(QWidget):
                     forward_port = 41000
 
                 if forward_port == port_to_set:
-                    raise RuntimeError("Chained proxy forward port cannot be the same as WARP proxy port.")
+                    raise RuntimeError("Chained proxy forward port cannot match WARP proxy port.")
 
                 proxy_checker = SOCKS5ChainedProxyServer(self.settings_handler, forward_port)
                 if not proxy_checker.check_external_proxy():
@@ -3427,6 +3416,7 @@ class SettingsPage(QWidget):
                     raise RuntimeError("External proxy check failed. Reverted to proxy mode.")
 
                 return ("chained_proxy", forward_port)
+
             else:
                 cmd = run_warp_command("warp-cli", "mode", selected_mode)
                 if cmd.returncode != 0:
@@ -3437,11 +3427,7 @@ class SettingsPage(QWidget):
             progress_dialog.close()
             self.modes_dropdown.setEnabled(True)
 
-            if isinstance(result, tuple):
-                successful_mode, forward_port = result
-            else:
-                successful_mode, forward_port = result, None
-
+            successful_mode, forward_port = (result, None) if not isinstance(result, tuple) else result
             self.current_mode = successful_mode
             self.settings_handler.save_settings("mode", successful_mode)
 
@@ -3455,8 +3441,7 @@ class SettingsPage(QWidget):
                     warp_port = self.settings_handler.get("proxy_port", "40000")
                     main_window.info_label.setText(
                         self.tr(
-                            "WARP proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
-                            warp_port)
+                            f"WARP proxy running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{warp_port}</span>")
                     )
                     main_window.info_label.show()
 
@@ -3469,36 +3454,29 @@ class SettingsPage(QWidget):
                         run_warp_command("warp-cli", "mode", "proxy")
                         self.settings_handler.save_settings("mode", "proxy")
                         self.modes_dropdown.setCurrentText("proxy")
-                        QMessageBox.warning(
-                            self, self.tr("Chained Proxy"),
-                            self.tr("Chained proxy server failed to start. Reverted to proxy mode.")
-                        )
+                        show_warning("Chained Proxy", "Chained proxy server failed to start. Reverted to proxy mode.")
                         main_window.info_label.hide()
                         return
 
                     main_window.info_label.setText(
                         self.tr(
-                            "Chained proxy (SOCKS5) running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
-                            forward_port)
+                            f"Chained proxy (SOCKS5) running on 127.0.0.1:<span style='color: #0078D4; font-weight: bold;'>{forward_port}</span>")
                     )
                     main_window.info_label.show()
                 else:
                     main_window.info_label.hide()
 
             logger.info(f"Successfully set mode to {successful_mode}")
-            QMessageBox.information(self, self.tr("Mode Changed"),
-                                    self.tr("Mode set to: {}").format(successful_mode))
+            show_info("Mode Changed", f"Mode set to: {successful_mode}")
 
         def on_error(exc):
             progress_dialog.close()
             self.modes_dropdown.setEnabled(True)
             logger.error(f"Error setting mode: {exc}")
-            QMessageBox.warning(self, self.tr("Error"), str(exc))
+            show_warning("Error", str(exc))
             self.modes_dropdown.setCurrentText(self.current_mode)
 
-        self._worker = run_in_worker(task, parent=self,
-                                     on_done=on_finished,
-                                     on_error=on_error)
+        self._worker = run_in_worker(task, parent=self, on_done=on_finished, on_error=on_error)
         progress_dialog.show()
 
 
