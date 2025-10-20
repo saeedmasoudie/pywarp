@@ -786,13 +786,24 @@ class SOCKS5ChainedProxyServer:
         self._loop = None
         self._server = None
         self._stopping = threading.Event()
+        self._read_timeout = 15
+        self._connect_timeout = 15
 
     def _get_external(self):
         raw = self.settings_handler.get("external_proxy", "")
         try:
-            external = json.loads(raw) if isinstance(raw, str) else raw
-        except Exception:
+            if isinstance(raw, str):
+                raw = raw.strip()
+                if raw.startswith("{") and raw.endswith("}"):
+                    external = json.loads(raw)
+                else:
+                    external = {}
+            else:
+                external = raw
+        except Exception as e:
+            logger.error(f"[ChainedProxy] Error parsing external_proxy: {e}")
             external = {}
+        logger.debug(f"[ChainedProxy] Parsed external proxy: {external}")
         return external or {}
 
     def _get_warp_port(self):
@@ -802,89 +813,116 @@ class SOCKS5ChainedProxyServer:
         except Exception:
             return 40000
 
-    def check_external_proxy(self, timeout=6):
+    def _test_socks_proxy(self, host, port, user, pwd, raw_type, timeout):
+        if "socks5" in raw_type:
+            proxy_type_const = socks.SOCKS5
+            proto = "SOCKS5"
+            target_host, target_port = "www.google.com", 443
+        elif "socks4a" in raw_type:
+            proxy_type_const = socks.SOCKS4A
+            proto = "SOCKS4A"
+            target_host, target_port = "www.google.com", 443
+        else:
+            proxy_type_const = socks.SOCKS4
+            proto = "SOCKS4"
+            target_host, target_port = "1.1.1.1", 443
+
+        logger.debug(
+            f"[ChainedProxy] Attempting SOCKS test ({proto}) for {host}:{port} by connecting to {target_host}:{target_port}...")
+        try:
+            s = socks.socksocket()
+            s.set_proxy(
+                proxy_type=proxy_type_const,
+                addr=host,
+                port=port,
+                username=user,
+                password=pwd
+            )
+            s.settimeout(timeout)
+
+            s.connect((target_host, target_port))
+
+            s.close()
+            logger.debug(f"[ChainedProxy] SOCKS test ({proto}) for {host}:{port} was successful.")
+            return True
+        except Exception as e:
+            logger.debug(f"[ChainedProxy] SOCKS test ({proto}) for {host}:{port} failed: {e}")
+            return False
+
+    def _test_http_proxy(self, host, port, user, pwd, timeout):
+        logger.debug(f"[ChainedProxy] Attempting HTTP test for {host}:{port}...")
+        try:
+            proxy_url = f"http://{host}:{port}"
+            if user and pwd:
+                proxy_url = f"http://{user}:{pwd}@{host}:{port}"
+
+            proxies = {"http": proxy_url, "https": proxy_url}
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36"
+            }
+
+            response = requests.get("http://ipinfo.io/json", timeout=timeout, proxies=proxies, headers=headers)
+            response.raise_for_status()
+
+            logger.debug(f"[ChainedProxy] HTTP test for {host}:{port} was successful.")
+            return True
+        except Exception as e:
+            logger.debug(f"[ChainedProxy] HTTP test for {host}:{port} failed: {e}")
+            return False
+
+    def check_external_proxy(self, timeout=15):
         external = self._get_external()
         if not external.get("host") or not external.get("port"):
-            logger.warning("[ChainedProxy] No external proxy configured.")
+            logger.warning("[ChainedProxy] No external proxy is configured.")
             return False
 
-        host = external["host"]
+        host = str(external["host"]).strip()
         port = int(external["port"])
-        proto = (external.get("type") or "socks5").lower()
-        user = external.get("user") or None
-        pwd = external.get("pass") or None
+        raw_type = str(external.get("type") or "socks5").strip().lower()
+        user = external.get("user")
+        pwd = external.get("pass")
 
-        logger.info(f"[ChainedProxy] Testing external proxy {proto}://{host}:{port} ...")
+        logger.info(f"[ChainedProxy] Testing external proxy {host}:{port} (Configured as: {raw_type})...")
 
-        try:
-            if proto.startswith("socks"):
-                s = socks.socksocket()
-                s.set_proxy({
-                                "socks5": socks.SOCKS5,
-                                "socks5h": socks.SOCKS5,
-                                "socks4": socks.SOCKS4,
-                                "socks4a": socks.SOCKS4
-                            }.get(proto, socks.SOCKS5),
-                            host, port, True,
-                            username=user, password=pwd)
-                s.settimeout(timeout)
-                s.connect(("1.1.1.1", 443))
-                s.close()
+        all_tests = {
+            "http": ("HTTP", lambda: self._test_http_proxy(host, port, user, pwd, timeout)),
+            "socks4": ("SOCKS4", lambda: self._test_socks_proxy(host, port, user, pwd, "socks4", timeout)),
+            "socks4a": ("SOCKS4A", lambda: self._test_socks_proxy(host, port, user, pwd, "socks4a", timeout)),
+            "socks5": ("SOCKS5", lambda: self._test_socks_proxy(host, port, user, pwd, "socks5", timeout))
+        }
 
-                proxies = {
-                    "http": f"{proto}://{host}:{port}",
-                    "https": f"{proto}://{host}:{port}"
-                }
-                r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=timeout, proxies=proxies)
-                if r.status_code in (200, 403, 407):
-                    logger.info(f"[ChainedProxy] SOCKS proxy {host}:{port} reachable (status {r.status_code}).")
-                    return True
-                else:
-                    logger.warning(f"[ChainedProxy] SOCKS proxy responded with {r.status_code}.")
-                    return False
+        test_order = []
+        if "http" in raw_type:
+            test_order = ["http", "socks5", "socks4a", "socks4"]
+        elif "socks4a" in raw_type:
+            test_order = ["socks4a", "socks5", "socks4", "http"]
+        elif "socks4" in raw_type:
+            test_order = ["socks4", "socks5", "socks4a", "http"]
+        else:  # Default to socks5
+            test_order = ["socks5", "socks4a", "socks4", "http"]
 
-            elif proto in ("http", "https"):
-                try:
-                    with socket.create_connection((host, port), timeout=timeout) as s:
-                        connect_req = b"CONNECT www.google.com:443 HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
-                        s.sendall(connect_req)
-                        resp = s.recv(1024)
-                        if b"200" in resp:
-                            logger.info(f"[ChainedProxy] HTTP proxy {host}:{port} supports CONNECT tunneling.")
-                        else:
-                            line = resp.splitlines()[0].decode(errors='ignore') if resp else "No response"
-                            logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} rejected CONNECT: {line}")
-                            return False
-                except Exception as e:
-                    logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} CONNECT test failed: {e}")
-                    return False
-
-                proxies = {
-                    "http": f"http://{host}:{port}",
-                    "https": f"http://{host}:{port}"
-                }
-                try:
-                    r = requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=timeout, proxies=proxies)
-                except requests.exceptions.ProxyError as e:
-                    logger.warning(f"[ChainedProxy] HTTP proxy {host}:{port} data test failed: {e}")
-                    return False
-
-                if r.status_code in (200, 403, 407):
-                    logger.info(f"[ChainedProxy] HTTP proxy {host}:{port} functional (status {r.status_code}).")
-                    return True
-                else:
-                    logger.warning(f"[ChainedProxy] HTTP proxy responded with {r.status_code}.")
-                    return False
-
+        for i, test_name in enumerate(test_order):
+            proto_name, test_func = all_tests[test_name]
+            if i == 0:
+                logger.debug(f"[ChainedProxy] Attempt 1: Testing configured protocol ({proto_name})...")
             else:
-                logger.warning(f"[ChainedProxy] Unknown proxy type: {proto}")
-                return False
+                logger.warning(f"[ChainedProxy] Fallback Attempt: Testing as {proto_name}...")
 
-        except Exception as e:
-            logger.warning(f"[ChainedProxy] External proxy {host}:{port} test failed: {e}")
-            if "Bad Request" in str(e):
-                logger.warning("[*] Note: The HTTP proxy server may not support CONNECT tunneling.")
-            return False
+            try:
+                if test_func():
+                    if i == 0:
+                        logger.info(f"[ChainedProxy] ✅ {proto_name} proxy {host}:{port} is working correctly.")
+                    else:
+                        logger.warning(
+                            f"[ChainedProxy] ✅ SUCCESS, but protocol is wrong! This is a {proto_name} proxy, not {raw_type}. Please update your settings.")
+                    return True
+            except Exception as e:
+                logger.debug(f"[ChainedProxy] Test as {proto_name} raised an error: {e}")
+
+        logger.error(
+            f"[ChainedProxy] ❌ Proxy test FAILED for {host}:{port}. All configured and fallback protocols failed.")
+        return False
 
     def check_local_proxy(self, timeout=2):
         try:
@@ -952,24 +990,39 @@ class SOCKS5ChainedProxyServer:
         except Exception:
             return False
 
+    async def _areadexact(self, reader, n):
+        try:
+            return await asyncio.wait_for(reader.readexactly(n), timeout=self._read_timeout)
+        except asyncio.IncompleteReadError as e:
+            logger.debug(f"[ChainedProxy] IncompleteReadError (expected {n}): {e}")
+            raise
+        except asyncio.TimeoutError:
+            logger.debug("[ChainedProxy] readexactly timeout")
+            raise
+        except Exception as e:
+            logger.debug(f"[ChainedProxy] readexactly exception: {e}")
+            raise
+
     async def _handle_client_async(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peer = writer.get_extra_info("peername")
         logger.info(f"[ChainedProxy] New client {peer} connected.")
 
         try:
-            data = await reader.readexactly(2)
+            data = await self._areadexact(reader, 2)
             ver, nmethods = data[0], data[1]
             if ver != 5:
+                logger.warning("[ChainedProxy] client did not speak SOCKS5")
                 writer.close()
                 await writer.wait_closed()
                 return
-            await reader.readexactly(nmethods)
+
+            await self._areadexact(reader, nmethods)
             writer.write(b"\x05\x00")
             await writer.drain()
 
-            hdr = await reader.readexactly(4)
+            hdr = await self._areadexact(reader, 4)
             if len(hdr) < 4 or hdr[1] != 1:
-                writer.write(b"\x05\x07\x00\x01" + b"\x00"*6)
+                writer.write(b"\x05\x07\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
@@ -977,23 +1030,23 @@ class SOCKS5ChainedProxyServer:
 
             atyp = hdr[3]
             if atyp == 1:
-                addr = await reader.readexactly(4)
+                addr = await self._areadexact(reader, 4)
                 dest_host = socket.inet_ntoa(addr)
             elif atyp == 3:
-                l = (await reader.readexactly(1))[0]
-                dest_host = (await reader.readexactly(l)).decode("idna")
+                l = (await self._areadexact(reader, 1))[0]
+                dest_host = (await self._areadexact(reader, l)).decode("idna")
             elif atyp == 4:
-                addr = await reader.readexactly(16)
+                addr = await self._areadexact(reader, 16)
                 dest_host = socket.inet_ntop(socket.AF_INET6, addr)
             else:
                 writer.close()
                 await writer.wait_closed()
                 return
-            dest_port = struct.unpack(">H", await reader.readexactly(2))[0]
+            dest_port = struct.unpack(">H", await self._areadexact(reader, 2))[0]
 
             external = self._get_external()
             if not external.get("host") or not external.get("port"):
-                writer.write(b"\x05\x01\x00\x01" + b"\x00"*6)
+                writer.write(b"\x05\x01\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
@@ -1003,24 +1056,28 @@ class SOCKS5ChainedProxyServer:
             warp_port = self._get_warp_port()
             try:
                 warp_reader, warp_writer = await asyncio.open_connection("127.0.0.1", warp_port)
-            except Exception:
-                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                logger.debug(f"[ChainedProxy] Connected to local Warp on 127.0.0.1:{warp_port}")
+            except Exception as e:
+                writer.write(b"\x05\x05\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
-                logger.error(f"[ChainedProxy] Could not connect to WARP proxy on port {warp_port}.")
+                logger.error(f"[ChainedProxy] Could not connect to WARP proxy on port {warp_port}: {e}")
                 return
 
             warp_writer.write(b"\x05\x01\x00")
             await warp_writer.drain()
-            resp = await warp_reader.read(2)
-            if len(resp) < 2 or resp[1] == 0xFF:
+            try:
+                resp = await asyncio.wait_for(warp_reader.readexactly(2), timeout=self._read_timeout)
+                if resp[0] != 0x05 or resp[1] == 0xFF:
+                    raise Exception("WARP refused methods")
+            except Exception as e:
                 await self._close_streams(warp_reader, warp_writer)
-                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
-                logger.error("[ChainedProxy] WARP SOCKS5 handshake refused methods.")
+                logger.error(f"[ChainedProxy] WARP SOCKS5 handshake failed: {e}")
                 return
 
             ext_host, ext_port = external["host"], int(external["port"])
@@ -1029,55 +1086,86 @@ class SOCKS5ChainedProxyServer:
             else:
                 hb = ext_host.encode("idna")
                 req = b"\x05\x01\x00\x03" + bytes([len(hb)]) + hb + struct.pack(">H", ext_port)
+
             warp_writer.write(req)
             await warp_writer.drain()
 
-            rep = await warp_reader.read(4)
-            if len(rep) < 4 or rep[1] != 0x00:
+            try:
+                rep = await asyncio.wait_for(warp_reader.readexactly(4), timeout=self._read_timeout)
+                if rep[1] != 0x00:
+                    raise Exception(f"WARP connect REP={rep[1]}")
+                atyp = rep[3]
+                if atyp == 1:
+                    await self._areadexact(warp_reader, 6)
+                elif atyp == 3:
+                    l = (await self._areadexact(warp_reader, 1))[0]
+                    await self._areadexact(warp_reader, l + 2)
+                elif atyp == 4:
+                    await self._areadexact(warp_reader, 18)
+            except Exception as e:
+                try:
+                    chunk = await asyncio.wait_for(warp_reader.read(4096), timeout=0.5)
+                    if chunk:
+                        logger.debug(f"[ChainedProxy] Extra bytes after failed WARP CONNECT: {chunk[:200]!r}")
+                except Exception:
+                    pass
                 await self._close_streams(warp_reader, warp_writer)
-                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
-                logger.error(f"[ChainedProxy] WARP could not connect to external proxy {ext_host}:{ext_port}")
+                logger.error(f"[ChainedProxy] WARP could not connect to external proxy {ext_host}:{ext_port}: {e}")
                 return
 
-            atyp = rep[3]
-            if atyp == 1:
-                await warp_reader.readexactly(6)
-            elif atyp == 3:
-                l = (await warp_reader.readexactly(1))[0]
-                await warp_reader.readexactly(l + 2)
-            elif atyp == 4:
-                await warp_reader.readexactly(18)
+            try:
+                await asyncio.sleep(0.15)
+                try:
+                    leftover = await asyncio.wait_for(warp_reader.read(1024), timeout=0.1)
+                    if leftover:
+                        logger.debug(f"[ChainedProxy] Flushed {len(leftover)} leftover bytes from WARP.")
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
-            ext_type = (external.get("type") or "socks5").lower()
-            user = external.get("user") or ""
-            pwd = external.get("pass") or ""
+            ext_type = str(external.get("type") or "socks5").strip().lower()
+            user = str(external.get("user") or "")
+            pwd = str(external.get("pass") or "")
             ok = False
+
+            logger.debug(
+                f"[ChainedProxy] Performing {ext_type.upper()} handshake with external {ext_host}:{ext_port} through WARP tunnel...")
+
             try:
                 if ext_type in ("socks5", "socks5h"):
-                    ok = await self._external_socks5_connect_async(warp_reader, warp_writer, dest_host, dest_port, user, pwd)
+                    ok = await self._external_socks5_connect_async(warp_reader, warp_writer, dest_host, dest_port, user,
+                                                                   pwd)
                 elif ext_type in ("socks4", "socks4a"):
                     ok = await self._external_socks4_connect_async(warp_reader, warp_writer, dest_host, dest_port, user)
                 elif ext_type in ("http", "https"):
-                    ok = await self._external_http_connect_async(warp_reader, warp_writer, dest_host, dest_port, user, pwd)
+                    ok = await self._external_http_connect_async(warp_reader, warp_writer, dest_host, dest_port, user,
+                                                                 pwd)
+                else:
+                    logger.error(f"[ChainedProxy] Unknown external proxy type: {ext_type}")
+                    ok = False
             except Exception as e:
                 logger.error(f"[ChainedProxy] Error during external proxy handshake: {e}")
                 ok = False
 
             if not ok:
                 await self._close_streams(warp_reader, warp_writer)
-                writer.write(b"\x05\x05\x00\x01" + b"\x00"*6)
+                writer.write(b"\x05\x05\x00\x01" + b"\x00" * 6)
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
                 logger.warning(f"[ChainedProxy] External proxy {ext_type} connect failed for {dest_host}:{dest_port}")
                 return
 
-            writer.write(b"\x05\x00\x00\x01" + b"\x00"*6)
+            writer.write(b"\x05\x00\x00\x01" + b"\x00" * 6)
             await writer.drain()
-            logger.info(f"[ChainedProxy] Proxy chain established: client {peer} -> {dest_host}:{dest_port} via {ext_type}://{ext_host}:{ext_port}")
+            logger.info(
+                f"[ChainedProxy] Proxy chain established: client {peer} → {dest_host}:{dest_port} via {ext_type}://{ext_host}:{ext_port}"
+            )
 
             async def pipe(reader_src, writer_dst):
                 try:
@@ -1092,15 +1180,14 @@ class SOCKS5ChainedProxyServer:
                 finally:
                     try:
                         writer_dst.close()
+                        await writer_dst.wait_closed()
                     except Exception:
                         pass
 
             task1 = asyncio.create_task(pipe(reader, warp_writer))
             task2 = asyncio.create_task(pipe(warp_reader, writer))
 
-            pending = {task1, task2}
-            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-
+            done, pending = await asyncio.wait({task1, task2}, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
 
@@ -1110,6 +1197,7 @@ class SOCKS5ChainedProxyServer:
             logger.error(f"[ChainedProxy] Exception for client {peer}: {e}")
             try:
                 writer.close()
+                await writer.wait_closed()
             except Exception:
                 pass
 
@@ -1123,23 +1211,170 @@ class SOCKS5ChainedProxyServer:
     async def _external_socks5_connect_async(self, reader, writer, dest_host, dest_port, username, password):
         try:
             if username:
-                writer.write(b"\x05\x02\x02\x00")
+                writer.write(b"\x05\x02\x00\x02")
             else:
                 writer.write(b"\x05\x01\x00")
             await writer.drain()
-            resp = await reader.readexactly(2)
-            if resp[1] == 0xFF:
-                logger.error("[ChainedProxy] External SOCKS5 server refused all methods.")
+
+            try:
+                chunk = await asyncio.wait_for(reader.read(1024), timeout=self._read_timeout)
+            except Exception as e:
+                logger.error(f"[ChainedProxy] External SOCKS5 method response error: {e}")
                 return False
-            if resp[1] == 0x02:
-                ub, pb = username.encode(), password.encode()
-                auth_msg = b"\x01" + bytes([len(ub)]) + ub + bytes([len(pb)]) + pb
-                writer.write(auth_msg)
-                await writer.drain()
-                arep = await reader.readexactly(2)
-                if arep[1] != 0x00:
-                    logger.error("[ChainedProxy] SOCKS5 authentication failed.")
+
+            if not chunk:
+                logger.error("[ChainedProxy] External SOCKS5 method response: connection closed by remote.")
+                return False
+
+            if chunk.startswith(b"HTTP/") or chunk.lower().startswith(b"http/") or chunk.lower().startswith(
+                    b"content-type:"):
+                logger.debug(
+                    f"[ChainedProxy] External proxy responded with HTTP bytes ({chunk[:200]!r}), falling back to HTTP CONNECT flow.")
+
+                class PrependReader:
+                    def __init__(self, first, underlying):
+                        self._first = first
+                        self._underlying = underlying
+                        self._used = False
+
+                    async def read(self, n=-1):
+                        if not self._used:
+                            self._used = True
+                            if n == -1:
+                                rest = await self._underlying.read(-1)
+                                return self._first + (rest or b"")
+                            if len(self._first) <= n:
+                                out = self._first
+                                self._first = b""
+                                if not out:
+                                    return await self._underlying.read(n)
+                                return out
+                            else:
+                                out = self._first[:n]
+                                self._first = self._first[n:]
+                                return out
+                        return await self._underlying.read(n)
+
+                    async def readexactly(self, n):
+                        data = b""
+                        while len(data) < n:
+                            chunk = await self.read(n - len(data))
+                            if not chunk:
+                                raise asyncio.IncompleteReadError(partial=data, expected=n)
+                            data += chunk
+                        return data
+
+                wrap_reader = PrependReader(chunk, reader)
+                return await self._external_http_connect_async(wrap_reader, writer, dest_host, dest_port, username,
+                                                               password)
+
+            if len(chunk) >= 2 and chunk[0] == 0x05:
+                method_sel = chunk[1]
+                if method_sel == 0xFF:
+                    logger.debug(f"[ChainedProxy] External SOCKS5 method reply: {chunk[:4]!r} (no acceptable methods).")
                     return False
+                if method_sel == 0x02:
+                    ub, pb = username.encode(), password.encode()
+                    auth_msg = b"\x01" + bytes([len(ub)]) + ub + bytes([len(pb)]) + pb
+                    writer.write(auth_msg)
+                    await writer.drain()
+                    rest = chunk[2:]
+                    if len(rest) >= 2:
+                        arep = rest[:2]
+                        remaining = rest[2:]
+                        if arep[1] != 0x00:
+                            logger.error("[ChainedProxy] SOCKS5 authentication failed.")
+                            return False
+
+                        class PrependReader2:
+                            def __init__(self, first, underlying):
+                                self._first = first
+                                self._underlying = underlying
+                                self._used = False
+
+                            async def read(self, n=-1):
+                                if not self._used and self._first:
+                                    self._used = True
+                                    if n == -1:
+                                        rest = await self._underlying.read(-1)
+                                        return self._first + (rest or b"")
+                                    if len(self._first) <= n:
+                                        out = self._first
+                                        self._first = b""
+                                        return out
+                                    else:
+                                        out = self._first[:n]
+                                        self._first = self._first[n:]
+                                        return out
+                                return await self._underlying.read(n)
+
+                            async def readexactly(self, n):
+                                data = b""
+                                while len(data) < n:
+                                    chunk = await self.read(n - len(data))
+                                    if not chunk:
+                                        raise asyncio.IncompleteReadError(partial=data, expected=n)
+                                    data += chunk
+                                return data
+
+                        reader = PrependReader2(remaining, reader)
+                    else:
+                        try:
+                            arep = await asyncio.wait_for(reader.readexactly(2), timeout=self._read_timeout)
+                        except Exception as e:
+                            logger.error(f"[ChainedProxy] External SOCKS5 auth response error: {e}")
+                            return False
+                        if arep[1] != 0x00:
+                            logger.error("[ChainedProxy] SOCKS5 authentication failed.")
+                            return False
+                elif method_sel == 0x00:
+                    leftover = chunk[2:]
+                    if leftover:
+                        class PrependReader3:
+                            def __init__(self, first, underlying):
+                                self._first = first
+                                self._underlying = underlying
+                                self._used = False
+
+                            async def read(self, n=-1):
+                                if not self._used and self._first:
+                                    if n == -1:
+                                        out = self._first
+                                        self._first = b""
+                                        rest = await self._underlying.read(-1)
+                                        return out + (rest or b"")
+                                    if len(self._first) <= n:
+                                        out = self._first
+                                        self._first = b""
+                                        return out
+                                    else:
+                                        out = self._first[:n]
+                                        self._first = self._first[n:]
+                                        return out
+                                return await self._underlying.read(n)
+
+                            async def readexactly(self, n):
+                                data = b""
+                                while len(data) < n:
+                                    chunk = await self.read(n - len(data))
+                                    if not chunk:
+                                        raise asyncio.IncompleteReadError(partial=data, expected=n)
+                                    data += chunk
+                                return data
+
+                        reader = PrependReader3(leftover, reader)
+                else:
+                    logger.debug(f"[ChainedProxy] External SOCKS5 unknown method select: {method_sel}")
+                    return False
+            else:
+                short = chunk[:200]
+                try:
+                    txt = short.decode(errors="ignore")
+                except Exception:
+                    txt = repr(short)
+                logger.error(
+                    f"[ChainedProxy] Unexpected bytes when expecting SOCKS5 method response: {short!r} / {txt}")
+                return False
 
             if self._is_valid_ipv4(dest_host):
                 req = b"\x05\x01\x00\x01" + socket.inet_aton(dest_host) + struct.pack(">H", dest_port)
@@ -1149,22 +1384,34 @@ class SOCKS5ChainedProxyServer:
             writer.write(req)
             await writer.drain()
 
-            rep = await reader.readexactly(4)
+            try:
+                rep = await asyncio.wait_for(reader.readexactly(4), timeout=self._read_timeout)
+            except Exception as e:
+                try:
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=0.5)
+                    if chunk:
+                        logger.debug(f"[ChainedProxy] Diagnostics bytes after failed SOCKS5 CONNECT: {chunk[:200]!r}")
+                except Exception:
+                    pass
+                logger.error(f"[ChainedProxy] External SOCKS5 connect response error: {e}")
+                return False
+
             if rep[1] != 0x00:
                 logger.error(f"[ChainedProxy] SOCKS5 CONNECT to {dest_host}:{dest_port} failed (REP={rep[1]}).")
                 return False
 
             atyp = rep[3]
             if atyp == 1:
-                await reader.readexactly(6)
+                await self._areadexact(reader, 6)
             elif atyp == 3:
-                l = (await reader.readexactly(1))[0]
-                await reader.readexactly(l + 2)
+                l = (await self._areadexact(reader, 1))[0]
+                await self._areadexact(reader, l + 2)
             elif atyp == 4:
-                await reader.readexactly(18)
+                await self._areadexact(reader, 18)
 
             logger.info(f"[ChainedProxy] SOCKS5 CONNECT to {dest_host}:{dest_port} successful.")
             return True
+
         except Exception as e:
             logger.error(f"[ChainedProxy] SOCKS5 handshake exception: {e}")
             return False
@@ -1182,7 +1429,7 @@ class SOCKS5ChainedProxyServer:
 
             writer.write(header)
             await writer.drain()
-            resp = await reader.readexactly(8)
+            resp = await asyncio.wait_for(reader.readexactly(8), timeout=self._read_timeout)
             ok = resp[1] == 0x5A
             if ok:
                 logger.info(f"[ChainedProxy] SOCKS4 CONNECT to {dest_host}:{dest_port} successful.")
@@ -1203,27 +1450,40 @@ class SOCKS5ChainedProxyServer:
             req = (
                 b"CONNECT " + dest_host.encode("idna") + b":" + str(dest_port).encode() + b" HTTP/1.1\r\n"
                 + b"Host: " + dest_host.encode("idna") + b":" + str(dest_port).encode() + b"\r\n"
+                + b"Connection: keep-alive\r\n"
+                + b"User-Agent: PyWarp/1.0\r\n"
                 + auth_hdr
-                + b"Proxy-Connection: Keep-Alive\r\n\r\n"
+                + b"Proxy-Connection: keep-alive\r\n\r\n"
             )
             writer.write(req)
             await writer.drain()
 
             buffer = b""
+            start = asyncio.get_event_loop().time()
             while True:
-                chunk = await reader.read(4096)
+                try:
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=self._read_timeout)
+                except asyncio.TimeoutError:
+                    break
                 if not chunk:
                     break
                 buffer += chunk
                 if b"\r\n\r\n" in buffer or b"\n\n" in buffer:
                     break
+                if asyncio.get_event_loop().time() - start > self._read_timeout:
+                    break
 
-            first_line = buffer.splitlines()[0] if buffer.splitlines() else b""
+            lines = buffer.splitlines()
+            first_line = lines[0] if lines else b""
             if b"200" in first_line:
                 logger.info(f"[ChainedProxy] HTTP CONNECT to {dest_host}:{dest_port} successful.")
                 return True
 
-            logger.error(f"[ChainedProxy] HTTP CONNECT to {dest_host}:{dest_port} failed: {first_line.decode(errors='ignore')}")
+            try:
+                fl = first_line.decode(errors='ignore')
+            except Exception:
+                fl = str(first_line)
+            logger.error(f"[ChainedProxy] HTTP CONNECT to {dest_host}:{dest_port} failed: {fl}")
             return False
         except Exception as e:
             logger.error(f"[ChainedProxy] HTTP CONNECT exception: {e}")
@@ -1238,9 +1498,10 @@ class ProxyTester(QObject):
 
     def __init__(self, parent=None,
                  delay_between=0.0,
-                 max_concurrency=50,
-                 connect_timeout=3,
-                 http_timeout=3):
+                 max_concurrency=100,
+                 connect_timeout=4,
+                 http_timeout=5,
+                 session_cache=None):
         super().__init__(parent)
         self.delay_between = delay_between
         self.max_concurrency = max_concurrency
@@ -1248,39 +1509,50 @@ class ProxyTester(QObject):
         self.http_timeout = http_timeout
         self._cancel_event = asyncio.Event()
 
+        self._session_cache = session_cache or {"working_proxies": []}
+        self._session_cache.setdefault("working_proxies", [])
+        self._working_proxies = self._session_cache["working_proxies"]
+        self._geo_cache = {}
+
     def run(self):
         return asyncio.run(self._main())
 
     async def _main(self):
-        self.status.emit("Fetching proxy list...")
+        self._working_proxies.clear()
+        self.status.emit("Fetching proxy lists...")
 
-        try:
-            r = requests.get(
-                "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
-                timeout=8,
-            )
-            r.raise_for_status()
-            proxies_list = [line.strip() for line in r.text.splitlines() if ":" in line]
-            random.shuffle(proxies_list)
-        except Exception as e:
-            self.status.emit(f"Error fetching proxy list: {e}")
-            self.finished.emit([])
-            return []
+        sources = [
+            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+            "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt"
+        ]
 
+        proxies_list = []
+        for url in sources:
+            try:
+                r = requests.get(url, timeout=8)
+                r.raise_for_status()
+                lines = [line.strip() for line in r.text.splitlines() if ":" in line]
+                proxies_list.extend(lines)
+                self.status.emit(f"Loaded {len(lines)} proxies from {url}")
+            except Exception as e:
+                self.status.emit(f"⚠️ Failed to fetch from {url}: {e}")
+
+        proxies_list = list(set(proxies_list))
+        random.shuffle(proxies_list)
         total = len(proxies_list)
         if not total:
             self.status.emit("No proxies found.")
             self.finished.emit([])
             return []
 
-        self.status.emit(f"Testing {total} proxies concurrently (limit {self.max_concurrency})...")
-        working = []
+        self.status.emit(f"Testing {total} proxies (max concurrency {self.max_concurrency})...")
         connector = aiohttp.TCPConnector(limit=self.max_concurrency, ssl=False)
         timeout = aiohttp.ClientTimeout(total=self.http_timeout)
 
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             sem = asyncio.Semaphore(self.max_concurrency)
             completed = 0
+            lock = asyncio.Lock()
 
             async def worker(entry):
                 nonlocal completed
@@ -1289,87 +1561,144 @@ class ProxyTester(QObject):
                         return
                     try:
                         host, port = entry.split(":")
-                        result = await self._test_single(session, host.strip(), int(port))
+                        port = int(port.strip())
+                        result = await self._test_single(session, host.strip(), port)
+                    except Exception as e:
+                        result = None
+                        logger.debug(f"[ProxyTester] Parse/error for {entry}: {e}")
+
+                    async with lock:
                         completed += 1
-                        self.progress.emit(int((completed / total) * 100))
+                        progress = int((completed / total) * 100)
+                        self.progress.emit(progress)
+
                         if result:
+                            self._working_proxies.append(result)
                             self.new_proxy.emit(result)
-                            working.append(result)
-                            self.status.emit(f"✅ Working: {host}:{port}")
+                            self.status.emit(
+                                f"✅ Working: {host}:{port} ({result.get('ping', '?')} ms) "
+                                f"[{result.get('country', 'Unknown')}]"
+                            )
                         else:
                             self.status.emit(f"❌ Dead: {host}:{port}")
-                    except Exception:
-                        completed += 1
-                        self.progress.emit(int((completed / total) * 100))
+
                     if self.delay_between:
-                        await asyncio.sleep(self.delay_between)
+                        await asyncio.sleep(self.delay_between + random.uniform(0, 0.3))
 
             await asyncio.gather(*(worker(p) for p in proxies_list))
 
-        self.status.emit(f"Done. Found {len(working)} working proxies.")
+        self.status.emit(f"✅ Scan complete — found {len(self._working_proxies)} working proxies.")
         self.progress.emit(100)
-        self.finished.emit(working)
-        return working
+        self.finished.emit(self._working_proxies)
+        return self._working_proxies
 
     async def _test_single(self, session, host, port):
-        proxy_url = f"socks5://{host}:{port}"
-        start = asyncio.get_event_loop().time()
+        proxy_type = "socks5"
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=self.connect_timeout
+            )
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            logger.debug(f"[ProxyTester] TCP connect failed: {host}:{port}")
+            return None
 
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: self._tcp_check(host, port))
 
-            async with session.get(
-                    "https://1.1.1.1/cdn-cgi/trace",
-                    proxy=proxy_url,
-                    timeout=aiohttp.ClientTimeout(total=self.http_timeout)
-            ) as resp:
-                if resp.status not in (200, 403, 407):
-                    return None
-
-                elapsed = (asyncio.get_event_loop().time() - start) * 1000
-
-                country, code, flag = "Unknown", "", ""
+            def socks_check():
+                import socket as _socket
+                s = socks.socksocket(_socket.AF_INET, _socket.SOCK_STREAM)
+                s.set_proxy(socks.SOCKS5, host, port, rdns=True)
+                s.settimeout(self.http_timeout)
                 try:
-                    async with session.get("https://ipwho.is/", proxy=proxy_url, timeout=5) as geo:
+                    s.connect(("1.1.1.1", 443))
+                    s.close()
+                    return True
+                except Exception:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+                    return False
+
+            ok = await loop.run_in_executor(None, socks_check)
+            if not ok:
+                return None
+        except Exception as e:
+            logger.debug(f"[ProxyTester] SOCKS check error {host}:{port}: {e}")
+            return None
+
+        try:
+            async with session.get(
+                    "https://httpbin.org/ip",
+                    proxy=f"socks5://{host}:{port}",
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=aiohttp.ClientTimeout(total=5)
+            ) as r:
+                if r.status != 200:
+                    return None
+        except Exception as e:
+            logger.debug(f"[ProxyTester] HTTP test failed {host}:{port}: {e}")
+            return None
+
+        elapsed = (asyncio.get_event_loop().time() - start_time) * 1000
+        country, code, flag = self._geo_cache.get(host, ("Unknown", "", ""))
+        if country == "Unknown":
+            geo_sources = [
+                f"https://ipwho.is/{host}",
+                f"https://ipapi.co/{host}/json/",
+                f"http://ip-api.com/json/{host}",
+            ]
+            for url in geo_sources:
+                try:
+                    async with session.get(
+                            url,
+                            headers={"User-Agent": "Mozilla/5.0"},
+                            timeout=aiohttp.ClientTimeout(total=6)
+                    ) as geo:
                         if geo.status == 200:
-                            data = await geo.json()
-                            if data.get("success", True):
-                                country = data.get("country", "Unknown")
-                                code = data.get("country_code", "")
+                            data = await geo.json(content_type=None)
+                            country = (
+                                    data.get("country")
+                                    or data.get("country_name")
+                                    or "Unknown"
+                            )
+                            code = (
+                                    data.get("country_code")
+                                    or data.get("countryCode")
+                                    or ""
+                            )
+                            if country and country != "Unknown":
                                 if code:
                                     flag = (
                                             chr(ord(code[0].upper()) + 127397)
                                             + chr(ord(code[1].upper()) + 127397)
                                     )
-                except Exception:
-                    print(f"Geo lookup failed for {host}:{port} - {e}")
-                    pass
+                                self._geo_cache[host] = (country, code, flag)
+                                break
+                except Exception as e:
+                    logger.debug(f"[ProxyTester] Geo lookup failed {host}: {e}")
 
-                return {
-                    "host": host,
-                    "port": port,
-                    "type": "socks5",
-                    "user": "",
-                    "pass": "",
-                    "country": country,
-                    "country_code": code,
-                    "flag": flag,
-                    "ping": round(elapsed),
-                }
-
-        except Exception:
-            return None
-
-    def _tcp_check(self, host, port):
-        s = socks.socksocket()
-        s.set_proxy(socks.SOCKS5, host, port)
-        s.settimeout(self.connect_timeout)
-        s.connect(("1.1.1.1", 443))
-        s.close()
+        return {
+            "host": host,
+            "port": port,
+            "type": proxy_type,
+            "user": "",
+            "pass": "",
+            "country": country,
+            "country_code": code,
+            "flag": flag,
+            "ping": round(elapsed),
+        }
 
     def cancel(self):
         self._cancel_event.set()
+        self.status.emit("⏹️ Scan cancelled.")
 
 
 class LogsWindow(QDialog):
@@ -1377,7 +1706,6 @@ class LogsWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Application Logs"))
         self.resize(720, 520)
-
         self.log_path = log_path
         self.logger = logging.getLogger("pywarp")
 
@@ -2210,8 +2538,9 @@ class ExclusionManager(QDialog):
 
 class AdvancedSettings(QDialog):
 
-    def __init__(self, settings_handler, parent=None):
+    def __init__(self, settings_handler, parent=None, session_cache=None):
         super().__init__(parent)
+        self.session_cache = session_cache or {"working_proxies": []}
         self.setWindowTitle(self.tr("Advanced Settings"))
         self.resize(800, 600)
 
@@ -2407,6 +2736,9 @@ class AdvancedSettings(QDialog):
         self.setLayout(grid)
         self.update_list_view()
 
+        for proxy in self.session_cache.get("working_proxies", []):
+            self._add_found_proxy(proxy)
+
         self.proxy_save_btn.clicked.connect(self._save_proxy_settings)
         self._load_proxy_settings()
 
@@ -2543,7 +2875,8 @@ class AdvancedSettings(QDialog):
                 delay_between=0.0,
                 max_concurrency=50,
                 connect_timeout=3,
-                http_timeout=3
+                http_timeout=3,
+                session_cache=self.session_cache
             )
 
             self._tester.progress.connect(self._update_proxy_progress)
@@ -2790,6 +3123,9 @@ class SettingsPage(QWidget):
         self.current_mode = self.settings_handler.get("mode", "warp")
         self.current_lang = self.settings_handler.get("language", "en")
         self.current_font = self.settings_handler.get("font_family", QApplication.font().family())
+        self.session_cache = {
+            "working_proxies": []
+        }
 
         main_layout = QVBoxLayout(self)
         grid = QGridLayout()
@@ -2918,7 +3254,7 @@ class SettingsPage(QWidget):
         self.modes_dropdown.blockSignals(False)
 
     def open_advanced_settings(self):
-        dialog = AdvancedSettings(self.settings_handler, self)
+        dialog = AdvancedSettings(self.settings_handler, self, session_cache=self.session_cache)
         dialog.exec()
 
     def create_groupbox(self, title):
