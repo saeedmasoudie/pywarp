@@ -1,3 +1,4 @@
+import ast
 import ipaddress
 import json
 import logging
@@ -7,12 +8,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
 import webbrowser
 import zipfile
 import requests
+import psutil
+import socket
 import resources_rc
 from types import SimpleNamespace
 from pathlib import Path
@@ -27,9 +31,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QDialog, QProgressDialog, QInputDialog, QCheckBox,
-                               QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox)
+                               QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
+                               QTreeWidget, QTreeWidgetItem)
 
-CURRENT_VERSION = "1.2.7"
+CURRENT_VERSION = "1.2.8"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
@@ -823,6 +828,674 @@ class LogsWindow(QDialog):
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to clear logs:\n{}").format(e))
 
 
+class AppExcludeManager(QObject):
+    exclusions_updated = Signal(list)
+    DEFAULT_FILTER_IPS = [
+        "127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+        "169.254.0.0/16", "224.0.0.0/4", "240.0.0.0/4"
+    ]
+    KNOWN_APP_DOMAINS = {
+        "Discord": ["*.discord.com", "*.discord.gg", "*.discordapp.com", "*.discordapp.net",
+                    "*.discord.media", "*.discordcdn.com", "*.discordstatus.com"],
+        "Steam": ["*.steampowered.com", "*.steamcommunity.com", "*.steamgames.com",
+                  "*.steamusercontent.com", "*.steamcontent.com", "*.steamstatic.com",
+                  "*.steamserver.net", "*.steam-chat.com", "*.valve.net", "*.akamaihd.net"],
+        "Spotify": ["*.spotify.com", "*.pscdn.co", "*.scdn.co"],
+        "Zoom": ["*.zoom.us", "zoom.us"],
+        "Slack": ["*.slack.com", "*.slack-msgs.com", "*.slack-files.com", "*.slack-edge.com"],
+        "EpicGamesLauncher": ["*.epicgames.com", "epicgames.com"],
+        "Battle.net": ["*.blizzard.com", "*.battle.net"],
+        "CS2": ["*.valve.net"],
+        "Dota 2": ["*.valve.net"],
+    }
+    KNOWN_APP_IP_RANGES = {
+        "Discord": ["162.159.128.0/17", "162.159.192.0/18", "104.16.0.0/12", "66.22.192.0/18"],
+        "Steam": ["208.64.200.0/21", "208.64.0.0/11", "162.254.192.0/21", "155.133.224.0/19",
+                  "146.66.152.0/22", "103.28.54.0/24", "103.10.124.0/24", "192.69.96.0/24",
+                  "209.197.25.0/24"],
+        "Spotify": ["35.186.224.0/19"],
+        "Zoom": ["170.114.0.0/15"],
+        "Slack": ["52.32.0.0/11"],
+        "CS2": [],
+        "Dota 2": [],
+    }
+
+    def __init__(self, settings_handler, parent=None, scan_interval_ms: int = 3000):
+        super().__init__(parent)
+        self.settings_handler = settings_handler
+        self._scan_interval = scan_interval_ms
+        self._timer = QTimer(self)
+        self._timer.setInterval(scan_interval_ms)
+        self._timer.timeout.connect(self.scan_processes)
+        self._applied_apps = self._load_applied_apps()
+        self.desired_app_set = self._load_applied_apps().copy()
+        self._dns_cache = {}
+        self._session_checked = {}
+        self.saved_endpoints = self._load_saved_endpoints()
+        self._applied_state = self._load_applied_state()
+        self.known_endpoints = {}
+        self._scan_lock = threading.Lock()
+        self._is_shutting_down = False
+
+    def toggle_desired_app(self, app_name, enable):
+        if enable:
+            self.desired_app_set.add(app_name)
+        else:
+            self.desired_app_set.discard(app_name)
+
+    def _expand_known_domains(self, app_name):
+        matches = []
+        for key, domains in self.KNOWN_APP_DOMAINS.items():
+            if key.lower() in app_name.lower():
+                matches.extend(domains)
+        return list(set(matches))
+
+    def _expand_known_ip_ranges(self, app_name):
+        matches = []
+        for key, ranges in getattr(self, "KNOWN_APP_IP_RANGES", {}).items():
+            if key.lower() in app_name.lower():
+                matches.extend(ranges)
+        return list(set(matches))
+
+    def _load_saved(self):
+        data = self.settings_handler.get("excluded_apps", {})
+        if isinstance(data, str):
+            try:
+                data = ast.literal_eval(data)
+            except Exception:
+                data = {}
+        return data if isinstance(data, dict) else {}
+
+    def _save(self):
+        try:
+            self.settings_handler.save_settings("excluded_apps", self._saved)
+        except Exception as e:
+            logger.warning(f"Failed to save exclusions: {e}")
+
+    def _load_saved_endpoints(self):
+        data = self.settings_handler.get("app_endpoints", {})
+        if isinstance(data, str):
+            try:
+                data = ast.literal_eval(data)
+            except Exception:
+                data = {}
+        out = {}
+        if isinstance(data, dict):
+            for app, val in data.items():
+                if isinstance(val, dict):
+                    hosts = set(val.get("hosts", []))
+                    ips = set(val.get("ips", []))
+                else:
+                    hosts = set()
+                    ips = set()
+                out[app] = {"hosts": hosts, "ips": ips}
+        return out
+
+    def _save_endpoints(self):
+        try:
+            serial = {}
+            for app, val in self.saved_endpoints.items():
+                serial[app] = {"hosts": sorted(list(val.get("hosts", set()))),
+                               "ips": sorted(list(val.get("ips", set())))}
+            self.settings_handler.save_settings("app_endpoints", serial)
+        except Exception as e:
+            logger.warning(f"Failed to save app_endpoints: {e}")
+
+    def _load_applied_apps(self):
+        data = self.settings_handler.get("app_applied_exclusions", [])
+        if isinstance(data, str):
+            try:
+                data = ast.literal_eval(data)
+            except Exception:
+                data = []
+        if not isinstance(data, list):
+            data = []
+        return set(data)
+
+    def _save_applied_apps(self, applied_apps):
+        try:
+            self.settings_handler.save_settings("app_applied_exclusions", sorted(list(applied_apps)))
+        except Exception as e:
+            logger.warning(f"Failed to save applied app exclusions: {e}")
+
+    def _load_applied_state(self):
+        data = self.settings_handler.get("app_applied_endpoints", {})
+        if isinstance(data, str):
+            try:
+                data = ast.literal_eval(data)
+            except Exception:
+                data = {}
+
+        out = {"hosts": set(), "ips": set()}
+        if isinstance(data, dict):
+            out["hosts"] = set(data.get("hosts", []))
+            out["ips"] = set(data.get("ips", []))
+        return out
+
+    def _save_applied_state(self):
+        try:
+            current_hosts = set()
+            current_ips = set()
+            for app, val in self.saved_endpoints.items():
+                current_hosts.update(val.get("hosts", set()))
+                current_ips.update(val.get("ips", set()))
+
+            serial = {
+                "hosts": sorted(list(current_hosts)),
+                "ips": sorted(list(current_ips))
+            }
+            self.settings_handler.save_settings("app_applied_endpoints", serial)
+            self._applied_state = {"hosts": current_hosts, "ips": current_ips}
+        except Exception as e:
+            logger.warning(f"Failed to save app_applied_endpoints: {e}")
+
+    _helper_proc = None
+
+    def _ensure_priv_helper(self):
+        if self._helper_proc and self._helper_proc.poll() is None:
+            return self._helper_proc
+
+        helper_path = os.path.join(tempfile.gettempdir(), "pywarp_helper.py")
+        if not os.path.exists(helper_path):
+            with open(helper_path, "w") as f:
+                f.write("""#!/usr/bin/env python3
+                import sys, json, subprocess
+                def main():
+                    for line in sys.stdin:
+                        try:
+                            data = json.loads(line.strip())
+                            cmd = data.get("cmd")
+                            if not cmd or not isinstance(cmd, list):
+                                print(json.dumps({"error": "invalid"})); sys.stdout.flush(); continue
+                            res = subprocess.run(cmd, capture_output=True, text=True)
+                            print(json.dumps({
+                                "returncode": res.returncode,
+                                "stdout": res.stdout.strip(),
+                                "stderr": res.stderr.strip()
+                            })); sys.stdout.flush()
+                        except Exception as e:
+                            print(json.dumps({"error": str(e)})); sys.stdout.flush()
+                if __name__ == "__main__":
+                    main()
+                """)
+            os.chmod(helper_path, 0o755)
+
+        system = platform.system()
+        try:
+            if system == "Linux":
+                cmd = ["pkexec", sys.executable, helper_path]
+            elif system == "Darwin":
+                cmd = ["osascript", "-e",
+                       f'do shell script "{sys.executable} {helper_path}" with administrator privileges']
+            else:
+                return None
+            self._helper_proc = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
+            return self._helper_proc
+        except Exception as e:
+            logger.error(f"Failed to start helper: {e}")
+            return None
+
+    class HelperResult:
+        def __init__(self, returncode=1, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def _run_with_helper(self, cmd):
+        proc = self._ensure_priv_helper()
+        if not proc:
+            try:
+                res = subprocess.run(["sudo"] + cmd, capture_output=True, text=True)
+                return self.HelperResult(res.returncode, res.stdout or "", res.stderr or "")
+            except Exception as e:
+                logger.error(f"Sudo fallback failed: {e}")
+                return self.HelperResult(1, "", str(e))
+
+        try:
+            payload = json.dumps({"cmd": cmd}) + "\n"
+            proc.stdin.write(payload)
+            proc.stdin.flush()
+            line = proc.stdout.readline().strip()
+            if not line:
+                raise RuntimeError("Empty response from helper")
+            data = json.loads(line)
+            return self.HelperResult(
+                data.get("returncode", 1),
+                data.get("stdout", "") or "",
+                data.get("stderr", "") or ""
+            )
+        except Exception as e:
+            logger.error(f"Helper communication failed: {e}")
+            try:
+                res = subprocess.run(["sudo"] + cmd, capture_output=True, text=True)
+                return self.HelperResult(res.returncode, res.stdout or "", res.stderr or "")
+            except Exception as e2:
+                return self.HelperResult(1, "", f"{e} | fallback error: {e2}")
+
+    def shutdown_helper(self):
+        try:
+            if self._helper_proc and self._helper_proc.poll() is None:
+                self._helper_proc.terminate()
+        except Exception:
+            pass
+
+
+    def _resolve_ip(self, host):
+        try:
+            ipaddress.ip_address(host)
+            return host
+        except Exception:
+            try:
+                if host in self._dns_cache:
+                    return self._dns_cache[host]
+
+                ip = socket.gethostbyname(host)
+                self._dns_cache[host] = ip
+                return ip
+            except Exception:
+                return None
+
+    def mark_endpoint_saved(self, app_name, kind, value):
+        app = self.saved_endpoints.setdefault(app_name, {"hosts": set(), "ips": set()})
+        if kind == "host":
+            app["hosts"].add(value)
+            self.known_endpoints.setdefault(app_name, {"hosts": set(), "ips": set()})["hosts"].add(value)
+        else:
+            app["ips"].add(value)
+            self.known_endpoints.setdefault(app_name, {"hosts": set(), "ips": set()})["ips"].add(value)
+        self._save_endpoints()
+
+    def unmark_endpoint_saved(self, app_name, kind, value):
+        app = self.saved_endpoints.get(app_name)
+        if app:
+            if kind == "host":
+                app["hosts"].discard(value)
+            else:
+                app["ips"].discard(value)
+        self._save_endpoints()
+
+    def _is_ip_valid_for_exclusion(self, ip_address):
+        try:
+            ip = ipaddress.ip_address(ip_address)
+            return not (ip.is_private or ip.is_loopback or ip.is_multicast or ip.is_reserved or ip.is_link_local)
+        except ValueError:
+            return False
+
+    def scan_processes(self):
+        if self._is_shutting_down or not self._scan_lock.acquire(blocking=False):
+            return
+
+        def worker():
+            try:
+                current_process_data = {}
+                for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                    try:
+                        connections = proc.net_connections(kind='inet')
+
+                        external_connections = []
+                        for conn in connections:
+                            if conn.raddr and conn.status != psutil.CONN_LISTEN:
+                                remote_ip = conn.raddr.ip
+
+                                if self._is_ip_valid_for_exclusion(remote_ip):
+                                    value = remote_ip
+                                    kind = "ip"
+
+                                    if platform.system() == "Windows":
+                                        remote_host = getattr(conn.raddr, 'host', remote_ip)
+                                        if remote_host and remote_host != remote_ip:
+                                            value = remote_host
+                                            kind = "host"
+
+                                    if value:
+                                        external_connections.append((kind, value))
+
+                        if external_connections:
+                            name_key = proc.name() or (
+                                proc.exe().split(os.sep)[-1] if proc.exe() else f"PID {proc.pid}")
+                            current_process_data[name_key] = {
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "exe": proc.exe(),
+                                "connections": list(set(external_connections))
+                            }
+
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+                        continue
+
+                apps_for_ui = []
+
+                for key, data in current_process_data.items():
+                    app_entry = {
+                        "key": key,
+                        "pid": data["pid"],
+                        "exe": data["exe"],
+                        "saved": self.saved_endpoints.get(key, {"hosts": set(), "ips": set()}),
+                        "known": self.known_endpoints.setdefault(key, {"hosts": set(), "ips": set()}),
+                        "new": {"hosts": set(), "ips": set()}
+                    }
+
+                    for kind, value in data["connections"]:
+                        value_set = "hosts" if kind == "host" else "ips"
+
+                        is_saved = value in app_entry["saved"][value_set]
+                        is_known = value in app_entry["known"][value_set]
+
+                        if not is_saved and not is_known:
+                            app_entry["new"][value_set].add(value)
+
+                        app_entry["known"][value_set].add(value)
+
+                    apps_for_ui.append(app_entry)
+
+                if self.signalsBlocked():
+                    return
+                try:
+                    self.exclusions_updated.emit(apps_for_ui)
+                except RuntimeError:
+                    pass
+
+            finally:
+                self._scan_lock.release()
+
+        run_in_worker(
+            worker,
+            parent=self,
+            on_error=lambda e: logger.error(f"Error during process scan: {e}")
+        )
+
+    def _get_current_warp_rules(self):
+        current_hosts = set()
+        current_ips = set()
+        current_ranges = set()
+
+        result_ip = run_warp_command("warp-cli", "-j", "tunnel", "ip", "list")
+        if result_ip and result_ip.returncode == 0:
+            try:
+                data = json.loads(result_ip.stdout)
+                for r in data.get("routes", []):
+                    value = r.get("value", "")
+                    if value:
+                        if "/" in value:
+                            if value.endswith("/32"):
+                                current_ips.add(value.split("/")[0])
+                            else:
+                                current_ranges.add(value)
+                        else:
+                            current_ips.add(value)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode warp-cli tunnel ip list output: {e}")
+            except Exception as e:
+                logger.error(f"Error processing WARP IP list: {e}")
+
+        result_host = run_warp_command("warp-cli", "-j", "tunnel", "host", "list")
+        if result_host and result_host.returncode == 0:
+            try:
+                data = json.loads(result_host.stdout)
+                host_list = data.get("routes", data.get("hosts", []))
+                current_hosts.update([r.get("value", "") for r in host_list if isinstance(r, dict) and r.get("value")])
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode warp-cli tunnel host list output: {e}")
+            except Exception as e:
+                logger.error(f"Error processing WARP Host list: {e}")
+
+        return current_hosts, current_ips, current_ranges
+
+    def batch_apply_warp_rules(self):
+
+        def worker_function():
+            if getattr(self, "_is_shutting_down", False):
+                logger.info("Batch apply aborted: shutting down")
+                return False
+
+            desired_hosts, desired_ips = set(), set()
+            for app, data in self.saved_endpoints.items():
+                desired_hosts.update(data.get("hosts", set()))
+                desired_ips.update(data.get("ips", set()))
+
+            previous_hosts = self._applied_state["hosts"]
+            previous_ips = self._applied_state["ips"]
+
+            to_add_ips = desired_ips - previous_ips
+            to_remove_ips = previous_ips - desired_ips
+            to_add_hosts = desired_hosts - previous_hosts
+            to_remove_hosts = previous_hosts - desired_hosts
+
+            current_warp_hosts, current_warp_ips, _ = self._get_current_warp_rules()
+            to_add_ips.difference_update(current_warp_ips)
+            to_add_hosts.difference_update(current_warp_hosts)
+            to_remove_ips.intersection_update(current_warp_ips)
+            to_remove_hosts.intersection_update(current_warp_hosts)
+
+            changed = False
+
+            for ip in to_add_ips:
+                if getattr(self, "_is_shutting_down", False): return False
+                res = run_warp_command("warp-cli", "tunnel", "ip", "add", ip)
+                if res and res.returncode == 0:
+                    changed = True
+                else:
+                    logger.error(f"Failed to add IP {ip}: {getattr(res, 'stderr', 'no result')}")
+
+            for host in to_add_hosts:
+                if getattr(self, "_is_shutting_down", False): return False
+                res = run_warp_command("warp-cli", "tunnel", "host", "add", host)
+                if res and res.returncode == 0:
+                    changed = True
+                else:
+                    logger.error(f"Failed to add host {host}: {getattr(res, 'stderr', 'no result')}")
+
+            for ip in to_remove_ips:
+                if getattr(self, "_is_shutting_down", False): return False
+                run_warp_command("warp-cli", "tunnel", "ip", "remove", ip)
+                changed = True
+            for host in to_remove_hosts:
+                if getattr(self, "_is_shutting_down", False): return False
+                run_warp_command("warp-cli", "tunnel", "host", "remove", host)
+                changed = True
+
+            if changed:
+                self._save_applied_state()
+
+            system = platform.system()
+
+            desired_apps = self.desired_app_set
+            previous_apps = self._applied_apps
+
+            to_add_apps = desired_apps - previous_apps
+            to_remove_apps = previous_apps - desired_apps
+
+            for app_name in to_add_apps:
+                if getattr(self, "_is_shutting_down", False): return False
+                try:
+                    for dom in self._expand_known_domains(app_name):
+                        run_warp_command("warp-cli", "tunnel", "host", "add", dom)
+                        logger.debug(f"Added known domain {dom} for {app_name}")
+
+                    for cidr in self._expand_known_ip_ranges(app_name):
+                        run_warp_command("warp-cli", "tunnel", "ip", "add", cidr)
+                        logger.debug(f"Added known IP range {cidr} for {app_name}")
+
+                    if system == "Windows":
+                        self._apply_warp_exclusion(app_name)
+                    elif system == "Linux":
+                        self._set_linux_app_exclusion(app_name, enable=True)
+                    elif system == "Darwin":
+                        self._set_macos_app_exclusion(app_name, enable=True)
+
+                    logger.info(f"Applied exclusion for {app_name}")
+
+                except Exception as e:
+                    logger.error(f"App exclusion failed for {app_name}: {e}")
+
+            for app_name in to_remove_apps:
+                if getattr(self, "_is_shutting_down", False): return False
+                try:
+                    for dom in self._expand_known_domains(app_name):
+                        run_warp_command("warp-cli", "tunnel", "host", "remove", dom)
+                        logger.debug(f"Removed known domain {dom} for {app_name}")
+
+                    for cidr in self._expand_known_ip_ranges(app_name):
+                        run_warp_command("warp-cli", "tunnel", "ip", "remove", cidr)
+                        logger.debug(f"Removed known IP range {cidr} for {app_name}")
+
+                    if system == "Windows":
+                        self._remove_warp_exclusion(app_name)
+                    elif system == "Linux":
+                        self._set_linux_app_exclusion(app_name, enable=False)
+                    elif system == "Darwin":
+                        self._set_macos_app_exclusion(app_name, enable=False)
+                    logger.info(f"Removed exclusion for {app_name}")
+                except Exception as e:
+                    logger.error(f"Failed to remove exclusion for {app_name}: {e}")
+
+            self._save_applied_apps(desired_apps)
+            self._applied_apps = desired_apps.copy()
+
+            logger.info("✅ All pending exclusions applied successfully.")
+            return True
+
+        def on_done(_):
+            self.scan_processes()
+
+        run_in_worker(
+            worker_function,
+            parent=self,
+            on_done=on_done,
+            on_error=lambda e: logger.error(f"Batch WARP rule application failed: {e}")
+        )
+
+    def toggle_app_exclusion(self, app_name: str, enable: bool):
+        try:
+            if enable:
+                self.desired_app_set.add(app_name)
+            else:
+                self.desired_app_set.discard(app_name)
+
+            self._save_applied_apps(self.desired_app_set)
+
+        except Exception as e:
+            logger.error(f"toggle_app_exclusion({app_name}) failed: {e}")
+
+    def _apply_warp_exclusion(self, app_name):
+        app_data = self.saved_endpoints.get(app_name, {"hosts": set(), "ips": set()})
+        for ip in app_data["ips"]:
+            run_warp_command("warp-cli", "tunnel", "ip", "add", ip)
+        for host in app_data["hosts"]:
+            run_warp_command("warp-cli", "tunnel", "host", "add", host)
+        logger.info(f"Applied WARP exclusion for {app_name}")
+
+    def _remove_warp_exclusion(self, app_name):
+        app_data = self.saved_endpoints.get(app_name, {"hosts": set(), "ips": set()})
+        for ip in app_data["ips"]:
+            run_warp_command("warp-cli", "tunnel", "ip", "remove", ip)
+        for host in app_data["hosts"]:
+            run_warp_command("warp-cli", "tunnel", "host", "remove", host)
+        logger.info(f"Removed WARP exclusion for {app_name}")
+
+    def _set_linux_app_exclusion(self, app_name, enable=True):
+        try:
+            for proc in psutil.process_iter(['name', 'uids']):
+                if proc.info['name'] == app_name:
+                    uid = proc.info['uids'].real
+                    if enable:
+                        self._run_with_helper(["ip", "rule", "add", "uidrange", f"{uid}-{uid}", "lookup", "main"])
+                        self._run_with_helper([
+                            "iptables", "-t", "mangle", "-A", "OUTPUT", "-m", "owner",
+                            "--uid-owner", str(uid), "-j", "MARK", "--set-mark", "1"
+                        ])
+                        self._run_with_helper(["ip", "rule", "add", "fwmark", "1", "lookup", "main"])
+                        logger.info(f"Excluded {app_name} (UID {uid}) from WARP routing")
+                    else:
+                        self._run_with_helper(["ip", "rule", "del", "uidrange", f"{uid}-{uid}", "lookup", "main"])
+                        self._run_with_helper([
+                            "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner",
+                            "--uid-owner", str(uid), "-j", "MARK", "--set-mark", "1"
+                        ])
+                        logger.info(f"Removed Linux exclusion for {app_name}")
+                    return
+            logger.warning(f"App not found for exclusion: {app_name}")
+        except Exception as e:
+            logger.error(f"Linux exclusion failed for {app_name}: {e}")
+
+    def _set_macos_app_exclusion(self, app_name, enable=True):
+        pf_conf = "/tmp/pywarp_pf.conf"
+        try:
+            for proc in psutil.process_iter(['name', 'uids']):
+                if proc.info['name'] == app_name:
+                    uid = proc.info['uids'].real
+                    pf_rule = f"block out quick on utun1 user {uid}\n"
+                    if enable:
+                        with open(pf_conf, "a") as f:
+                            f.write(pf_rule)
+                        self._run_with_helper(["pfctl", "-f", pf_conf])
+                        self._run_with_helper(["pfctl", "-e"])
+                        logger.info(f"Added pfctl exclusion for {app_name} (UID {uid})")
+                    else:
+                        if os.path.exists(pf_conf):
+                            with open(pf_conf, "r") as f_read:
+                                lines = [
+                                    l for l in f_read
+                                    if not l.strip().startswith("block out quick on utun1 user ")
+                                ]
+                            with open(pf_conf, "w") as f_write:
+                                f_write.writelines(lines)
+                        self._run_with_helper(["pfctl", "-f", pf_conf])
+                        logger.info(f"Removed pfctl exclusion for {app_name}")
+                    return
+            logger.warning(f"macOS app not found: {app_name}")
+        except Exception as e:
+            logger.error(f"macOS exclusion failed for {app_name}: {e}")
+
+    def validate_excluded_apps(self):
+        try:
+            current_hosts, current_ips, _ = self._get_current_warp_rules()
+            logger.debug(f"Validating exclusions: {len(current_hosts)} hosts, {len(current_ips)} ips")
+
+            removed_apps = set()
+            removed_connections = []
+
+            for app_name, endpoints in list(self.saved_endpoints.items()):
+                hosts_to_remove = set()
+                ips_to_remove = set()
+
+                for h in endpoints.get("hosts", set()):
+                    if h not in current_hosts:
+                        hosts_to_remove.add(h)
+
+                for ip in endpoints.get("ips", set()):
+                    if ip not in current_ips:
+                        ips_to_remove.add(ip)
+
+                if hosts_to_remove or ips_to_remove:
+                    endpoints["hosts"].difference_update(hosts_to_remove)
+                    endpoints["ips"].difference_update(ips_to_remove)
+                    removed_connections.extend(list(hosts_to_remove | ips_to_remove))
+                    logger.debug(f"Removed invalid endpoints for {app_name}: {hosts_to_remove | ips_to_remove}")
+
+                if app_name in self.desired_app_set:
+                    if not endpoints["hosts"] and not endpoints["ips"]:
+                        self.desired_app_set.discard(app_name)
+                        removed_apps.add(app_name)
+                        logger.debug(f"Unchecking app {app_name}: no valid endpoints left")
+
+            self._save_endpoints()
+            self._save_applied_apps(self.desired_app_set)
+
+            if removed_apps or removed_connections:
+                logger.info(
+                    f"validate_excluded_apps: Removed {len(removed_apps)} apps and {len(removed_connections)} connections"
+                )
+
+            return {"apps": removed_apps, "connections": removed_connections}
+
+        except Exception as e:
+            logger.error(f"validate_excluded_apps failed: {e}")
+            return {"apps": set(), "connections": []}
+
+
 class DownloadWorker(GenericWorker):
     progress = Signal(int)
     finished = Signal(bool, str)
@@ -885,7 +1558,6 @@ class UpdateChecker(QObject):
         self._workers = []
 
     def start_check(self, delay_ms=3000):
-        """Start update check after window is shown (delayed)."""
         QTimer.singleShot(delay_ms, self._run_check_for_update)
 
     def perform_portable_warp_update(self):
@@ -903,7 +1575,6 @@ class UpdateChecker(QObject):
         self._workers.append(worker)
 
     def _check_for_update_task(self):
-        """Worker task: fetch versions and compare."""
         versions = self._get_latest_versions()
         if not versions:
             return
@@ -919,7 +1590,6 @@ class UpdateChecker(QObject):
             self.update_available.emit(update_type, latest_warp, local_version)
 
     def _get_latest_versions(self):
-        """Fetch version file from GitHub and parse it into a dict."""
         try:
             r = requests.get(GITHUB_VERSION_URL, timeout=10)
             r.raise_for_status()
@@ -1024,12 +1694,11 @@ class WarpStatusHandler(QObject):
 
         self._restart_timer = QTimer(self)
         self._restart_timer.setSingleShot(True)
-        self._restart_timer.setInterval(5000)  # Restart delay
+        self._restart_timer.setInterval(5000)
         self._restart_timer.timeout.connect(self.start_listener)
 
         self._last_status = None
         self._last_reason = None
-        self._pending_status = None
 
         QTimer.singleShot(0, self.start_listener)
 
@@ -1045,8 +1714,9 @@ class WarpStatusHandler(QObject):
             return
 
         self._process.setProgram(warp_cli_path)
-        self._process.setArguments(["--listen", "status"])
+        self._process.setArguments(["-l", "-j", "status"])
         self._process.start()
+        logger.info("warp-cli JSON listener started")
 
     def stop_listener(self):
         self._restart_timer.stop()
@@ -1068,28 +1738,63 @@ class WarpStatusHandler(QObject):
             if not line:
                 continue
 
-            if line.startswith("Status update:"):
-                self._pending_status = line.split("Status update:", 1)[1].strip()
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug(f"WARP: Non-JSON line: {line}")
+                continue
 
-                if self._pending_status in ("Connected", "Disconnected", "Limited", "Failed"):
-                    self._emit_status(self._pending_status, "")
+            if "status" in event:
+                status = event.get("status", "")
+                reason = event.get("reason", "")
 
-            elif line.startswith("Reason:"):
-                reason = line.split("Reason:", 1)[1].strip()
-                status = self._pending_status or "Unknown"
+                if isinstance(reason, dict):
+                    key, value = next(iter(reason.items()))
+                    if isinstance(value, list):
+                        value = value[0] if value else ""
+                    reason = self._translate_reason(key, value)
+                elif isinstance(reason, str):
+                    reason = self._translate_reason(reason)
+                else:
+                    reason = str(reason or "")
+
                 self._emit_status(status, reason)
-                self._pending_status = None
 
-            elif line.startswith("Status:"):
-                status = line.split("Status:", 1)[1].strip()
-                self._emit_status(status, "")
+            elif "update" in event:
+                update_type = event.get("update", "")
+                self._emit_status("Update", update_type)
 
             else:
-                logger.debug(f"WARP: Unparsed line: {line}")
+                logger.debug(f"WARP: Unknown event: {event}")
+
+    def _translate_reason(self, key: str, value: str = "") -> str:
+
+        mapping = {
+            "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler", "Trying to connect to Cloudflare"),
+            "EstablishingConnection": QCoreApplication.translate("WarpStatusHandler", f"Connecting to {value}") if value else QCoreApplication.translate("WarpStatusHandler", "Connecting to Cloudflare"),
+            "InitializingTunnelInterface": QCoreApplication.translate("WarpStatusHandler", "Setting up secure tunnel"),
+            "ConfiguringInitialFirewall": QCoreApplication.translate("WarpStatusHandler", "Configuring firewall"),
+            "SettingRoutes": QCoreApplication.translate("WarpStatusHandler", "Setting routes"),
+            "ConfiguringFirewallRules": QCoreApplication.translate("WarpStatusHandler", "Applying firewall rules"),
+            "PerformingConnectivityChecks": QCoreApplication.translate("WarpStatusHandler", "Checking connectivity"),
+            "ValidatingDnsConfiguration": QCoreApplication.translate("WarpStatusHandler", "Validating DNS settings"),
+            "CheckingNetwork": QCoreApplication.translate("WarpStatusHandler", "Checking network"),
+            "InitializingSettings": QCoreApplication.translate("WarpStatusHandler", "Initializing settings"),
+            "SettingsChanged": QCoreApplication.translate("WarpStatusHandler", "Settings changed"),
+            "Manual": QCoreApplication.translate("WarpStatusHandler", "Disconnected manually"),
+        }
+
+        return mapping.get(key, key)
 
     def _emit_status(self, status: str, reason: str):
         if (status, reason) != (self._last_status, self._last_reason):
             self._last_status, self._last_reason = status, reason
+            if status == 'Update':
+                return
+            if status == "Failed":
+                logger.warning(f"WARP: {status} ({reason})")
+            else:
+                logger.debug(f"WARP: {status} ({reason})")
             self.status_signal.emit(status, reason)
 
     def _on_process_error(self, error):
@@ -1136,7 +1841,7 @@ class WarpStatsHandler(QObject):
 
         return f"{size:.2f} {units[unit_index]}"
 
-    def update_status(self, status: str):
+    def update_status(self, status: str, reason: str = ""):
         self.warp_connected = (status == "Connected")
 
     def check_stats(self):
@@ -1483,6 +2188,9 @@ class PowerButton(QWidget):
                 self.glow_animation.start()
             if self.glow_color_anim.state() != QAbstractAnimation.Running:
                 self.glow_color_anim.start()
+
+            QTimer.singleShot(3000, lambda: self.connecting_timer.stop())
+
         else:
             self.connecting_timer.stop()
             self.glow_animation.stop()
@@ -1495,81 +2203,33 @@ class PowerButton(QWidget):
         self.state = new_state
         config = self.STATES.get(new_state, self.STATES["unknown"])
 
-        if new_state in ["Connected", "Disconnected", "Connecting"]:
-            self.power_button.setDisabled(False)
-        else:
-            self.power_button.setDisabled(True)
+        self.power_button.setDisabled(new_state == "No Network")
 
         self.apply_style(config["style"], config["text"])
 
     def toggle_power(self):
-        if self.state == "Connecting":
-            def work():
-                return run_warp_command("warp-cli", "disconnect")
-
-            def done(result):
-                self.toggled.emit("Disconnecting")
-                if not result or result.returncode != 0:
-                    error = result.stderr.strip() if result else self.tr("Unknown error")
-                    self.command_error_signal.emit(
-                        self.tr("Command Error"),
-                        self.tr("Failed to run command: {}").format(error)
-                    )
-                QTimer.singleShot(500, self.force_status_refresh)
-
-            def fail(exc):
-                logger.error(f"Disconnect command failed: {exc}")
-                self.command_error_signal.emit(
-                    self.tr("Command Error"),
-                    self.tr("Exception while disconnecting: {}").format(exc)
-                )
-                QTimer.singleShot(500, self.force_status_refresh)
-
-            self._cancel_worker = run_in_worker(work, parent=self,
-                                                on_done=done,
-                                                on_error=fail)
-            return
-
         self.power_button.setDisabled(True)
-        self.apply_style("unknown", "...")
 
         def work():
-            if self.state == "Disconnected":
-                return "Connecting", run_warp_command("warp-cli", "connect")
-            else:
-                return "Disconnecting", run_warp_command("warp-cli", "disconnect")
+            cmd = "connect" if self.state == "Disconnected" else "disconnect"
+            return run_warp_command("warp-cli", cmd)
 
         def done(result):
-            phase, cmd_result = result
-            self.toggled.emit(phase)
-            if not cmd_result or cmd_result.returncode != 0:
-                error = cmd_result.stderr.strip() if cmd_result else self.tr("Unknown error")
-                self.command_error_signal.emit(
-                    self.tr("Command Error"),
-                    self.tr("Failed to run command: {}").format(error)
-                )
-            QTimer.singleShot(500, self.force_status_refresh)
+            QTimer.singleShot(3000, lambda: self.power_button.setDisabled(False))
+            if not result or result.returncode != 0:
+                error = result.stderr.strip() if result else self.tr("Unknown error")
+                self.command_error_signal.emit(self.tr("Command Error"), error)
 
         def fail(exc):
-            logger.error(f"Toggle command failed: {exc}")
-            self.command_error_signal.emit(
-                self.tr("Command Error"),
-                self.tr("Exception while toggling power: {}").format(exc)
-            )
-            QTimer.singleShot(500, self.force_status_refresh)
+            self.command_error_signal.emit(self.tr("Command Error"), str(exc))
+            QTimer.singleShot(3000, lambda: self.power_button.setDisabled(False))
 
-        self._toggle_worker = run_in_worker(work, parent=self,
-                                            on_done=done,
-                                            on_error=fail)
+        run_in_worker(work, parent=self, on_done=done, on_error=fail)
 
     def reset_button_state(self):
         if self._toggle_lock:
             self._toggle_lock = False
             self.power_button.setDisabled(False)
-            self.force_status_refresh()
-
-    def force_status_refresh(self):
-        self.toggled.emit("ForceRefresh")
 
     def customEvent(self, event):
         if event.type() == QEvent.User:
@@ -1593,11 +2253,22 @@ class PowerButton(QWidget):
 
     def _on_error_dialog_closed(self):
         self.current_error_box = None
-        QTimer.singleShot(500, self.force_status_refresh)
 
 
 class ExclusionManager(QDialog):
     exclusions_updated = Signal()
+
+    DEFAULT_IPS = {
+        "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16",
+        "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16",
+        "224.0.0.0/24", "240.0.0.0/4", "239.255.255.250/32",
+        "255.255.255.255/32", "fe80::/10", "fd00::/8",
+        "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
+        "ff05::/16", "fc00::/7", "17.249.0.0/16", "17.252.0.0/16",
+        "17.57.144.0/22", "17.188.128.0/18", "17.188.20.0/23",
+        "2620:149:a44::/48", "2403:300:a42::/48",
+        "2403:300:a51::/48", "2a01:b740:a42::/48"
+    }
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1622,17 +2293,17 @@ class ExclusionManager(QDialog):
         self.submit_button.clicked.connect(self.add_item)
         layout.addWidget(self.submit_button, alignment=Qt.AlignCenter)
 
-        self.setLayout(layout)
-
-    def is_valid_ip(self, value):
+    @staticmethod
+    def is_valid_ip(value):
         try:
             ipaddress.ip_address(value)
             return True
         except ValueError:
             return False
 
-    def is_valid_domain(self, value):
-        return bool(re.match(r'^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,63}$', value))
+    @staticmethod
+    def is_valid_domain(value):
+        return bool(re.match(r"^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,63}$", value))
 
     def add_item(self):
         value = self.input_field.text().strip()
@@ -1640,182 +2311,560 @@ class ExclusionManager(QDialog):
             return
 
         exclusion_type = self.selector.currentText().lower()
+        is_ip_mode = exclusion_type == self.tr("ip").lower()
 
-        ip_keyword = self.tr("ip").lower()
-        domain_keyword = self.tr("domain").lower()
-
-        if exclusion_type == ip_keyword and not self.is_valid_ip(value):
-            QMessageBox.warning(self, self.tr("Invalid Input"),
-                                self.tr("Please enter a valid IP address."))
+        if is_ip_mode and not self.is_valid_ip(value):
+            QMessageBox.warning(self, self.tr("Invalid Input"), self.tr("Please enter a valid IP address."))
             return
-        elif exclusion_type == domain_keyword and not self.is_valid_domain(value):
-            QMessageBox.warning(self, self.tr("Invalid Input"),
-                                self.tr("Please enter a valid domain name."))
+        if not is_ip_mode and not self.is_valid_domain(value):
+            QMessageBox.warning(self, self.tr("Invalid Input"), self.tr("Please enter a valid domain name."))
+            return
+        if is_ip_mode and value in self.DEFAULT_IPS:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Cannot add a default IP to exclusions."))
             return
 
         try:
-            command_type = "ip" if exclusion_type == ip_keyword else "host"
-            result = run_warp_command("warp-cli", "tunnel", command_type, "add", value)
-
+            cmd = "ip" if is_ip_mode else "host"
+            result = run_warp_command("warp-cli", "tunnel", cmd, "add", value)
             if result.returncode == 0:
                 self.exclusions_updated.emit()
                 self.accept()
             else:
-                QMessageBox.warning(
-                    self, self.tr("Error"),
-                    self.tr("Failed to add {}: {}").format(exclusion_type, result.stderr.strip()))
+                QMessageBox.warning(self, self.tr("Error"),
+                                    self.tr("Failed to add {}: {}").format(exclusion_type, result.stderr.strip()))
         except subprocess.TimeoutExpired:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Command timed out"))
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), f"Command failed: {e}")
 
+    @classmethod
+    def filter_default_ips(cls, ip_list):
+        return [ip for ip in ip_list if ip not in cls.DEFAULT_IPS]
+
 
 class AdvancedSettings(QDialog):
-
     def __init__(self, settings_handler, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Advanced Settings"))
-        self.resize(800, 600)
+        self.resize(900, 560)
 
         self.settings_handler = settings_handler
         self.current_endpoint = self.settings_handler.get("custom_endpoint", "")
 
-        # Exclude IP/Domain
+        self.app_exclude_manager = AppExcludeManager(self.settings_handler, self, scan_interval_ms=10000)
+        self.app_exclude_manager.exclusions_updated.connect(self.populate_app_list)
+
+        # Exclude IP / Domain Table
         exclusion_group = QGroupBox(self.tr("Exclude IP / Domain"))
         exclusion_layout = QVBoxLayout()
-
         self.exclude_table = QTableWidget()
         self.exclude_table.setColumnCount(2)
-        self.exclude_table.setHorizontalHeaderLabels(["Type", "Value"])
+        self.exclude_table.setHorizontalHeaderLabels([self.tr("Type"), self.tr("Value")])
         self.exclude_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.exclude_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.exclude_table.horizontalHeader().setStretchLastSection(True)
         self.exclude_table.verticalHeader().setVisible(False)
         self.exclude_table.setAlternatingRowColors(True)
-
         exclusion_layout.addWidget(self.exclude_table)
 
-        button_grid = QGridLayout()
+        btn_grid = QGridLayout()
         self.btn_add = QPushButton(self.tr("Add"))
         self.btn_remove = QPushButton(self.tr("Remove"))
         self.btn_reset = QPushButton(self.tr("Reset List"))
-
         for b in (self.btn_add, self.btn_remove, self.btn_reset):
             b.setMinimumHeight(32)
-
-        button_grid.addWidget(self.btn_add, 0, 0)
-        button_grid.addWidget(self.btn_remove, 0, 1)
-        button_grid.addWidget(self.btn_reset, 0, 2)
-        exclusion_layout.addLayout(button_grid)
-
+        btn_grid.addWidget(self.btn_add, 0, 0)
+        btn_grid.addWidget(self.btn_remove, 0, 1)
+        btn_grid.addWidget(self.btn_reset, 0, 2)
+        exclusion_layout.addLayout(btn_grid)
         exclusion_group.setLayout(exclusion_layout)
 
         self.btn_add.clicked.connect(self.open_exclusion_manager)
         self.btn_remove.clicked.connect(self.remove_item)
         self.btn_reset.clicked.connect(self.reset_list)
 
-        # Custom Endpoint
+        # App Exclusion List
+        app_group = QGroupBox(self.tr("Active Applications (Exclude from WARP)"))
+        app_layout = QVBoxLayout()
+
+        self.app_tree = QTreeWidget()
+        self.app_tree.setColumnCount(2)
+        self.app_tree.setHeaderLabels([self.tr("Application / Endpoint"), self.tr("PID")])
+        self.app_tree.setRootIsDecorated(True)
+        self.app_tree.setAnimated(True)
+        self.app_tree.setIndentation(25)
+        self.app_tree.setAlternatingRowColors(True)
+        self.app_tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.app_tree.itemChanged.connect(self._on_app_item_changed)
+        self.app_tree.itemExpanded.connect(lambda _item=None: self._save_expanded_apps())
+        self.app_tree.itemCollapsed.connect(lambda _item=None: self._save_expanded_apps())
+
+        self.app_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.app_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.app_tree.header().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.app_tree.header().resizeSection(1, 90)
+
+        self.select_all_checkbox = QCheckBox(self.tr("Select All"))
+        self.select_all_checkbox.setChecked(False)
+        self.select_all_checkbox.stateChanged.connect(self._on_select_all_toggled)
+
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(15, 0, 0, 0)
+        header_layout.setSpacing(5)
+        header_layout.addWidget(self.select_all_checkbox)
+        header_layout.addStretch(1)
+
+        self.app_tree.header().setIndexWidget(self.app_tree.header().model().index(0, 0), header_widget)
+        app_layout.addWidget(self.app_tree)
+
+        btn_row = QHBoxLayout()
+        self.btn_refresh_apps = QPushButton(self.tr("Refresh Now"))
+        self.btn_refresh_apps.clicked.connect(self.manual_refresh_apps)
+
+        self.btn_apply_pending = QPushButton(self.tr("Apply Pending Changes to WARP"))
+        self.btn_apply_pending.setStyleSheet("")
+        self.btn_apply_pending.clicked.connect(self.apply_pending_changes)
+
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_refresh_apps)
+        btn_row.addWidget(self.btn_apply_pending)
+        app_layout.addLayout(btn_row)
+
+        app_group.setLayout(app_layout)
+
+        # Custom Endpoint & MASQUE
         endpoint_group = QGroupBox(self.tr("Custom Endpoint"))
         endpoint_layout = QHBoxLayout()
-
         self.endpoint_input = QComboBox()
         self.endpoint_input.setEditable(True)
         self.endpoint_input.setInsertPolicy(QComboBox.InsertAtTop)
         self.endpoint_input.setMinimumWidth(200)
-
         self.load_endpoint_history()
         self.endpoint_input.setPlaceholderText(self.tr("Set Custom Endpoint"))
         self.endpoint_input.setCurrentText(self.current_endpoint)
-
         self.endpoint_save_button = QPushButton(self.tr("Save"))
-        self.endpoint_save_button.clicked.connect(self.save_endpoint)
-
         self.endpoint_reset_button = QPushButton(self.tr("Reset"))
+        self.endpoint_save_button.clicked.connect(self.save_endpoint)
         self.endpoint_reset_button.clicked.connect(self.reset_endpoint)
-
         endpoint_layout.addWidget(self.endpoint_input)
         endpoint_layout.addWidget(self.endpoint_save_button)
         endpoint_layout.addWidget(self.endpoint_reset_button)
         endpoint_group.setLayout(endpoint_layout)
 
-        # MASQUE Options
         masque_group = QGroupBox(self.tr("MASQUE Options"))
         masque_layout = QHBoxLayout()
-
         self.masque_input = QComboBox()
         self.masque_input.setMinimumWidth(200)
-
         options = [
             ("h3-only", self.tr("Use only HTTP/3 (fastest, best for modern networks)")),
             ("h2-only", self.tr("Force HTTP/2 (may help in restrictive networks)")),
             ("h3-with-h2-fallback", self.tr("Use HTTP/3, fallback to HTTP/2 if needed")),
         ]
-
         for value, desc in options:
             self.masque_input.addItem(value, value)
             idx = self.masque_input.count() - 1
             self.masque_input.setItemData(idx, desc, Qt.ToolTipRole)
-
         current_masque = self.settings_handler.get("masque_option", "")
         if current_masque:
             index = self.masque_input.findData(current_masque)
             if index != -1:
                 self.masque_input.setCurrentIndex(index)
-
         self.masque_set_button = QPushButton(self.tr("Set"))
-        self.masque_set_button.clicked.connect(self.save_masque_option)
-
         self.masque_reset_button = QPushButton(self.tr("Reset"))
+        self.masque_set_button.clicked.connect(self.save_masque_option)
         self.masque_reset_button.clicked.connect(self.reset_masque_option)
-
         masque_layout.addWidget(self.masque_input)
         masque_layout.addWidget(self.masque_set_button)
         masque_layout.addWidget(self.masque_reset_button)
         masque_group.setLayout(masque_layout)
 
-        # App Excludes (coming soon)
-        coming_soon_group = QGroupBox(self.tr("App Excludes"))
-        coming_soon_layout = QVBoxLayout()
-        coming_soon_layout.addWidget(QLabel(self.tr("Coming Soon...")))
-        coming_soon_group.setLayout(coming_soon_layout)
-
+        # Layout
         grid = QGridLayout()
         grid.addWidget(exclusion_group, 0, 0)
-        grid.addWidget(coming_soon_group, 0, 1)
+        grid.addWidget(app_group, 0, 1)
         grid.addWidget(endpoint_group, 1, 0)
         grid.addWidget(masque_group, 1, 1)
-
         self.setLayout(grid)
+
+        # initial data
         self.update_exclude_table()
+        QTimer.singleShot(1500, self.app_exclude_manager._timer.start)
+        QTimer.singleShot(250, self.app_exclude_manager.scan_processes)
+
+    def closeEvent(self, event):
+        try:
+            try:
+                self._save_expanded_apps()
+            except Exception:
+                pass
+
+            if hasattr(self.app_exclude_manager, "_timer"):
+                self.app_exclude_manager._is_shutting_down = True
+                try:
+                    self.app_exclude_manager._timer.stop()
+                    self.app_exclude_manager._timer.timeout.disconnect()
+                except Exception:
+                    pass
+
+            try:
+                self.app_exclude_manager.blockSignals(True)
+                self.app_exclude_manager.exclusions_updated.disconnect(self.populate_app_list)
+            except Exception:
+                pass
+
+            try:
+                self.app_exclude_manager.shutdown_helper()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error(f"Error during AdvancedSettings close cleanup: {e}")
+        super().closeEvent(event)
+
+    def populate_app_list(self, apps):
+        try:
+            self.app_tree.blockSignals(True)
+        except Exception:
+            pass
+        expanded_apps = self._load_expanded_apps()
+
+        for i in range(self.app_tree.topLevelItemCount()):
+            item = self.app_tree.topLevelItem(i)
+            if item.isExpanded():
+                expanded_apps.add(item.text(0))
+        self.app_tree.clear()
+
+        excluded_apps = self.app_exclude_manager.desired_app_set
+
+        for app in sorted(apps, key=lambda a: a.get("key", "").lower()):
+            name = app.get("key")
+            pid = app.get("pid", -1)
+            exe = app.get("exe", "") or ""
+            top = QTreeWidgetItem([name, str(pid)])
+            top.setFlags(top.flags() | Qt.ItemIsUserCheckable)
+
+            top.setCheckState(0, Qt.Checked if name in excluded_apps else Qt.Unchecked)
+            top.setData(0, Qt.UserRole, ("app", name))
+
+            def add_child(label, kind, value, checked=False, color=None):
+                child = QTreeWidgetItem([label, ""])
+                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                child.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                child.setData(0, Qt.UserRole, ("endpoint", name, kind, value))
+                if color:
+                    brush = QBrush(QColor(*color))
+                    for i in range(2):
+                        child.setBackground(i, brush)
+                top.addChild(child)
+
+            for h in app.get("saved", {}).get("hosts", []):
+                add_child(h, "host", h, checked=True, color=(200, 255, 200, 60))
+            for ip in app.get("saved", {}).get("ips", []):
+                add_child(ip, "ip", ip, checked=True, color=(200, 255, 200, 60))
+
+            for h in app.get("known", {}).get("hosts", []):
+                if h in app.get("saved", {}).get("hosts", []):
+                    continue
+                add_child(h, "host", h, checked=False)
+            for ip in app.get("known", {}).get("ips", []):
+                if ip in app.get("saved", {}).get("ips", []):
+                    continue
+                add_child(ip, "ip", ip, checked=False)
+
+            for h in app.get("new", {}).get("hosts", []):
+                if h in app.get("known", {}).get("hosts", []):
+                    continue
+                add_child(h, "host", h, checked=False, color=(255, 165, 69, 80))
+            for ip in app.get("new", {}).get("ips", []):
+                if ip in app.get("known", {}).get("ips", []):
+                    continue
+                add_child(ip, "ip", ip, checked=False, color=(255, 165, 69, 80))
+
+            self.app_tree.addTopLevelItem(top)
+
+            if name in expanded_apps:
+                top.setExpanded(True)
+            else:
+                top.setExpanded(False)
+
+            if name in excluded_apps:
+                for i in range(top.childCount()):
+                    brush = QBrush(QColor(200, 255, 200, 60))
+                    for col in range(2):
+                        top.child(i).setBackground(col, brush)
+
+        try:
+            self.app_tree.blockSignals(False)
+        except Exception:
+            pass
+
+    def _save_expanded_apps(self):
+        try:
+            expanded = []
+            for i in range(self.app_tree.topLevelItemCount()):
+                item = self.app_tree.topLevelItem(i)
+                if item.isExpanded():
+                    expanded.append(item.text(0))
+            self.settings_handler.save_settings("expanded_apps", expanded)
+            logger.debug(f"Saved expanded_apps: {expanded}")
+        except Exception as e:
+            logger.exception(f"_save_expanded_apps failed: {e}")
+
+    def _load_expanded_apps(self):
+        expanded = self.settings_handler.get("expanded_apps", [])
+        if isinstance(expanded, str):
+            try:
+                expanded = ast.literal_eval(expanded)
+            except Exception:
+                try:
+                    expanded = json.loads(expanded)
+                except Exception:
+                    expanded = []
+        if not isinstance(expanded, list):
+            expanded = []
+        return set(expanded)
+
+    def _on_select_all_toggled(self, state):
+        if self.app_tree.signalsBlocked():
+            return
+
+        checked = state == Qt.Checked
+
+        try:
+            self.app_tree.blockSignals(True)
+
+            for i in range(self.app_tree.topLevelItemCount()):
+                top_item = self.app_tree.topLevelItem(i)
+
+                for j in range(top_item.childCount()):
+                    child_item = top_item.child(j)
+
+                    role = child_item.data(0, Qt.UserRole)
+                    if role and role[0] == "endpoint":
+                        child_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+
+                        _, app_name, kind, value = role
+                        if checked:
+                            self.app_exclude_manager.mark_endpoint_saved(app_name, kind, value)
+                        else:
+                            self.app_exclude_manager.unmark_endpoint_saved(app_name, kind, value)
+
+                        if checked:
+                            brush = QBrush(QColor(200, 255, 200, 60))
+                        else:
+                            brush = QBrush()
+
+                        for col in range(2):
+                            child_item.setBackground(col, brush)
+
+            self.app_tree.blockSignals(False)
+            self.btn_apply_pending.setStyleSheet("background-color: #ffd700; color: black; font-weight: bold;")
+
+        except Exception as e:
+            logger.error(f"Error in _on_select_all_toggled: {e}")
+            self.app_tree.blockSignals(False)
+
+    def _on_app_item_changed(self, item, column):
+        if self.app_tree.signalsBlocked():
+            return
+
+        role = item.data(0, Qt.UserRole)
+        if not role:
+            return
+
+        if role[0] == "app":
+            app_name = role[1]
+            checked = item.checkState(0) == Qt.Checked
+
+            # toggle all child endpoints
+            for i in range(item.childCount()):
+                child = item.child(i)
+                child.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+
+                role_child = child.data(0, Qt.UserRole)
+                if not role_child or role_child[0] != "endpoint":
+                    continue
+                _, app_child, kind, value = role_child
+                if checked:
+                    self.app_exclude_manager.mark_endpoint_saved(app_child, kind, value)
+                else:
+                    self.app_exclude_manager.unmark_endpoint_saved(app_child, kind, value)
+
+            self.app_exclude_manager.toggle_desired_app(app_name, checked)
+
+            brush = QBrush(QColor(200, 255, 200, 60)) if checked else QBrush()
+            for i in range(item.childCount()):
+                for col in range(2):
+                    item.child(i).setBackground(col, brush)
+
+            self.btn_apply_pending.setStyleSheet("background-color: #ffd700; color: black; font-weight: bold;")
+            return
+
+        if role[0] != "endpoint":
+            return
+
+        _, app_name, kind, value = role
+        checked = item.checkState(0) == Qt.Checked
+
+        try:
+            if hasattr(self.app_exclude_manager, "_timer"):
+                self.app_exclude_manager._timer.stop()
+        except Exception:
+            pass
+
+        try:
+            if checked:
+                self.app_exclude_manager.mark_endpoint_saved(app_name, kind, value)
+                brush = QBrush(QColor(200, 255, 200, 60))
+                for i in range(2):
+                    item.setBackground(i, brush)
+            else:
+                self.app_exclude_manager.unmark_endpoint_saved(app_name, kind, value)
+                for i in range(2):
+                    item.setBackground(i, QBrush())
+
+            self.btn_apply_pending.setStyleSheet("background-color: #ffd700; color: black; font-weight: bold;")
+
+        finally:
+            try:
+                if hasattr(self.app_exclude_manager, "_timer"):
+                    self.app_exclude_manager._timer.start()
+            except Exception:
+                pass
+
+    def manual_refresh_apps(self):
+        try:
+            self.app_exclude_manager.scan_processes()
+        except Exception as e:
+            logger.debug("manual refresh failed: %s", e)
+
+    def apply_pending_changes(self):
+        resp = QMessageBox.question(
+            self,
+            self.tr("Apply Exclusions"),
+            self.tr("Applying these network exclusions will cause WARP to reconnect. Continue?"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if resp != QMessageBox.Yes:
+            return
+
+        try:
+            self.app_exclude_manager.batch_apply_warp_rules()
+            self.btn_apply_pending.setStyleSheet("")
+
+        except Exception as e:
+            logger.exception("apply_pending_changes failed")
+            QMessageBox.warning(self, self.tr("Error"), str(e))
 
     def update_exclude_table(self):
         self.exclude_table.setRowCount(0)
-
         result_ip = run_warp_command("warp-cli", "-j", "tunnel", "ip", "list")
-        if result_ip.returncode == 0 and result_ip.stdout.strip():
+        if result_ip and result_ip.returncode == 0 and result_ip.stdout.strip():
             try:
                 data = json.loads(result_ip.stdout)
-                for route in data.get("routes", []):
-                    self._add_exclude_row("IP", route.get("value", ""), route.get("description", ""))
+                ips = [r.get("value", "") for r in data.get("routes", [])]
+                for ip in ExclusionManager.filter_default_ips(ips):
+                    self._add_exclude_row("IP", ip)
             except json.JSONDecodeError:
                 pass
 
         result_host = run_warp_command("warp-cli", "-j", "tunnel", "host", "list")
-        if result_host.returncode == 0 and result_host.stdout.strip():
+        if result_host and result_host.returncode == 0 and result_host.stdout.strip():
             try:
                 data = json.loads(result_host.stdout)
                 for host in data.get("hosts", []):
-                    self._add_exclude_row("Domain", host.get("value", ""), host.get("description", ""))
+                    self._add_exclude_row("Domain", host.get("value", ""))
             except json.JSONDecodeError:
                 pass
 
-    def _add_exclude_row(self, type_name, value, desc):
+    def _add_exclude_row(self, type_name, value):
         row = self.exclude_table.rowCount()
         self.exclude_table.insertRow(row)
         self.exclude_table.setItem(row, 0, QTableWidgetItem(type_name))
         self.exclude_table.setItem(row, 1, QTableWidgetItem(value))
-        self.exclude_table.setItem(row, 2, QTableWidgetItem(desc or ""))
 
+    def open_exclusion_manager(self):
+        exclusion_manager = ExclusionManager(self)
+        exclusion_manager.exclusions_updated.connect(self.update_exclude_table)
+        exclusion_manager.exec()
+
+    def remove_item(self):
+        row = self.exclude_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, self.tr("Error"), self.tr("No row selected."))
+            return
+        mode = self.exclude_table.item(row, 0).text().lower()
+        value = self.exclude_table.item(row, 1).text().strip()
+        command_mode = "ip" if mode == "ip" else "host"
+        result = run_warp_command("warp-cli", "tunnel", command_mode, "remove", value)
+        if result and result.returncode == 0:
+            self.update_exclude_table()
+        else:
+            QMessageBox.warning(self, self.tr("Error"),
+                                result.stderr.strip() if result else self.tr("Unknown error"))
+
+    def reset_list(self):
+        run_warp_command("warp-cli", "tunnel", "ip", "reset")
+        run_warp_command("warp-cli", "tunnel", "host", "reset")
+        self.update_exclude_table()
+
+        result = self.app_exclude_manager.validate_excluded_apps()
+        removed_apps = result["apps"]
+        removed_conns = result["connections"]
+
+        # Update UI
+        self.populate_app_list([])
+
+        if removed_apps or removed_conns:
+            msg = ""
+            if removed_apps:
+                msg += "Apps unchecked:\n" + "\n".join(sorted(removed_apps)) + "\n\n"
+            if removed_conns:
+                msg += "Connections removed:\n" + "\n".join(sorted(removed_conns))
+            QMessageBox.information(
+                self,
+                self.tr("Exclusions Updated"),
+                self.tr(msg.strip())
+            )
+
+    def load_endpoint_history(self):
+        history = self.settings_handler.get("endpoint_history", [])
+        if isinstance(history, str):
+            try:
+                history = ast.literal_eval(history)
+            except Exception:
+                history = []
+        if not isinstance(history, list):
+            history = []
+        if history:
+            self.endpoint_input.addItems(history)
+        if self.current_endpoint and self.current_endpoint not in history:
+            self.endpoint_input.insertItem(0, self.current_endpoint)
+
+    def save_endpoint(self):
+        endpoint = self.endpoint_input.currentText().strip()
+        if not endpoint:
+            return
+        try:
+            result = run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint)
+            if result.returncode != 0:
+                error_line = result.stderr.strip().split("\n")[0]
+                QMessageBox.warning(self, self.tr("Error"), error_line)
+                return
+            self.settings_handler.save_settings("custom_endpoint", endpoint)
+            QMessageBox.information(self, self.tr("Saved"), self.tr("Endpoint saved successfully."))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"), str(e))
+
+    def reset_endpoint(self):
+        try:
+            run_warp_command("warp-cli", "tunnel", "endpoint", "reset")
+            self.settings_handler.save_settings("custom_endpoint", "")
+            self.endpoint_input.clear()
+            QMessageBox.information(self, self.tr("Reset"), self.tr("Endpoint reset successfully."))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr("Error"), str(e))
 
     def save_masque_option(self):
         option = self.masque_input.currentData()
@@ -1831,8 +2880,7 @@ class AdvancedSettings(QDialog):
             QMessageBox.information(self, self.tr("Saved"),
                                     self.tr("MASQUE option set to {}.").format(option))
         except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"),
-                                self.tr("An exception occurred: {}").format(str(e)))
+            QMessageBox.warning(self, self.tr("Error"), str(e))
 
     def reset_masque_option(self):
         try:
@@ -1846,118 +2894,7 @@ class AdvancedSettings(QDialog):
             QMessageBox.information(self, self.tr("Reset"),
                                     self.tr("MASQUE option reset successfully."))
         except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"),
-                                self.tr("Reset failed: {}").format(e))
-
-    def open_exclusion_manager(self):
-        exclusion_manager = ExclusionManager(self)
-        exclusion_manager.exclusions_updated.connect(self.update_list_view)
-        exclusion_manager.exec()
-
-    def load_endpoint_history(self):
-        history = self.settings_handler.get("endpoint_history")
-        if isinstance(history, str):
-            try:
-                import ast
-                history = ast.literal_eval(history)
-            except Exception:
-                history = []
-        if not isinstance(history, list):
-            history = []
-
-        if history:
-            self.endpoint_input.addItems(history)
-        if self.current_endpoint and self.current_endpoint not in history:
-            self.endpoint_input.insertItem(0, self.current_endpoint)
-
-    def save_endpoint_history(self, endpoint):
-        history = self.settings_handler.get("endpoint_history", [])
-        if not isinstance(history, list):
-            history = []
-
-        if endpoint in history:
-            history.remove(endpoint)
-        history.insert(0, endpoint)
-        history = history[:5]
-
-        self.settings_handler.save_settings("endpoint_history", history)
-        self.endpoint_input.clear()
-        self.endpoint_input.addItems(history)
-        self.endpoint_input.setCurrentText(endpoint)
-
-    def update_list_view(self):
-        self.item_list.clear()
-
-        try:
-            result_ip = run_warp_command("warp-cli", "tunnel", "ip", "list")
-            if result_ip.returncode == 0:
-                lines = result_ip.stdout.strip().splitlines()
-                for line in lines[1:]:
-                    ip_value = line.strip().split()[0] if line.strip() else ""
-                    if ip_value:
-                        self.item_list.addItem(self.tr("IP: {}").format(ip_value))
-        except Exception as e:
-            logger.error(f"Error getting IP list: {e}")
-
-        try:
-            result_host = run_warp_command("warp-cli", "tunnel", "host", "list")
-            if result_host.returncode == 0:
-                lines = result_host.stdout.strip().splitlines()
-                for line in lines[1:]:
-                    host_value = line.strip().split()[0] if line.strip() else ""
-                    if host_value:
-                        self.item_list.addItem(self.tr("Domain: {}").format(host_value))
-        except Exception as e:
-            logger.error(f"Error getting host list: {e}")
-
-    def remove_item(self):
-        row = self.exclude_table.currentRow()
-        if row < 0:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("No row selected."))
-            return
-
-        mode = self.exclude_table.item(row, 0).text().lower()
-        value = self.exclude_table.item(row, 1).text().strip()
-        command_mode = "ip" if mode == "ip" else "host"
-
-        result = run_warp_command("warp-cli", "tunnel", command_mode, "remove", value)
-        if result.returncode == 0:
-            self.update_exclude_table()
-        else:
-            QMessageBox.warning(self, self.tr("Error"), result.stderr.strip())
-
-    def reset_list(self):
-        run_warp_command("warp-cli", "tunnel", "ip", "reset")
-        run_warp_command("warp-cli", "tunnel", "host", "reset")
-        self.update_exclude_table()
-
-    def save_endpoint(self):
-        endpoint = self.endpoint_input.currentText().strip()
-        if not endpoint:
-            return
-
-        try:
-            result = run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint)
-
-            if result.returncode != 0:
-                error_line = result.stderr.strip().split("\n")[0]
-                QMessageBox.warning(self, self.tr("Error"), error_line)
-                return
-
-            self.settings_handler.save_settings("custom_endpoint", endpoint)
-            self.save_endpoint_history(endpoint)
-            QMessageBox.information(self, self.tr("Saved"), self.tr("Endpoint saved successfully."))
-        except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("An exception occurred: {}").format(str(e)))
-
-    def reset_endpoint(self):
-        try:
-            run_warp_command("warp-cli", "tunnel", "endpoint", "reset")
-            self.settings_handler.save_settings("custom_endpoint", "")
-            self.endpoint_input.clear()
-            QMessageBox.information(self, self.tr("Reset"), self.tr("Endpoint reset successfully."))
-        except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Reset failed: {}").format(e))
+            QMessageBox.warning(self, self.tr("Error"), str(e))
 
 
 class SettingsPage(QWidget):
@@ -2220,7 +3157,7 @@ class MainWindow(QMainWindow):
         status_layout.setContentsMargins(12, 12, 12, 12)
 
         self.toggle_switch = PowerButton()
-        self.toggle_switch.toggled.connect(self.handle_toggle_signal)
+        self.toggle_switch.toggled.connect(self.update_status)
         status_layout.addWidget(self.toggle_switch)
 
         status_info = QVBoxLayout()
@@ -2930,41 +3867,6 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Error updating stats display: {e}")
-
-    def handle_toggle_signal(self, signal):
-        if signal == 'ForceRefresh':
-            self.force_status_check()
-        else:
-            self.update_status(signal)
-
-    def force_status_check(self):
-        """Force an immediate status check"""
-
-        def check_status():
-            try:
-                process = run_warp_command('warp-cli', 'status')
-
-                if process.returncode != 0:
-                    current_status = "Disconnected"
-                else:
-                    status_output = process.stdout
-                    if "Connected" in status_output:
-                        current_status = "Connected"
-                    elif "Disconnected" in status_output:
-                        current_status = "Disconnected"
-                    elif "Connecting" in status_output:
-                        current_status = "Connecting"
-                    else:
-                        current_status = "Disconnected"
-
-                # Update UI in main thread
-                QTimer.singleShot(0, lambda: self.update_status(current_status))
-
-            except Exception as e:
-                logger.error(f"Error in force status check: {e}")
-                QTimer.singleShot(0, lambda: self.update_status("Disconnected"))
-
-        threading.Thread(target=check_status, daemon=True).start()
 
     def on_warp_status_changed(self, status):
         if status in ["Connected", "Disconnected"]:

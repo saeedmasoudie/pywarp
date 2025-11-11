@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.8 - 2025-11-11
+### Highlights
+- New status handler for faster and lighter performance.
+- Unified UI for connection status and proxy label.
+- Added "Exclude App" feature across Windows, Linux, and macOS.
+
+### Changes
+- Replaced legacy status handler with a more efficient and lightweight implementation.
+- Switched all data fetching to JSON format for consistency and performance.
+- Updated and optimized statistics classes for better responsiveness.
+- Introduced "Exclude App" functionality with cross-platform support.
+- Added additional IP ranges and domains for popular apps using the "Exclude App" feature.
+- Refactored exclude IP/domain logic for improved accuracy and maintainability.
+- Reworked power button behavior to rely on the new status data.
+- Refreshed tutorial content for clarity and completeness.
+- Merged connection status and proxy label into a single, streamlined UI component.
+- Updated Persian translation for improved localization quality.
+
 ## v1.2.7 - 2025-09-24
 ### Highlights
 - New auto-restart feature when changing language settings.

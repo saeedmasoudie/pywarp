@@ -17,10 +17,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Flake8
-        run: |
-          pip install flake8
-          flake8 . || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      - name: Install flake8
+        run: pip install flake8
+      - name: Run Flake8 (fail on error)
+        run: flake8 .
 
   build-windows:
     name: Build Windows
@@ -28,19 +36,22 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
-      - name: Set Up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka==1.9.5
+          pip install nuitka==2.6
       - name: Build Executable
         shell: pwsh
         run: |
-          # We now use the version from the manual input.
           $version = "${{ github.event.inputs.version }}"
           python -m nuitka main.py `
             --standalone `
@@ -62,6 +73,23 @@ jobs:
             --windows-product-version="$version" `
             --remove-output `
             --assume-yes-for-downloads
+
+      - name: Self-sign Executable (auto)
+        shell: pwsh
+        run: |
+          $exe = "dist\\pywarp-windows-v${{ github.event.inputs.version }}.exe"
+          Write-Host "🔏 Generating temporary self-signed certificate..."
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=PyWarp CI" -CertStoreLocation Cert:\CurrentUser\My
+          $pwd = ConvertTo-SecureString -String "temporarypass" -Force -AsPlainText
+          $pfxPath = "$env:USERPROFILE\\pywarp_temp.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd
+          Write-Host "🔏 Signing executable..."
+          & "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" sign `
+            /f $pfxPath /p "temporarypass" `
+            /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 $exe
+          Remove-Item $pfxPath -Force
+          Write-Host "✅ Self-signed and cleaned up certificate."
+
       - name: Zip Executable
         run: |
           cd dist
@@ -77,15 +105,19 @@ jobs:
     needs: build-windows
     steps:
       - uses: actions/checkout@v4
-      - name: Set Up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka==1.9.5
+          pip install nuitka==2.6
       - name: Build Executable
         run: |
           python -m nuitka main.py \
@@ -114,15 +146,19 @@ jobs:
     needs: build-windows
     steps:
       - uses: actions/checkout@v4
-      - name: Set Up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka==1.9.5
+          pip install nuitka==2.6
       - name: Build PyWarp for ${{ matrix.arch }}
         run: |
           python -m nuitka main.py \
@@ -141,25 +177,13 @@ jobs:
             --macos-target-arch=${{ matrix.arch }} \
             --assume-yes-for-downloads \
             --disable-ccache
-      - name: Rename .app bundle to include version
+      - name: Rename .app bundle
         run: |
-          if [[ ! -d main.app ]]; then
-            echo "❌ Error: main.app not found after build."
-            find . -maxdepth 2
-            exit 1
-          fi
           mv main.app "pywarp-v${{ github.event.inputs.version }}-${{ matrix.arch }}.app"
       - name: Zip .app bundle
         run: |
           APP_PATH="pywarp-v${{ github.event.inputs.version }}-${{ matrix.arch }}.app"
-          ZIP_NAME="pywarp-${{ matrix.arch }}.zip"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-      - name: Validate zip before upload
-        run: |
-          if [[ ! -f "pywarp-${{ matrix.arch }}.zip" ]]; then
-            echo "❌ Error: zip file not created."
-            exit 1
-          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "pywarp-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-${{ matrix.arch }}
@@ -173,69 +197,30 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Unzip .app bundles
+      - name: Merge .app bundles into universal
         run: |
           mkdir -p artifacts/unzipped
           ditto -x -k artifacts/pywarp-x86_64/pywarp-x86_64.zip artifacts/unzipped
           ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/unzipped
-          echo "Unzipped both .app bundles into artifacts/unzipped"
-          find artifacts/unzipped -maxdepth 2
-
-      - name: Create Universal Binary and Merge Bundles
-        run: |
           APP_X86=$(find artifacts/unzipped -name '*.app' -path '*x86_64.app' -type d | head -n1)
           APP_ARM=$(find artifacts/unzipped -name '*.app' -path '*arm64.app' -type d | head -n1)
-          if [[ -z "$APP_X86" || -z "$APP_ARM" ]]; then
-            echo "Error: One or both .app bundles not found after unzipping."
-            exit 1
-          fi
           BIN_X86="$APP_X86/Contents/MacOS/main"
           BIN_ARM="$APP_ARM/Contents/MacOS/main"
-          if [[ ! -f "$BIN_X86" || ! -f "$BIN_ARM" ]]; then
-            echo "Error: 'main' executable not found in one or both bundles."
-            exit 1
-          fi
           UNIVERSAL_APP_PATH="$APP_ARM"
           UNIVERSAL_BIN_PATH="$BIN_ARM"
           lipo -create "$BIN_X86" "$BIN_ARM" -output "$UNIVERSAL_BIN_PATH"
           chmod +x "$UNIVERSAL_BIN_PATH"
-
-          if [ -d "$APP_X86/Contents/Frameworks" ]; then
-            ditto "$APP_X86/Contents/Frameworks" "$UNIVERSAL_APP_PATH/Contents/Frameworks"
-          fi
-          if [ -d "$APP_X86/Contents/Plugins" ]; then
-            ditto "$APP_X86/Contents/Plugins" "$UNIVERSAL_APP_PATH/Contents/Plugins"
-          fi
-
           mv "$UNIVERSAL_APP_PATH" "PyWarp-v${{ github.event.inputs.version }}.app"
-          echo "Successfully created universal app: PyWarp-v${{ github.event.inputs.version }}.app"
-
-      - name: Add macOS unsigned instructions
+      - name: Add unsigned instructions and create DMG
         run: |
           cat > README_mac_unsigned.txt << 'EOF'
           📦 PyWarp for macOS (Unsigned Build)
 
-          This app is not signed with an Apple Developer ID, so macOS GateKeeper will block it by default.
-          To run it, you have two options:
-
-          1. **Right-click → Open**
-            - After downloading and copying `PyWarp.app` from the DMG, right-click on the app and choose "Open".
-            - macOS will warn you that it’s from an unidentified developer. Click **Open** to trust it.
-
-          2. **Remove quarantine attribute (via Terminal)**
-            - Open Terminal.
-            - Run:
-              xattr -dr com.apple.quarantine /Applications/PyWarp.app
-
-          After doing one of the above, PyWarp should launch normally.
-
-          ⚠️ Note: Because the app is unsigned, macOS will show security warnings. 
-          This is normal until the app is code-signed and notarized with Apple.
+          This app is not signed with an Apple Developer ID. To open it:
+          - Right-click → Open → Confirm
+          or run:
+            xattr -dr com.apple.quarantine /Applications/PyWarp.app
           EOF
-
-      - name: Create DMG
-        run: |
           hdiutil create \
             -volname "PyWarp" \
             -srcfolder "PyWarp-v${{ github.event.inputs.version }}.app" \
@@ -243,15 +228,10 @@ jobs:
             -format UDZO \
             -ov \
             -o "./pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
-
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
           path: pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg
-
-      - name: Cleanup
-        run: |
-          rm -rf PyWarp-v*.app pywarp-macos-universal-v*.dmg README_mac_unsigned.txt
 
   release:
     name: Create GitHub Release
@@ -259,11 +239,10 @@ jobs:
     needs: [build-windows, build-linux, merge-macos-universal]
     steps:
       - uses: actions/checkout@v4
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Extract Changelog for Release
+      - name: Extract Changelog
         run: |
           awk -v ver="v${{ github.event.inputs.version }}" '
             $0 ~ "^## " ver {flag=1; next}
@@ -271,7 +250,7 @@ jobs:
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
-      - name: Generate Checksums and Downloads Section
+      - name: Generate Checksums
         run: |
           VERSION="v${{ github.event.inputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
