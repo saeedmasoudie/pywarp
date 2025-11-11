@@ -222,7 +222,7 @@ jobs:
         run: |
           mkdir -p artifacts/unzipped
           ditto -x -k artifacts/pywarp-x86_64/pywarp-x86_64.zip artifacts/unzipped
-          ditto -x -k artifacts/pywarp-arm64/pywarp-arm6a.zip artifacts/unzipped
+          ditto -x -k artifacts/pywarp-arm64/pywarp-arm64.zip artifacts/unzipped
           APP_X86=$(find artifacts/unzipped -name '*.app' -path '*x86_64.app' -type d | head -n1)
           APP_ARM=$(find artifacts/unzipped -name '*.app' -path '*arm64.app' -type d | head -n1)
           BIN_X86="$APP_X86/Contents/MacOS/main"
@@ -279,9 +279,9 @@ jobs:
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
           MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
-          WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
-          LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
-          MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
+          WIN_SHA=$(sha26sum "$WIN_FILE" | cut -d' ' -f1)
+          LINUX_SHA=$(sha26sum "$LINUX_FILE" | cut -d' ' -f1)
+          MAC_SHA=$(sha26sum "$MAC_FILE" | cut -d' ' -f1)
           {
             echo ""
             echo "### 📦 Downloads"
