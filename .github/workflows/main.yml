@@ -138,7 +138,7 @@ jobs:
             --disable-console \
             --enable-plugin=pyside6 \
             --include-data-dir=assets=assets \
-            --include-qt-plugins=platforms,styles,imageformats,iconengines \
+            --include-qt-plugins=platforms,imageformats,iconengines \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --output-filename="pywarp-ubuntu-v${{ github.event.inputs.version }}"
       - name: Create tar.gz
