@@ -17,7 +17,7 @@ import zipfile
 import requests
 import psutil
 import socket
-import resources_rc
+import resources_rc  # noqa: F401
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -1437,8 +1437,8 @@ class AppExcludeManager(QObject):
                         if os.path.exists(pf_conf):
                             with open(pf_conf, "r") as f_read:
                                 lines = [
-                                    l for l in f_read
-                                    if not l.strip().startswith("block out quick on utun1 user ")
+                                    line for line in f_read
+                                    if not line.strip().startswith("block out quick on utun1 user ")
                                 ]
                             with open(pf_conf, "w") as f_write:
                                 f_write.writelines(lines)
@@ -1531,7 +1531,7 @@ class DownloadWorker(GenericWorker):
                                 self.progress.emit(percent)
             return True, local_filename
         except Exception as e:
-            logger.exception("DownloadWorker error")
+            logger.exception(f"DownloadWorker error: {e}")
             return False, ""
 
     def _on_generic_finished(self, result):
@@ -2539,7 +2539,6 @@ class AdvancedSettings(QDialog):
         for app in sorted(apps, key=lambda a: a.get("key", "").lower()):
             name = app.get("key")
             pid = app.get("pid", -1)
-            exe = app.get("exe", "") or ""
             top = QTreeWidgetItem([name, str(pid)])
             top.setFlags(top.flags() | Qt.ItemIsUserCheckable)
 
@@ -3504,7 +3503,7 @@ class MainWindow(QMainWindow):
             msg_box.setText(self.tr("Do you want to close the app or hide it?"))
 
             close_button = msg_box.addButton(self.tr("Close"), QMessageBox.AcceptRole)
-            hide_button = msg_box.addButton(self.tr("Hide"), QMessageBox.RejectRole)
+            msg_box.addButton(self.tr("Hide"), QMessageBox.RejectRole)
             remember_box = QCheckBox(self.tr("Remember my choice"))
             msg_box.setCheckBox(remember_box)
             msg_box.exec()
@@ -4012,7 +4011,7 @@ class WarpInstaller:
         auto_install_button = msg_box.addButton(self.tr("Auto Install"), QMessageBox.AcceptRole)
         manual_button = msg_box.addButton(self.tr("Manual Install"), QMessageBox.ActionRole)
         retry_button = msg_box.addButton(self.tr("Retry Check"), QMessageBox.DestructiveRole)
-        cancel_button = msg_box.addButton(QMessageBox.Cancel)
+        msg_box.addButton(QMessageBox.Cancel)
         msg_box.exec()
 
         clicked = msg_box.clickedButton()
@@ -4183,7 +4182,7 @@ class WarpInstaller:
         ))
         install_button = msg_box.addButton(self.tr("Try Auto Install"), QMessageBox.AcceptRole)
         manual_button = msg_box.addButton(self.tr("Open Manual Guide"), QMessageBox.ActionRole)
-        cancel_button = msg_box.addButton(QMessageBox.Cancel)
+        msg_box.addButton(QMessageBox.Cancel)
         msg_box.exec()
 
         clicked = msg_box.clickedButton()
