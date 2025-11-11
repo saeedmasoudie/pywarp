@@ -9,12 +9,9 @@ on:
         default: '1.2.8'
 
 permissions:
-  contents: write # Still required to create the release and upload assets
+  contents: write
 
 jobs:
-  # ... (validate, build-windows, build-linux, build-macos-universal, merge-macos-universal jobs are unchanged) ...
-  
-  # --- (Remaining Jobs are identical to before) ---
   validate:
     name: Validate Code
     runs-on: ubuntu-latest
@@ -280,49 +277,52 @@ jobs:
             flag && /^## / {exit}
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
-          echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
-
-      # 🔴 REMOVING the manual "Create and Push Tag" step. 
-      # The softprops action will now handle creating the tag (if it doesn't exist) 
-      # and associating the release with it correctly.
+          echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)\n" >> RELEASE_NOTES.md
       
-      - name: Generate Checksums (Accurate Table)
+      - name: Generate Checksums and Professional Download Table
         run: |
+          REPO="${{ github.repository }}"
+          TAG="v${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version }}"
+
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
           MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
-          
-          # Calculate SHA256 Checksums
+
+          # Calculate SHA256 and size (MB)
           WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
           LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
           MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
-          
-          # Append the accurate checksum table to the release notes.
-          {
-            echo ""
-            echo "### 📦 Download Assets"
-            echo ""
-            echo "The files below are attached to this draft release. The clean download links will activate once the release is published."
-            echo ""
-            echo "| Platform | File Name | SHA256 Checksum |"
-            echo "|----------|-----------|-----------------|"
-            echo "| 🪟 Windows | \`$(basename $WIN_FILE)\` | \`$WIN_SHA\` |"
-            echo "| 🐧 Linux | \`$(basename $LINUX_FILE)\` | \`$LINUX_SHA\` |"
-            echo "| 🍎 macOS | \`$(basename $MAC_FILE)\` | \`$MAC_SHA\` |"
-            echo ""
-          } >> RELEASE_NOTES.md
 
-      - name: Create Release
+          WIN_SIZE=$(du -h "$WIN_FILE" | cut -f1)
+          LINUX_SIZE=$(du -h "$LINUX_FILE" | cut -f1)
+          MAC_SIZE=$(du -h "$MAC_FILE" | cut -f1)
+
+          echo "### 🚀 Download PyWarp v$VERSION" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "You can download the builds for your platform below. All files are signed or verified and include SHA256 checksums for integrity." >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "| Platform | File | Size | SHA256 |" >> RELEASE_NOTES.md
+          echo "|-----------|------|------|--------|" >> RELEASE_NOTES.md
+          echo "| 🪟 **Windows** | [pywarp-windows-v$VERSION.zip](https://github.com/$REPO/releases/download/v$VERSION/pywarp-windows-v$VERSION.zip) | $WIN_SIZE | \`$WIN_SHA\` |" >> RELEASE_NOTES.md
+          echo "| 🐧 **Linux (Ubuntu)** | [pywarp-ubuntu-v$VERSION.tar.gz](https://github.com/$REPO/releases/download/v$VERSION/pywarp-ubuntu-v$VERSION.tar.gz) | $LINUX_SIZE | \`$LINUX_SHA\` |" >> RELEASE_NOTES.md
+          echo "| 🍎 **macOS (Universal)** | [pywarp-macos-universal-v$VERSION.dmg](https://github.com/$REPO/releases/download/v$VERSION/pywarp-macos-universal-v$VERSION.dmg) | $MAC_SIZE | \`$MAC_SHA\` |" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "> 💡 **Tip:** If macOS blocks the app, right-click → Open → Confirm, or run:" >> RELEASE_NOTES.md
+          echo ">\`xattr -dr com.apple.quarantine /Applications/PyWarp.app\`" >> RELEASE_NOTES.md
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
-          draft: true # Keeping draft status as requested
-          prerelease: false
+          draft: false
+          prerelease: true
           files: |
             artifacts/**/pywarp-windows-*.zip
             artifacts/**/pywarp-ubuntu-*.tar.gz
             artifacts/**/pywarp-macos-universal-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
