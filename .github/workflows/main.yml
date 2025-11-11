@@ -87,9 +87,9 @@ jobs:
           Write-Host "🔏 Locating signtool..."
           # Prefer x64 > x86 > others
           $sdkPaths = @(
-            "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe",
-            "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\signtool.exe",
-            "C:\Program Files (x86)\Windows Kits\10\bin\*\arm64\signtool.exe"
+            "C:\Program Files (x8S_x86)\Windows Kits\10\bin\*\x64\signtool.exe",
+            "C:\Program Files (x8S_x86)\Windows Kits\10\bin\*\x86\signtool.exe",
+            "C:\Program Files (x8S_x86)\Windows Kits\10\bin\*\arm64\signtool.exe"
           )
           $signtool = Get-ChildItem -Path $sdkPaths -ErrorAction SilentlyContinue | Sort-Object -Descending -Property FullName | Select-Object -First 1
 
@@ -260,6 +260,9 @@ jobs:
     needs: [build-windows, build-linux, merge-macos-universal]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+          
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -273,15 +276,33 @@ jobs:
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
 
+      - name: Create and Push Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          TAG="v${{ github.event.inputs.version }}"
+          
+          # This command will fail if the tag already exists, which is GOOD.
+          # It protects you from re-running on a version you already released.
+          # If it fails, you must delete the tag manually to re-run.
+          echo "🏷️ Creating and pushing tag $TAG..."
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          
+          echo "✅ Tag created. Waiting 15 seconds for GitHub API to process the tag..."
+          sleep 15
+          echo "Done waiting."
+
       - name: Generate Checksums
         run: |
           VERSION="v${{ github.event.inputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
           MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
-          WIN_SHA=$(sha26sum "$WIN_FILE" | cut -d' ' -f1)
-          LINUX_SHA=$(sha26sum "$LINUX_FILE" | cut -d' ' -f1)
-          MAC_SHA=$(sha26sum "$MAC_FILE" | cut -d' ' -f1)
+          WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
+          LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
+          MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
+          
           {
             echo ""
             echo "### 📦 Downloads"
