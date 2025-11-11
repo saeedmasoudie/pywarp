@@ -151,7 +151,7 @@ jobs:
 
   build-macos-universal:
     name: Build macOS Universal
-    runs-on: macos-13
+    runs-on: macos-latest
     strategy:
       matrix:
         arch: [x86_64, arm64]
@@ -204,7 +204,7 @@ jobs:
 
   merge-macos-universal:
     name: Merge & Create macOS Universal DMG
-    runs-on: macos-13
+    runs-on: macos-latest
     needs: build-macos-universal
     steps:
       - uses: actions/download-artifact@v4
