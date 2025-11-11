@@ -85,7 +85,14 @@ jobs:
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd
 
           Write-Host "🔏 Locating signtool..."
-          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          # Prefer x64 > x86 > others
+          $sdkPaths = @(
+            "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe",
+            "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\signtool.exe",
+            "C:\Program Files (x86)\Windows Kits\10\bin\*\arm64\signtool.exe"
+          )
+          $signtool = Get-ChildItem -Path $sdkPaths -ErrorAction SilentlyContinue | Sort-Object -Descending -Property FullName | Select-Object -First 1
+
           if (-not $signtool) {
             $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
           }
@@ -93,8 +100,8 @@ jobs:
             throw "❌ signtool.exe not found!"
           }
 
-          Write-Host "🔏 Signing executable with $signtool"
-          & "$signtool" sign `
+          Write-Host "🔏 Using signtool at $($signtool.FullName)"
+          & "$($signtool.FullName)" sign `
             /f $pfxPath /p "temporarypass" `
             /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 $exe
 
