@@ -6,7 +6,7 @@ on:
       version:
         description: 'The version to build and release'
         required: true
-        default: '1.2.7'
+        default: '1.2.8'
 
 permissions:
   contents: write
@@ -58,12 +58,12 @@ jobs:
             --onefile `
             --disable-console `
             --enable-plugin=pyside6 `
-            --follow-imports `
+            --include-data-dir=assets=assets `
+            --include-qt-plugins=platforms,styles,imageformats,iconengines `
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning `
             --noinclude-pytest-mode=nofollow `
             --noinclude-unittest-mode=nofollow `
             --nofollow-import-to=tkinter,test,pydoc `
-            --include-data-dir=assets=assets `
-            --include-qt-plugins=all `
             --windows-icon-from-ico=assets/logo.ico `
             --output-dir=dist `
             --output-filename="pywarp-windows-v$version" `
@@ -83,10 +83,21 @@ jobs:
           $pwd = ConvertTo-SecureString -String "temporarypass" -Force -AsPlainText
           $pfxPath = "$env:USERPROFILE\\pywarp_temp.pfx"
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd
-          Write-Host "🔏 Signing executable..."
-          & "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" sign `
+
+          Write-Host "🔏 Locating signtool..."
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $signtool) {
+            $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $signtool) {
+            throw "❌ signtool.exe not found!"
+          }
+
+          Write-Host "🔏 Signing executable with $signtool"
+          & "$signtool" sign `
             /f $pfxPath /p "temporarypass" `
             /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 $exe
+
           Remove-Item $pfxPath -Force
           Write-Host "✅ Self-signed and cleaned up certificate."
 
@@ -127,7 +138,8 @@ jobs:
             --disable-console \
             --enable-plugin=pyside6 \
             --include-data-dir=assets=assets \
-            --include-qt-plugins=all \
+            --include-qt-plugins=platforms,styles,imageformats,iconengines \
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --output-filename="pywarp-ubuntu-v${{ github.event.inputs.version }}"
       - name: Create tar.gz
         run: |
@@ -171,7 +183,8 @@ jobs:
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \
             --include-data-dir=assets=assets \
-            --include-qt-plugins=all \
+            --include-qt-plugins=platforms,styles,imageformats,iconengines \
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --output-dir=. \
             --clang \
             --macos-target-arch=${{ matrix.arch }} \
