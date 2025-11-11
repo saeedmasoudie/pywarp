@@ -262,6 +262,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: Extract Changelog
         run: |
           awk -v ver="v${{ github.event.inputs.version }}" '
@@ -270,6 +271,7 @@ jobs:
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
+
       - name: Generate Checksums
         run: |
           VERSION="v${{ github.event.inputs.version }}"
@@ -290,6 +292,18 @@ jobs:
             echo "| 🍎 macOS | [Download DMG](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
             echo ""
           } >> RELEASE_NOTES.md
+
+      - name: Create Git tag (if not exists)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "✅ Tag v${{ github.event.inputs.version }} already exists — skipping tag creation."
+          else
+            git tag -a "v${{ github.event.inputs.version }}" -m "Release v${{ github.event.inputs.version }}"
+            git push origin "v${{ github.event.inputs.version }}"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -304,3 +318,4 @@ jobs:
             artifacts/**/pywarp-macos-universal-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
