@@ -28,7 +28,7 @@ jobs:
       - name: Install flake8
         run: pip install flake8
       - name: Run Flake8 (fail on error)
-        run: flake8 .
+        run: flake8 . --exclude=resources_rc.py
 
   build-windows:
     name: Build Windows
@@ -102,7 +102,7 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-22.04
-    needs: build-windows
+    needs: validate
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -143,7 +143,7 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, arm64]
-    needs: build-windows
+    needs: validate
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
