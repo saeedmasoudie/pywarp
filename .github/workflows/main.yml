@@ -30,10 +30,25 @@ jobs:
       - name: Run Flake8 (fail on error)
         run: flake8 .
 
+  create-tag:
+    name: Create Git Tag (if not exists)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "✅ Tag v${{ github.event.inputs.version }} already exists — skipping tag creation."
+          else
+            git tag -a "v${{ github.event.inputs.version }}" -m "Release v${{ github.event.inputs.version }}"
+            git push origin "v${{ github.event.inputs.version }}"
+
   build-windows:
     name: Build Windows
     runs-on: windows-latest
-    needs: validate
+    needs: [validate, create-tag]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -73,7 +88,6 @@ jobs:
             --windows-product-version="$version" `
             --remove-output `
             --assume-yes-for-downloads
-
       - name: Self-sign Executable (auto)
         shell: pwsh
         run: |
@@ -85,7 +99,6 @@ jobs:
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd
 
           Write-Host "🔏 Locating signtool..."
-          # Prefer x64 > x86 > others
           $sdkPaths = @(
             "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe",
             "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\signtool.exe",
@@ -120,7 +133,7 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-22.04
-    needs: validate
+    needs: [validate, create-tag]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -162,7 +175,7 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, arm64]
-    needs: validate
+    needs: [validate, create-tag]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -293,29 +306,17 @@ jobs:
             echo ""
           } >> RELEASE_NOTES.md
 
-      - name: Create Git tag (if not exists)
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
-            echo "✅ Tag v${{ github.event.inputs.version }} already exists — skipping tag creation."
-          else
-            git tag -a "v${{ github.event.inputs.version }}" -m "Release v${{ github.event.inputs.version }}"
-            git push origin "v${{ github.event.inputs.version }}"
-          fi
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
-          draft: true
-          prerelease: false
+          draft: false
+          prerelease: true
           files: |
             artifacts/**/pywarp-windows-*.zip
             artifacts/**/pywarp-ubuntu-*.tar.gz
             artifacts/**/pywarp-macos-universal-*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
