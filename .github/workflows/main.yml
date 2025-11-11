@@ -79,6 +79,7 @@ jobs:
         run: |
           $exe = "dist\\pywarp-windows-v${{ github.event.inputs.version }}.exe"
           Write-Host "🔏 Generating temporary self-signed certificate..."
+          # Generates a self-signed certificate for code signing
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=PyWarp CI" -CertStoreLocation Cert:\CurrentUser\My
           $pwd = ConvertTo-SecureString -String "temporarypass" -Force -AsPlainText
           $pfxPath = "$env:USERPROFILE\\pywarp_temp.pfx"
@@ -99,7 +100,7 @@ jobs:
             $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
           }
           if (-not $signtool) {
-            throw "❌ signtool.exe not found!"
+            throw "❌ signtool.exe not found! Checked: $sdkPaths"
           }
 
           Write-Host "🔏 Using signtool at $($signtool.FullName)"
@@ -271,6 +272,7 @@ jobs:
 
       - name: Extract Changelog
         run: |
+          # Extract release notes for the current version from CHANGELOG.md
           awk -v ver="v${{ github.event.inputs.version }}" '
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
@@ -280,38 +282,44 @@ jobs:
 
       - name: Create and Push Tag
         run: |
+          # Set up git identity
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           TAG="v${{ github.event.inputs.version }}"
           
           echo "🏷️ Creating and pushing tag $TAG..."
           git tag -a "$TAG" -m "Release $TAG"
+          # Push the tag to ensure GitHub is aware of it immediately
           git push origin "$TAG"
           
-          echo "✅ Tag created. Waiting 15 seconds for GitHub API to process the tag..."
+          echo "✅ Tag created. Waiting 15 seconds for GitHub API to process the tag before creating the release..."
           sleep 15
           echo "Done waiting."
 
-      - name: Generate Checksums
+      - name: Generate Checksums (Accurate Table)
         run: |
-          VERSION="v${{ github.event.inputs.version }}"
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
           LINUX_FILE=$(find artifacts -name "pywarp-ubuntu-*.tar.gz" | head -n1)
           MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
           
+          # Calculate SHA256 Checksums
           WIN_SHA=$(sha256sum "$WIN_FILE" | cut -d' ' -f1)
           LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
           MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
           
+          # Append the accurate checksum table to the release notes.
+          # Note: We do NOT include download links to avoid broken 'untagged' URLs in the draft.
           {
             echo ""
-            echo "### 📦 Downloads"
+            echo "### 📦 Download Assets"
             echo ""
-            echo "| Platform | File | SHA256 Checksum |"
-            echo "|----------|------|-----------------|"
-            echo "| 🪟 Windows | [Download ZIP](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $WIN_FILE)) | \`$WIN_SHA\` |"
-            echo "| 🐧 Linux | [Download TAR.GZ](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $LINUX_FILE)) | \`$LINUX_SHA\` |"
-            echo "| 🍎 macOS | [Download DMG](https://github.com/${{ github.repository }}/releases/download/$VERSION/$(basename $MAC_FILE)) | \`$MAC_SHA\` |"
+            echo "The files below are attached to this draft release. The clean download links will activate once the release is published."
+            echo ""
+            echo "| Platform | File Name | SHA256 Checksum |"
+            echo "|----------|-----------|-----------------|"
+            echo "| 🪟 Windows | \`$(basename $WIN_FILE)\` | \`$WIN_SHA\` |"
+            echo "| 🐧 Linux | \`$(basename $LINUX_FILE)\` | \`$LINUX_SHA\` |"
+            echo "| 🍎 macOS | \`$(basename $MAC_FILE)\` | \`$MAC_SHA\` |"
             echo ""
           } >> RELEASE_NOTES.md
 
@@ -321,7 +329,7 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
-          draft: true
+          draft: true # Keeping draft status as requested
           prerelease: false
           files: |
             artifacts/**/pywarp-windows-*.zip
