@@ -28,7 +28,7 @@ jobs:
       - name: Install flake8
         run: pip install flake8
       - name: Run Flake8 (fail on error)
-        run: flake8 . --exclude=resources_rc.py
+        run: flake8 .
 
   build-windows:
     name: Build Windows

@@ -3937,7 +3937,7 @@ class MainWindow(QMainWindow):
 
         custom_button1 = dlg.addButton("WireGuard", QMessageBox.ActionRole)
         custom_button2 = dlg.addButton("MASQUE", QMessageBox.ActionRole)
-        cancel_button = dlg.addButton(QMessageBox.Cancel)
+        dlg.addButton(QMessageBox.Cancel)
         dlg.exec()
 
         if dlg.clickedButton() == custom_button1:
@@ -4308,7 +4308,7 @@ if __name__ == "__main__":
 
     try:
         app.setWindowIcon(QIcon(":/logo.png"))
-    except:
+    except Exception:
         app.setWindowIcon(QIcon())
 
     sys.excepthook = handle_exception
