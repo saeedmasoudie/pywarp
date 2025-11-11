@@ -3,5 +3,10 @@ exclude =
     .git,
     __pycache__,
     resources_rc.py
-
 max-line-length = 120
+ignore =
+    E221,  # multiple spaces before operator
+    E301,  # expected 1 blank line
+    E302,  # expected 2 blank lines
+    E303,  # too many blank lines
+    E701   # multiple statements on one line
