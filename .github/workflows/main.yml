@@ -9,9 +9,12 @@ on:
         default: '1.2.8'
 
 permissions:
-  contents: write
+  contents: write # Still required to create the release and upload assets
 
 jobs:
+  # ... (validate, build-windows, build-linux, build-macos-universal, merge-macos-universal jobs are unchanged) ...
+  
+  # --- (Remaining Jobs are identical to before) ---
   validate:
     name: Validate Code
     runs-on: ubuntu-latest
@@ -79,7 +82,6 @@ jobs:
         run: |
           $exe = "dist\\pywarp-windows-v${{ github.event.inputs.version }}.exe"
           Write-Host "🔏 Generating temporary self-signed certificate..."
-          # Generates a self-signed certificate for code signing
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=PyWarp CI" -CertStoreLocation Cert:\CurrentUser\My
           $pwd = ConvertTo-SecureString -String "temporarypass" -Force -AsPlainText
           $pfxPath = "$env:USERPROFILE\\pywarp_temp.pfx"
@@ -280,22 +282,10 @@ jobs:
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)" >> RELEASE_NOTES.md
 
-      - name: Create and Push Tag
-        run: |
-          # Set up git identity
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          TAG="v${{ github.event.inputs.version }}"
-          
-          echo "🏷️ Creating and pushing tag $TAG..."
-          git tag -a "$TAG" -m "Release $TAG"
-          # Push the tag to ensure GitHub is aware of it immediately
-          git push origin "$TAG"
-          
-          echo "✅ Tag created. Waiting 15 seconds for GitHub API to process the tag before creating the release..."
-          sleep 15
-          echo "Done waiting."
-
+      # 🔴 REMOVING the manual "Create and Push Tag" step. 
+      # The softprops action will now handle creating the tag (if it doesn't exist) 
+      # and associating the release with it correctly.
+      
       - name: Generate Checksums (Accurate Table)
         run: |
           WIN_FILE=$(find artifacts -name "pywarp-windows-*.zip" | head -n1)
@@ -308,7 +298,6 @@ jobs:
           MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
           
           # Append the accurate checksum table to the release notes.
-          # Note: We do NOT include download links to avoid broken 'untagged' URLs in the draft.
           {
             echo ""
             echo "### 📦 Download Assets"
