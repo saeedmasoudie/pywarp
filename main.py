@@ -3133,7 +3133,7 @@ class MainWindow(QMainWindow):
 
         try:
             self.setWindowIcon(self.color_icon)
-        except:
+        except Exception:
             self.setWindowIcon(QIcon())
 
         self.setGeometry(100, 100, 400, 480)
@@ -3647,7 +3647,7 @@ class MainWindow(QMainWindow):
     def setup_tray(self):
         try:
             self.tray_icon = QSystemTrayIcon(self.gray_icon, self)
-        except:
+        except Exception:
             self.tray_icon = QSystemTrayIcon(QIcon(), self)
 
         self.tray_icon.setToolTip(self.tr("PyWarp - CloudFlare Warp GUI"))
