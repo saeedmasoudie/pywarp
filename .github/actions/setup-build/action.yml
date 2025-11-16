@@ -5,16 +5,26 @@ runs:
   using: "composite"
   steps:
 
-    - name: Create virtual environment
+    - name: Detect OS and create venv
       shell: bash
       run: |
-        python3 -m venv .venv
-        echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python -m venv .venv
+            echo "PATH=$PWD/.venv/Scripts:$PATH" >> $GITHUB_ENV
+        else
+            python3 -m venv .venv
+            echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
+        fi
 
-    - name: Install build dependencies in venv
+    - name: Install dependencies
       shell: bash
       run: |
-        . .venv/bin/activate
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+            source .venv/Scripts/activate
+        else
+            source .venv/bin/activate
+        fi
+
         pip install --upgrade pip wheel setuptools
         pip install -r requirements.txt
         pip install "nuitka>=2.8"

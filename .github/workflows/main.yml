@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    shell: bash
+    working-directory: ./
+
 jobs:
   validate:
     name: Validate Code
@@ -159,6 +164,11 @@ jobs:
       image: i386/debian:bullseye
       options: "--entrypoint /bin/bash"
 
+    continue-on-error: false
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      ACTIONS_RUNNER_FORCE_ACTION_CLEANUP: false
+
     steps:
       - uses: actions/checkout@v4
 
@@ -212,11 +222,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install universal2 Python
         run: |
           curl -O https://www.python.org/ftp/python/3.11.9/python-3.11.9-macos11.pkg
           sudo installer -pkg python-3.11.9-macos11.pkg -target /
+
+      - name: Install Python 3.11
+        run: |
+          brew install python@3.11
+          echo "PATH=/usr/local/opt/python@3.11/bin:$PATH" >> $GITHUB_ENV
+          python3.11 -m pip install --upgrade pip
 
       - uses: ./.github/actions/setup-build
 
