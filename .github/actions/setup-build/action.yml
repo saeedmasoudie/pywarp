@@ -25,6 +25,6 @@ runs:
             source .venv/bin/activate
         fi
 
-        pip install --upgrade pip wheel setuptools
+        pip install --upgrade wheel setuptools
         pip install -r requirements.txt
         pip install "nuitka>=2.8"
