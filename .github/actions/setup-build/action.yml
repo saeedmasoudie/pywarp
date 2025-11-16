@@ -1,46 +1,23 @@
-name: 'Setup Build Environment'
-description: 'Sets up Python, caches pip, and installs build dependencies'
+name: "Setup Build Environment"
+description: "Install Python build dependencies for Nuitka builds"
 
 inputs:
   architecture:
-    description: 'Python architecture (x86 or x64)'
+    description: "Architecture to configure (x64 or x86 for Windows)"
     required: false
-    default: 'x64'
-  python-version:
-    description: 'Python version to use'
-    required: false
-    default: '3.11'
+    default: "x64"
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Set up Python ${{ inputs.python-version }} (${{ inputs.architecture }})
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python-version }}
-        architecture: ${{ inputs.architecture }}
 
-    - name: Get pip cache directory
-      id: pip-cache
+    - name: Install pip + setuptools
       shell: bash
       run: |
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
-          echo "path=~\AppData\Local\pip\Cache" >> $GITHUB_OUTPUT
-        elif [[ "${{ runner.os }}" == "macOS" ]]; then
-          echo "path=~/Library/Caches/pip" >> $GITHUB_OUTPUT
-        else
-          echo "path=~/.cache/pip" >> $GITHUB_OUTPUT
-        fi
+        python3 -m pip install --upgrade pip wheel setuptools
 
-    - name: Cache pip
-      uses: actions/cache@v4
-      with:
-        path: ${{ steps.pip-cache.outputs.path }}
-        key: ${{ runner.os }}-pip-${{ inputs.architecture }}-${{ hashFiles('requirements.txt') }}
-
-    - name: Install Dependencies
+    - name: Install Python dependencies
       shell: bash
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install nuitka>=2.8
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install "nuitka>=2.8"

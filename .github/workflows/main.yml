@@ -17,18 +17,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flake8
+
       - name: Run Flake8 (fail on error)
         run: flake8 .
 
@@ -38,9 +42,10 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
+
       - uses: ./.github/actions/setup-build
-      
-      - name: Build Portable Windows x64 Executable (onefile)
+
+      - name: Build Portable Windows x64 Executable
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
@@ -58,10 +63,13 @@ jobs:
             --output-dir=dist `
             --output-filename="pywarp-windows-x64-v$version" `
             --assume-yes-for-downloads
+
       - name: Zip Portable Executable
         run: |
           cd dist
-          powershell Compress-Archive -Path "pywarp-windows-x64-v${{ github.event.inputs.version }}.exe" -DestinationPath "pywarp-windows-x64-v${{ github.event.inputs.version }}.zip"
+          powershell Compress-Archive -Path "pywarp-windows-x64-v${{ github.event.inputs.version }}.exe" `
+            -DestinationPath "pywarp-windows-x64-v${{ github.event.inputs.version }}.zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows-x64
@@ -73,11 +81,12 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
+
       - uses: ./.github/actions/setup-build
         with:
           architecture: 'x86'
-          
-      - name: Build Portable Windows x86 Executable (onefile)
+
+      - name: Build Portable Windows x86 Executable
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
@@ -95,10 +104,13 @@ jobs:
             --output-dir=dist `
             --output-filename="pywarp-windows-x86-v$version" `
             --assume-yes-for-downloads
+
       - name: Zip Portable Executable
         run: |
           cd dist
-          powershell Compress-Archive -Path "pywarp-windows-x86-v${{ github.event.inputs.version }}.exe" -DestinationPath "pywarp-windows-x86-v${{ github.event.inputs.version }}.zip"
+          powershell Compress-Archive -Path "pywarp-windows-x86-v${{ github.event.inputs.version }}.exe" `
+            -DestinationPath "pywarp-windows-x86-v${{ github.event.inputs.version }}.zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows-x86
@@ -112,7 +124,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
-      - name: Build Portable Linux Executable (onefile)
+      - name: Build Portable Linux Executable
         run: |
           python -m nuitka main.py \
             --standalone \
@@ -127,41 +139,42 @@ jobs:
             --output-filename="pywarp-linux-x64-v${{ github.event.inputs.version }}" \
             --output-dir=dist \
             --assume-yes-for-downloads
+
       - name: Create tar.gz
         run: |
-          tar -czvf pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz -C dist pywarp-linux-x64-v${{ github.event.inputs.version }}
+          tar -czvf pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz \
+            -C dist pywarp-linux-x64-v${{ github.event.inputs.version }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-linux-x64
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
 
   build-linux-x86:
-    name: Build Linux x86 (portable) - best-effort
+    name: Build Linux x86 (portable)
     runs-on: ubuntu-22.04
     needs: validate
     container:
       image: i386/debian:bullseye
       entrypoint: ["/bin/bash", "-c"]
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Install system deps (i386)
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv build-essential gcc-multilib g++-multilib
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            python3 python3-pip python3-venv build-essential \
+            gcc-multilib g++-multilib
           python3 -m pip install --upgrade pip
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-i386-${{ hashFiles('requirements.txt') }}
-
-      - name: Install Python dependencies (i386)
+      - name: Install Python dependencies
         run: |
           python3 -m pip install -r requirements.txt
-          python3 -m pip install nuitka>=2.8 
-          
-      - name: Build Portable Linux 32-bit Executable (onefile)
+          python3 -m pip install "nuitka>=2.8"
+
+      - name: Build Portable Linux 32-bit Executable
         run: |
           python3 -m nuitka main.py \
             --standalone \
@@ -176,9 +189,12 @@ jobs:
             --output-filename="pywarp-linux-x86-v${{ github.event.inputs.version }}" \
             --output-dir=dist \
             --assume-yes-for-downloads
+
       - name: Create tar.gz
         run: |
-          tar -czvf pywarp-linux-x86-v${{ github.event.inputs.version }}.tar.gz -C dist pywarp-linux-x86-v${{ github.event.inputs.version }}
+          tar -czvf pywarp-linux-x86-v${{ github.event.inputs.version }}.tar.gz \
+            -C dist pywarp-linux-x86-v${{ github.event.inputs.version }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-linux-x86
@@ -188,16 +204,21 @@ jobs:
     name: Build macOS Universal (portable)
     runs-on: macos-latest
     needs: validate
+
     steps:
       - uses: actions/checkout@v4
+
+      # Install true universal2 Python
+      - name: Install universal2 Python
+        run: |
+          curl -O https://www.python.org/ftp/python/3.11.9/python-3.11.9-macos11.pkg
+          sudo installer -pkg python-3.11.9-macos11.pkg -target /
+
       - uses: ./.github/actions/setup-build
-      
-      - name: Install Nuitka (Ensure latest version for --macos-universal)
-        run: python -m pip install nuitka>=2.8
-        
+
       - name: Build macOS Universal App (Nuitka)
         run: |
-          python -m nuitka main.py \
+          python3 -m nuitka main.py \
             --standalone \
             --remove-output \
             --disable-console \
@@ -214,18 +235,25 @@ jobs:
             --clang \
             --assume-yes-for-downloads \
             --disable-ccache
+
       - name: Rename .app bundle
         run: |
           mv PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
+
       - name: Create DMG (unsigned)
         run: |
           cat > README_mac_unsigned.txt << 'EOF'
           📦 PyWarp for macOS (Unsigned Build)
 
-          This app is not signed with an Apple Developer ID. To open it:
-          - Right-click → Open → Confirm
-          or run:
-            xattr -dr com.apple.quarantine /Applications/PyWarp.app
+          This app is not signed with an Apple Developer ID.
+          To open it:
+
+          - Right-click → Open → Confirm  
+            OR  
+          - Run this in terminal:
+
+              xattr -dr com.apple.quarantine /Applications/PyWarp.app
+
           EOF
 
           hdiutil create \
@@ -235,6 +263,7 @@ jobs:
             -format UDZO \
             -ov \
             -o "pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
+
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-universal
@@ -243,7 +272,13 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
-    needs: [build-windows-x64, build-windows-x86, build-linux-x64, build-linux-x86, build-macos-universal]
+    needs:
+      - build-windows-x64
+      - build-windows-x86
+      - build-linux-x64
+      - build-linux-x86
+      - build-macos-universal
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -255,39 +290,27 @@ jobs:
 
       - name: Extract Changelog
         run: |
-          # Extract release notes for the current version from CHANGELOG.md
           awk -v ver="v${{ github.event.inputs.version }}" '
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
-          echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)\n" >> RELEASE_NOTES.md
 
       - name: Generate Checksums and Download Matrix
+        shell: bash
         run: |
           REPO="${{ github.repository }}"
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
-          WIN_X64_FILE=$(find artifacts -name "pywarp-windows-x64-*.zip" | head -n1)
-          WIN_X86_FILE=$(find artifacts -name "pywarp-windows-x86-*.zip" | head -n1)
-          LINUX_X64_FILE=$(find artifacts -name "pywarp-linux-x64-*.tar.gz" | head -n1)
-          LINUX_X86_FILE=$(find artifacts -name "pywarp-linux-x86-*.tar.gz" | head -n1)
-          MAC_FILE=$(find artifacts -name "pywarp-macos-universal-*.dmg" | head -n1)
+          WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
+          WIN_X86=$(find artifacts -name "*windows-x86*.zip" | head -n1 || true)
+          LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
+          LINUX_X86=$(find artifacts -name "*linux-x86*.tar.gz" | head -n1 || true)
+          MAC=$(find artifacts -name "*macos-universal*.dmg" | head -n1 || true)
 
-          WIN_X64_SHA=$(sha256sum "$WIN_X64_FILE" | cut -d' ' -f1)
-          WIN_X86_SHA=$(sha256sum "$WIN_X86_FILE" | cut -d' ' -f1)
-          LINUX_X64_SHA=$(sha256sum "$LINUX_X64_FILE" | cut -d' ' -f1)
-          LINUX_X86_SHA=$(sha256sum "$LINUX_X86_FILE" | cut -d' ' -f1)
-          MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
-
-          WIN_X64_SIZE=$(du -h "$WIN_X64_FILE" | cut -f1)
-          WIN_X86_SIZE=$(du -h "$WIN_X86_FILE" | cut -f1)
-          LINUX_X64_SIZE=$(du -h "$LINUX_X64_FILE" | cut -f1)
-          LINUX_X86_SIZE=$(du -h "$LINUX_X86_FILE" | cut -f1)
-          MAC_SIZE=$(du -h "$MAC_FILE" | cut -f1)
-
-          cat >> RELEASE_NOTES.md << EOF
+          # Append the downloads HTML table (with badges)
+          cat >> RELEASE_NOTES.md <<EOF
 
           ## 🧩 Downloads
 
@@ -323,14 +346,22 @@ jobs:
             </tbody>
           </table>
 
-          ### Checksums
-          - Windows x64: \`$WIN_X64_SHA\` ($WIN_X64_SIZE)
-          - Windows x86: \`$WIN_X86_SHA\` ($WIN_X86_SIZE)
-          - Linux x64: \`$LINUX_X64_SHA\` ($LINUX_X64_SIZE)
-          - Linux x86: \`$LINUX_X86_SHA\` ($LINUX_X86_SIZE)
-          - macOS: \`$MAC_SHA\` ($MAC_SIZE)
-
           EOF
+
+          # Add Checksums section
+          echo "" >> RELEASE_NOTES.md
+          echo "## Checksums" >> RELEASE_NOTES.md
+
+          for file in "$WIN_X64" "$WIN_X86" "$LINUX_X64" "$LINUX_X86" "$MAC"; do
+            if [ -f "$file" ]; then
+              sha=$(sha256sum "$file" | cut -d' ' -f1)
+              size=$(du -h "$file" | cut -f1)
+              name=$(basename "$file")
+              echo "- $name: \`$sha\` ($size)" >> RELEASE_NOTES.md
+            else
+              echo "- (missing) $(basename "$file" 2>/dev/null || echo "unknown")" >> RELEASE_NOTES.md
+            fi
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -341,10 +372,8 @@ jobs:
           draft: false
           prerelease: true
           files: |
-            artifacts/**/pywarp-windows-x64-*.zip
-            artifacts/**/pywarp-windows-x86-*.zip
-            artifacts/**/pywarp-linux-x64-*.tar.gz
-            artifacts/**/pywarp-linux-x86-*.tar.gz
-            artifacts/**/pywarp-macos-universal-*.dmg
+            artifacts/**/*windows*.zip
+            artifacts/**/*linux*.tar.gz
+            artifacts/**/*macos*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
