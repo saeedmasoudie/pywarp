@@ -1,23 +1,20 @@
 name: "Setup Build Environment"
 description: "Install Python build dependencies for Nuitka builds"
 
-inputs:
-  architecture:
-    description: "Architecture to configure (x64 or x86 for Windows)"
-    required: false
-    default: "x64"
-
 runs:
   using: "composite"
   steps:
 
-    - name: Install pip + setuptools
+    - name: Create virtual environment
       shell: bash
       run: |
-        python3 -m pip install --upgrade pip wheel setuptools
+        python3 -m venv .venv
+        echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Install Python dependencies
+    - name: Install build dependencies in venv
       shell: bash
       run: |
-        python3 -m pip install -r requirements.txt
-        python3 -m pip install "nuitka>=2.8"
+        . .venv/bin/activate
+        pip install --upgrade pip wheel setuptools
+        pip install -r requirements.txt
+        pip install "nuitka>=2.8"
