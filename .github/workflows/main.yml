@@ -154,14 +154,16 @@ jobs:
     name: Build Linux x86 (portable)
     runs-on: ubuntu-22.04
     needs: validate
+
     container:
       image: i386/debian:bullseye
-      entrypoint: ["/bin/bash", "-c"]
+      options: "--entrypoint /bin/bash"
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps (i386)
+        shell: bash
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -170,11 +172,13 @@ jobs:
           python3 -m pip install --upgrade pip
 
       - name: Install Python dependencies
+        shell: bash
         run: |
           python3 -m pip install -r requirements.txt
           python3 -m pip install "nuitka>=2.8"
 
       - name: Build Portable Linux 32-bit Executable
+        shell: bash
         run: |
           python3 -m nuitka main.py \
             --standalone \
@@ -191,6 +195,7 @@ jobs:
             --assume-yes-for-downloads
 
       - name: Create tar.gz
+        shell: bash
         run: |
           tar -czvf pywarp-linux-x86-v${{ github.event.inputs.version }}.tar.gz \
             -C dist pywarp-linux-x86-v${{ github.event.inputs.version }}
@@ -207,8 +212,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      # Install true universal2 Python
+      
       - name: Install universal2 Python
         run: |
           curl -O https://www.python.org/ftp/python/3.11.9/python-3.11.9-macos11.pkg
