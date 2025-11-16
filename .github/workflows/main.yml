@@ -237,7 +237,7 @@ jobs:
           name: pywarp-macos-universal
           path: pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg
 
-  release:
+release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
     needs: [build-windows-x64, build-windows-x86, build-linux-x64, build-linux-x86, build-macos-universal]
@@ -257,7 +257,7 @@ jobs:
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
             flag {print}
-          ' CHANGELG.md > RELEASE_NOTES.md
+          ' CHANGELOG.md > RELEASE_NOTES.md
           echo -e "\n---\nBuilt for Windows, Linux, and macOS (Universal)\n" >> RELEASE_NOTES.md
 
       - name: Generate Checksums and Download Matrix
