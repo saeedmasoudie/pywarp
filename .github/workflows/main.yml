@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: validate
     container:
-      image: i386/ubuntu:20.04
+      image: i386/debian:bullseye
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps (i386)
@@ -157,7 +157,6 @@ jobs:
 
       - name: Install Python dependencies (i386)
         run: |
-          # CRITICAL FIX: Install requirements.txt
           python3 -m pip install -r requirements.txt
           python3 -m pip install nuitka>=2.8
           
