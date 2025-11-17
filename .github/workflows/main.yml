@@ -44,16 +44,15 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - uses: ./.github/actions/setup-build
 
       - name: Build Windows x64
         shell: pwsh
         run: |
+          & .\.venv\Scripts\activate
           $version = "${{ github.event.inputs.version }}"
           python -m nuitka main.py `
             --standalone `
@@ -86,7 +85,6 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -97,6 +95,7 @@ jobs:
       - name: Build Windows x86
         shell: pwsh
         run: |
+          & .\.venv\Scripts\activate
           $version = "${{ github.event.inputs.version }}"
           python -m nuitka main.py `
             --standalone `
@@ -129,7 +128,6 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -138,17 +136,19 @@ jobs:
 
       - name: Build Linux x64
         run: |
-          python3 -m nuitka main.py \
+          source .venv/bin/activate
+          VERSION="${{ github.event.inputs.version }}"
+          python -m nuitka main.py \
             --standalone \
             --onefile \
             --remove-output \
             --disable-console \
             --enable-plugin=pyside6 \
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning ` \
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --linux-onefile-icon=assets/logo.xpm \
-            --output-filename="pywarp-linux-x64-v${{ github.event.inputs.version }}" \
+            --output-filename="pywarp-linux-x64-v$VERSION" \
             --output-dir=dist \
             --assume-yes-for-downloads
 
@@ -168,30 +168,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Linux x86 inside i386 container
+      - name: Build Linux x86 inside container
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          docker pull i386/debian:bullseye
-          docker run --rm -v "$PWD":/workspace -w /workspace i386/debian:bullseye /bin/bash -c "
-            set -e
-            apt-get update
-            apt-get install -y python3 python3-pip build-essential wget ca-certificates
-            pip3 install --upgrade pip
-            pip3 install -r requirements.txt || true
-            pip3 install nuitka
-            python3 -m nuitka main.py \
-              --standalone \
-              --onefile \
-              --disable-console \
-              --enable-plugin=pyside6 \
-              --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-              --include-data-dir=assets=assets \
-              --include-qt-plugins=platforms,imageformats,iconengines \
-              --linux-onefile-icon=assets/logo.xpm \
-              --output-dir=dist \
-              --output-filename=pywarp-linux-x86-v${VERSION}
-            tar -czvf pywarp-linux-x86-v${VERSION}.tar.gz -C dist pywarp-linux-x86-v${VERSION}
-          "
+
+          docker run --rm \
+            -v "$PWD":/workspace \
+            -w /workspace \
+            i386/debian:bullseye /bin/bash -c "
+              set -e
+              apt-get update
+              apt-get install -y python3 python3-pip python3-venv build-essential wget ca-certificates patchelf
+              python3 -m venv .venv
+              source .venv/bin/activate
+              pip install --upgrade pip
+              pip install -r requirements.txt || true
+              pip install nuitka ordered-set zstandard
+
+              python -m nuitka main.py \
+                --standalone \
+                --onefile \
+                --disable-console \
+                --enable-plugin=pyside6 \
+                --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
+                --include-data-dir=assets=assets \
+                --include-qt-plugins=platforms,imageformats,iconengines \
+                --linux-onefile-icon=assets/logo.xpm \
+                --output-dir=dist \
+                --output-filename=pywarp-linux-x86-v${VERSION}
+
+              tar -czvf pywarp-linux-x86-v${VERSION}.tar.gz -C dist pywarp-linux-x86-v${VERSION}
+            "
 
       - uses: actions/upload-artifact@v4
         with:
@@ -203,7 +210,6 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -212,12 +218,13 @@ jobs:
 
       - name: Build macOS App
         run: |
-          python3 -m nuitka main.py \
+          source .venv/bin/activate
+          python -m nuitka main.py \
             --standalone \
             --remove-output \
             --disable-console \
             --macos-create-app-bundle \
-            --macos-universal \
+            --macos-universal-archs=arm64,x86_64 \
             --macos-app-name="PyWarp" \
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \
@@ -280,75 +287,68 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
-          # Locate artifacts
           WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
           WIN_X86=$(find artifacts -name "*windows-x86*.zip" | head -n1 || true)
           LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
           LINUX_X86=$(find artifacts -name "*linux-x86*.tar.gz" | head -n1 || true)
           MAC=$(find artifacts -name "*macos-universal*.dmg" | head -n1 || true)
 
-          # Add Downloads Matrix
           cat >> RELEASE_NOTES.md <<EOF
 
-          ## 🧩 Downloads
+            ## 🧩 Downloads
 
-          <table>
-            <thead>
-              <tr><th>Download</th><th>Compatibility</th></tr>
-            </thead>
-            <tbody>
+            <table>
+              <thead>
+                <tr><th>Download</th><th>Compatibility</th></tr>
+              </thead>
+              <tbody>
 
-              <tr>
-                <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip">
-                    <img src="https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&style=for-the-badge" />
-                  </a>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x86-v$VERSION.zip">
-                    <img src="https://img.shields.io/badge/Windows-x86-1E90FF?logo=windows&style=for-the-badge" />
-                  </a>
-                </td>
-                <td>Windows 10+</td>
-              </tr>
+                <tr>
+                  <td>
+                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip">
+                      Windows x64
+                    </a>
+                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x86-v$VERSION.zip">
+                      Windows x86
+                    </a>
+                  </td>
+                  <td>Windows 10+</td>
+                </tr>
 
-              <tr>
-                <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-universal-v$VERSION.dmg">
-                    <img src="https://img.shields.io/badge/macOS-Universal-999999?logo=apple&style=for-the-badge" />
-                  </a>
-                </td>
-                <td>macOS 10.15+</td>
-              </tr>
+                <tr>
+                  <td>
+                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-universal-v$VERSION.dmg">
+                      macOS Universal
+                    </a>
+                  </td>
+                  <td>macOS 10.15+</td>
+                </tr>
 
-              <tr>
-                <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz">
-                    <img src="https://img.shields.io/badge/Linux-x64-F0C419?logo=linux&style=for-the-badge" />
-                  </a>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x86-v$VERSION.tar.gz">
-                    <img src="https://img.shields.io/badge/Linux-x86-F7A600?logo=linux&style=for-the-badge" />
-                  </a>
-                </td>
-                <td>GNOME / KDE</td>
-              </tr>
+                <tr>
+                  <td>
+                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz">
+                      Linux x64
+                    </a>
+                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x86-v$VERSION.tar.gz">
+                      Linux x86
+                    </a>
+                  </td>
+                  <td>GNOME / KDE</td>
+                </tr>
 
-            </tbody>
-          </table>
+              </tbody>
+            </table>
 
-          EOF
+            EOF
 
-          # Add Checksums
           echo "" >> RELEASE_NOTES.md
           echo "## 🔐 Checksums" >> RELEASE_NOTES.md
 
           for file in "$WIN_X64" "$WIN_X86" "$LINUX_X64" "$LINUX_X86" "$MAC"; do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
-              size=$(du -h "$file" | cut -f1)
               name=$(basename "$file")
-              echo "- **$name:** \`$sha\` ($size)" >> RELEASE_NOTES.md
-            else
-              name=$(basename "$file" 2>/dev/null || echo "unknown")
-              echo "- (missing) $name" >> RELEASE_NOTES.md
+              echo "- **$name:** \`$sha\`" >> RELEASE_NOTES.md
             fi
           done
 
@@ -359,7 +359,7 @@ jobs:
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
           draft: false
-          prerelease: true
+          prerelease: false
           files: |
             artifacts/**/*windows*.zip
             artifacts/**/*linux*.tar.gz
