@@ -226,7 +226,6 @@ jobs:
             --enable-plugin=pyside6 \
             --nofollow-import-to=OpenSSL \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-            --no-dependency-cache \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --assume-yes-for-downloads \
