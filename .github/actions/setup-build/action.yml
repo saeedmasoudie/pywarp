@@ -1,31 +1,35 @@
-name: "Setup Build Environment"
-description: "Install Python build dependencies for Nuitka builds"
+name: "Setup Build"
+description: "Install Python + dependencies"
 
 runs:
   using: "composite"
   steps:
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-
     - name: Detect OS and create venv
       shell: bash
       run: |
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-            py -3 -m venv .venv
-            echo "PATH=$PWD/.venv/Scripts:$PATH" >> $GITHUB_ENV
+          python -m venv .venv
+          echo "VENV_ACTIVATE=.venv/Scripts/activate" >> $GITHUB_ENV
         else
-            python3 -m venv .venv
-            echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
+          python -m venv .venv
+          echo "VENV_ACTIVATE=source .venv/bin/activate" >> $GITHUB_ENV
         fi
 
-    - name: Install dependencies
+    - name: Install pip + deps
       shell: bash
       run: |
-        source .venv/bin/activate || source .venv/Scripts/activate
+        eval "$VENV_ACTIVATE"
+        python -m pip install --upgrade pip setuptools wheel
 
-        pip install --upgrade wheel setuptools
+    - name: Install project requirements
+      shell: bash
+      run: |
+        eval "$VENV_ACTIVATE"
         pip install -r requirements.txt
-        pip install "nuitka>=2.8"
+
+    - name: Install Nuitka
+      shell: bash
+      run: |
+        eval "$VENV_ACTIVATE"
+        pip install "nuitka>=2.8" ordered-set zstandard

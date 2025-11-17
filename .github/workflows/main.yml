@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'The version to build and release'
+        description: "The version to build and release"
         required: true
-        default: '1.2.8'
+        default: "1.2.8"
 
 permissions:
   contents: write
@@ -14,11 +14,9 @@ permissions:
 defaults:
   run:
     shell: bash
-    working-directory: ./
 
 jobs:
   validate:
-    name: Validate Code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,32 +34,28 @@ jobs:
       - name: Install Dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install flake8
+          pip install -r requirements.txt flake8
 
-      - name: Run Flake8 (fail on error)
+      - name: Run Flake8
         run: flake8 .
 
   build-windows-x64:
-    name: Build Windows x64 (portable)
     runs-on: windows-latest
     needs: validate
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python (Windows x64)
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Setup Build Action
-        uses: ./.github/actions/setup-build
+      - uses: ./.github/actions/setup-build
 
-      - name: Build Portable Windows x64 Executable
+      - name: Build Windows x64
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
-          py -3 -m nuitka main.py `
+          python -m nuitka main.py `
             --standalone `
             --onefile `
             --disable-console `
@@ -76,12 +70,11 @@ jobs:
             --output-filename="pywarp-windows-x64-v$version.exe" `
             --assume-yes-for-downloads
 
-      - name: Zip Portable Executable
+      - name: Zip Output
         shell: pwsh
         run: |
-          cd dist
-          Compress-Archive -Path "pywarp-windows-x64-v${{ github.event.inputs.version }}.exe" `
-            -DestinationPath "pywarp-windows-x64-v${{ github.event.inputs.version }}.zip"
+          Compress-Archive dist\pywarp-windows-x64-v${{ github.event.inputs.version }}.exe `
+            dist\pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -89,28 +82,23 @@ jobs:
           path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
 
   build-windows-x86:
-    name: Build Windows x86 (portable)
     runs-on: windows-latest
     needs: validate
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python (Windows x86)
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           architecture: "x86"
 
-      - name: Setup Build Action (x86)
-        uses: ./.github/actions/setup-build
-        with:
-          architecture: 'x86'
+      - uses: ./.github/actions/setup-build
 
-      - name: Build Portable Windows x86 Executable
+      - name: Build Windows x86
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
-          py -3 -m nuitka main.py `
+          python -m nuitka main.py `
             --standalone `
             --onefile `
             --disable-console `
@@ -125,12 +113,11 @@ jobs:
             --output-filename="pywarp-windows-x86-v$version.exe" `
             --assume-yes-for-downloads
 
-      - name: Zip Portable Executable
+      - name: Zip Output
         shell: pwsh
         run: |
-          cd dist
-          Compress-Archive -Path "pywarp-windows-x86-v${{ github.event.inputs.version }}.exe" `
-            -DestinationPath "pywarp-windows-x86-v${{ github.event.inputs.version }}.zip"
+          Compress-Archive dist\pywarp-windows-x86-v${{ github.event.inputs.version }}.exe `
+            dist\pywarp-windows-x86-v${{ github.event.inputs.version }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -138,7 +125,6 @@ jobs:
           path: dist/pywarp-windows-x86-v${{ github.event.inputs.version }}.zip
 
   build-linux-x64:
-    name: Build Linux x64 (portable)
     runs-on: ubuntu-22.04
     needs: validate
     steps:
@@ -150,7 +136,7 @@ jobs:
 
       - uses: ./.github/actions/setup-build
 
-      - name: Build Portable Linux Executable
+      - name: Build Linux x64
         run: |
           python3 -m nuitka main.py \
             --standalone \
@@ -158,7 +144,7 @@ jobs:
             --remove-output \
             --disable-console \
             --enable-plugin=pyside6 \
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning ` \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --linux-onefile-icon=assets/logo.xpm \
@@ -166,7 +152,7 @@ jobs:
             --output-dir=dist \
             --assume-yes-for-downloads
 
-      - name: Create tar.gz
+      - name: TAR
         run: |
           tar -czvf pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz \
             -C dist pywarp-linux-x64-v${{ github.event.inputs.version }}
@@ -177,71 +163,55 @@ jobs:
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
 
   build-linux-x86:
-    name: Build Linux x86 (portable)
     runs-on: ubuntu-22.04
     needs: validate
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare i386 container and build inside it
+      - name: Build Linux x86 inside i386 container
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          # Pull container (if not present)
           docker pull i386/debian:bullseye
-
-          # Run container with workspace mounted and perform build steps there.
-          docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace --entrypoint /bin/bash i386/debian:bullseye -c "
+          docker run --rm -v "$PWD":/workspace -w /workspace i386/debian:bullseye /bin/bash -c "
             set -e
             apt-get update
-            DEBIAN_FRONTEND=noninteractive apt-get install -y \
-              python3 python3-pip python3-venv build-essential \
-              gcc-multilib g++-multilib wget ca-certificates
-            python3 -m pip install --upgrade pip
-            python3 -m pip install -r requirements.txt || true
-            python3 -m pip install \"nuitka>=2.8\"
-            # Run nuitka build
+            apt-get install -y python3 python3-pip build-essential wget ca-certificates
+            pip3 install --upgrade pip
+            pip3 install -r requirements.txt || true
+            pip3 install nuitka
             python3 -m nuitka main.py \
               --standalone \
               --onefile \
-              --remove-output \
               --disable-console \
               --enable-plugin=pyside6 \
               --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
               --include-data-dir=assets=assets \
               --include-qt-plugins=platforms,imageformats,iconengines \
               --linux-onefile-icon=assets/logo.xpm \
-              --output-filename=\"pywarp-linux-x86-v${VERSION}\" \
               --output-dir=dist \
-              --assume-yes-for-downloads
-            # Package artifact
+              --output-filename=pywarp-linux-x86-v${VERSION}
             tar -czvf pywarp-linux-x86-v${VERSION}.tar.gz -C dist pywarp-linux-x86-v${VERSION}
           "
 
-      - name: Upload linux x86 artifact (from host workspace)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-linux-x86
           path: pywarp-linux-x86-v${{ github.event.inputs.version }}.tar.gz
 
   build-macos-universal:
-    name: Build macOS Universal (portable)
     runs-on: macos-latest
     needs: validate
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python 3.11 (macOS)
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - uses: ./.github/actions/setup-build
 
-      - name: Build macOS Universal App (Nuitka)
+      - name: Build macOS App
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt || true
-          python3 -m pip install "nuitka>=2.8"
           python3 -m nuitka main.py \
             --standalone \
             --remove-output \
@@ -256,34 +226,16 @@ jobs:
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --output-dir=. \
-            --clang \
             --assume-yes-for-downloads \
             --disable-ccache
 
-      - name: Rename .app bundle
+      - run: mv PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
+
+      - name: Create DMG
         run: |
-          mv PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
-
-      - name: Create DMG (unsigned)
-        run: |
-          cat > README_mac_unsigned.txt << 'EOF'
-          📦 PyWarp for macOS (Unsigned Build)
-
-          This app is not signed with an Apple Developer ID.
-          To open it:
-
-          - Right-click → Open → Confirm
-            OR
-          - Run this in terminal:
-
-              xattr -dr com.apple.quarantine /Applications/PyWarp.app
-
-          EOF
-
           hdiutil create \
             -volname "PyWarp" \
             -srcfolder "PyWarp-v${{ github.event.inputs.version }}.app" \
-            -srcfolder README_mac_unsigned.txt \
             -format UDZO \
             -ov \
             -o "pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
@@ -312,59 +264,71 @@ jobs:
         with:
           path: artifacts
 
-      - name: Extract Changelog
+      - name: Extract Changelog Section
         run: |
-          awk -v ver="v${{ github.event.inputs.version }}" '
+          VERSION="v${{ github.event.inputs.version }}"
+          awk -v ver="$VERSION" '
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
 
-      - name: Generate Checksums and Download Matrix
+      - name: Generate Checksums + Download Table
         shell: bash
         run: |
           REPO="${{ github.repository }}"
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
+          # Locate artifacts
           WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
           WIN_X86=$(find artifacts -name "*windows-x86*.zip" | head -n1 || true)
           LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
           LINUX_X86=$(find artifacts -name "*linux-x86*.tar.gz" | head -n1 || true)
           MAC=$(find artifacts -name "*macos-universal*.dmg" | head -n1 || true)
 
-          # Append the downloads HTML table (with badges)
+          # Add Downloads Matrix
           cat >> RELEASE_NOTES.md <<EOF
 
           ## 🧩 Downloads
 
           <table>
             <thead>
-              <tr><th>Downloads</th><th>Compatibility</th></tr>
+              <tr><th>Download</th><th>Compatibility</th></tr>
             </thead>
             <tbody>
 
               <tr>
                 <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip"><img src="https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows" alt="Windows x64"/></a>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x86-v$VERSION.zip"><img src="https://img.shields.io/badge/Windows-x86-1E90FF?style=for-the-badge&logo=windows" alt="Windows x86"/></a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip">
+                    <img src="https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&style=for-the-badge" />
+                  </a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x86-v$VERSION.zip">
+                    <img src="https://img.shields.io/badge/Windows-x86-1E90FF?logo=windows&style=for-the-badge" />
+                  </a>
                 </td>
-                <td class="compat">Windows 10+</td>
+                <td>Windows 10+</td>
               </tr>
 
               <tr>
                 <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-universal-v$VERSION.dmg"><img src="https://img.shields.io/badge/macOS-Universal-999999?style=for-the-badge&logo=apple" alt="macOS Universal"/></a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-universal-v$VERSION.dmg">
+                    <img src="https://img.shields.io/badge/macOS-Universal-999999?logo=apple&style=for-the-badge" />
+                  </a>
                 </td>
-                <td class="compat">macOS 10.15+</td>
+                <td>macOS 10.15+</td>
               </tr>
 
               <tr>
                 <td>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz"><img src="https://img.shields.io/badge/Linux-x64-F0C419?style=for-the-badge&logo=linux" alt="Linux x64"/></a>
-                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x86-v$VERSION.tar.gz"><img src="https://img.shields.io/badge/Linux-x86-F7A600?style=for-the-badge&logo=linux" alt="Linux x86"/></a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz">
+                    <img src="https://img.shields.io/badge/Linux-x64-F0C419?logo=linux&style=for-the-badge" />
+                  </a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x86-v$VERSION.tar.gz">
+                    <img src="https://img.shields.io/badge/Linux-x86-F7A600?logo=linux&style=for-the-badge" />
+                  </a>
                 </td>
-                <td class="compat">GNOME / KDE</td>
+                <td>GNOME / KDE</td>
               </tr>
 
             </tbody>
@@ -372,22 +336,23 @@ jobs:
 
           EOF
 
-          # Add Checksums section
+          # Add Checksums
           echo "" >> RELEASE_NOTES.md
-          echo "## Checksums" >> RELEASE_NOTES.md
+          echo "## 🔐 Checksums" >> RELEASE_NOTES.md
 
           for file in "$WIN_X64" "$WIN_X86" "$LINUX_X64" "$LINUX_X86" "$MAC"; do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
               size=$(du -h "$file" | cut -f1)
               name=$(basename "$file")
-              echo "- $name: \`$sha\` ($size)" >> RELEASE_NOTES.md
+              echo "- **$name:** \`$sha\` ($size)" >> RELEASE_NOTES.md
             else
-              echo "- (missing) $(basename "$file" 2>/dev/null || echo "unknown")" >> RELEASE_NOTES.md
+              name=$(basename "$file" 2>/dev/null || echo "unknown")
+              echo "- (missing) $name" >> RELEASE_NOTES.md
             fi
           done
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
