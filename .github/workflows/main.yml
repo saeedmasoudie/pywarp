@@ -141,7 +141,9 @@ jobs:
       - name: Build macOS ARM64
         run: |
           source .venv/bin/activate
+          export DYLD_LIBRARY_PATH=""
           VERSION="${{ github.event.inputs.version }}"
+
           python -m nuitka main.py \
             --standalone \
             --remove-output \
@@ -152,14 +154,18 @@ jobs:
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="$VERSION" \
             --enable-plugin=pyside6 \
+            --nofollow-import-to=OpenSSL \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --assume-yes-for-downloads \
-            --output-dir=.
+            --output-dir=build-arm64
 
       - name: Rename App
-        run: mv PyWarp.dist/PyWarp.app "PyWarp-arm64-v${{ github.event.inputs.version }}.app"
+        run: |
+          APP=$(find build-arm64 -maxdepth 2 -name "*.app" | head -n1)
+          echo "Found: $APP"
+          mv "$APP" "PyWarp-arm64-v${{ github.event.inputs.version }}.app"
 
       - name: Create DMG
         run: |
@@ -191,7 +197,7 @@ jobs:
   # MACOS INTEL
   # -------------------------
   build-macos-intel:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     needs: validate
     steps:
       - uses: actions/checkout@v4
@@ -203,7 +209,9 @@ jobs:
       - name: Build macOS Intel
         run: |
           source .venv/bin/activate
+          export DYLD_LIBRARY_PATH=""
           VERSION="${{ github.event.inputs.version }}"
+
           python -m nuitka main.py \
             --standalone \
             --remove-output \
@@ -214,14 +222,18 @@ jobs:
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="$VERSION" \
             --enable-plugin=pyside6 \
+            --nofollow-import-to=OpenSSL \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --assume-yes-for-downloads \
-            --output-dir=.
+            --output-dir=build-intel
 
       - name: Rename App
-        run: mv PyWarp.dist/PyWarp.app "PyWarp-intel-v${{ github.event.inputs.version }}.app"
+        run: |
+          APP=$(find build-intel -maxdepth 2 -name "*.app" | head -n1)
+          echo "Found: $APP"
+          mv "$APP" "PyWarp-intel-v${{ github.event.inputs.version }}.app"
 
       - name: Create DMG
         run: |
