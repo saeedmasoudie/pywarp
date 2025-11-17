@@ -5,11 +5,16 @@ runs:
   using: "composite"
   steps:
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
     - name: Detect OS and create venv
       shell: bash
       run: |
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-            python -m venv .venv
+            py -3 -m venv .venv
             echo "PATH=$PWD/.venv/Scripts:$PATH" >> $GITHUB_ENV
         else
             python3 -m venv .venv
@@ -19,11 +24,7 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-            source .venv/Scripts/activate
-        else
-            source .venv/bin/activate
-        fi
+        source .venv/bin/activate || source .venv/Scripts/activate
 
         pip install --upgrade wheel setuptools
         pip install -r requirements.txt
