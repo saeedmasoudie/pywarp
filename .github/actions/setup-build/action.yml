@@ -31,4 +31,4 @@ runs:
       shell: bash
       run: |
         eval "$VENV_ACTIVATE"
-        pip install "nuitka>=2.9" ordered-set zstandard
+        pip install "nuitka==2.8.6" ordered-set zstandard
