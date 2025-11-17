@@ -178,12 +178,14 @@ jobs:
 
       - name: Create PKG
         run: |
+          mkdir -p pkg-root/Applications
+          cp -R "PyWarp-arm64-v${{ github.event.inputs.version }}.app" pkg-root/Applications/
+
           pkgbuild \
-            --root "PyWarp-arm64-v${{ github.event.inputs.version }}.app" \
+            --root pkg-root \
             --identifier "com.pywarp.app" \
             --version "${{ github.event.inputs.version }}" \
-            --install-location "/Applications" \
-            --sign "-" \
+            --install-location "/" \
             "pywarp-macos-arm64-v${{ github.event.inputs.version }}.pkg"
 
       - uses: actions/upload-artifact@v4
@@ -224,6 +226,10 @@ jobs:
             --enable-plugin=pyside6 \
             --nofollow-import-to=OpenSSL \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
+            --noinclude-dylib=libcrypto.dylib \
+            --noinclude-dylib=libssl.dylib \
+            --noinclude-dylib=libcrypto.3.dylib \
+            --noinclude-dylib=libssl.3.dylib \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --assume-yes-for-downloads \
