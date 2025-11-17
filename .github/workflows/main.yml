@@ -182,7 +182,7 @@ jobs:
               python3 -m venv .venv
               source .venv/bin/activate
               pip install --upgrade pip
-              pip install -r requirements.txt || true
+              pip install -r requirements.txt
               pip install nuitka ordered-set zstandard
 
               python -m nuitka main.py \
@@ -224,7 +224,7 @@ jobs:
             --remove-output \
             --disable-console \
             --macos-create-app-bundle \
-            --macos-universal-archs=arm64,x86_64 \
+            --macos-archs=arm64,x86_64 \
             --macos-app-name="PyWarp" \
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \

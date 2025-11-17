@@ -4,13 +4,13 @@ description: "Install Python + dependencies"
 runs:
   using: "composite"
   steps:
-
     - name: Detect OS and create venv
       shell: bash
       run: |
         python -m venv .venv
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          echo "VENV_ACTIVATE=.venv/Scripts/activate" >> $GITHUB_ENV
+          # Use 'source' for bash on Windows
+          echo "VENV_ACTIVATE=source .venv/Scripts/activate" >> $GITHUB_ENV
         else
           echo "VENV_ACTIVATE=source .venv/bin/activate" >> $GITHUB_ENV
         fi
@@ -25,7 +25,7 @@ runs:
       shell: bash
       run: |
         eval "$VENV_ACTIVATE"
-        pip install -r requirements.txt || true
+        pip install -r requirements.txt
 
     - name: Install Nuitka
       shell: bash
