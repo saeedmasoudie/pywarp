@@ -39,6 +39,9 @@ jobs:
       - name: Run Flake8
         run: flake8 .
 
+  # -------------------------
+  # WINDOWS
+  # -------------------------
   build-windows-x64:
     runs-on: windows-latest
     needs: validate
@@ -80,6 +83,9 @@ jobs:
           name: pywarp-windows-x64
           path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
 
+  # -------------------------
+  # LINUX
+  # -------------------------
   build-linux-x64:
     runs-on: ubuntu-22.04
     needs: validate
@@ -119,7 +125,10 @@ jobs:
           name: pywarp-linux-x64
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
 
-  build-macos-universal:
+  # -------------------------
+  # MACOS ARM64
+  # -------------------------
+  build-macos-arm64:
     runs-on: macos-latest
     needs: validate
     steps:
@@ -127,54 +136,130 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - uses: ./.github/actions/setup-build
 
-      - name: Build macOS Universal App
+      - name: Build macOS ARM64
         run: |
           source .venv/bin/activate
+          VERSION="${{ github.event.inputs.version }}"
           python -m nuitka main.py \
             --standalone \
             --remove-output \
             --disable-console \
             --macos-create-app-bundle \
-            --macos-universal2 \
+            --macos-sign-identity="-" \
             --macos-app-name="PyWarp" \
             --macos-app-icon=assets/logo.icns \
-            --macos-app-version="${{ github.event.inputs.version }}" \
+            --macos-app-version="$VERSION" \
             --enable-plugin=pyside6 \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
-            --output-dir=. \
             --assume-yes-for-downloads \
-            --disable-ccache
+            --output-dir=.
 
-      - name: Move App Out of dist
-        run: |
-          mv PyWarp.dist/PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
+      - name: Rename App
+        run: mv PyWarp.dist/PyWarp.app "PyWarp-arm64-v${{ github.event.inputs.version }}.app"
 
       - name: Create DMG
         run: |
           hdiutil create \
-            -volname "PyWarp" \
-            -srcfolder "PyWarp-v${{ github.event.inputs.version }}.app" \
+            -volname "PyWarp ARM64" \
+            -srcfolder "PyWarp-arm64-v${{ github.event.inputs.version }}.app" \
             -format UDZO \
             -ov \
-            -o "pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg"
+            -o "pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg"
+
+      - name: Create PKG
+        run: |
+          pkgbuild \
+            --root "PyWarp-arm64-v${{ github.event.inputs.version }}.app" \
+            --identifier "com.pywarp.app" \
+            --version "${{ github.event.inputs.version }}" \
+            --install-location "/Applications" \
+            --sign "-" \
+            "pywarp-macos-arm64-v${{ github.event.inputs.version }}.pkg"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pywarp-macos-universal
-          path: pywarp-macos-universal-v${{ github.event.inputs.version }}.dmg
+          name: pywarp-macos-arm64
+          path: |
+            pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg
+            pywarp-macos-arm64-v${{ github.event.inputs.version }}.pkg
 
+  # -------------------------
+  # MACOS INTEL
+  # -------------------------
+  build-macos-intel:
+    runs-on: macos-13
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: ./.github/actions/setup-build
+
+      - name: Build macOS Intel
+        run: |
+          source .venv/bin/activate
+          VERSION="${{ github.event.inputs.version }}"
+          python -m nuitka main.py \
+            --standalone \
+            --remove-output \
+            --disable-console \
+            --macos-create-app-bundle \
+            --macos-sign-identity="-" \
+            --macos-app-name="PyWarp" \
+            --macos-app-icon=assets/logo.icns \
+            --macos-app-version="$VERSION" \
+            --enable-plugin=pyside6 \
+            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
+            --include-data-dir=assets=assets \
+            --include-qt-plugins=platforms,imageformats,iconengines \
+            --assume-yes-for-downloads \
+            --output-dir=.
+
+      - name: Rename App
+        run: mv PyWarp.dist/PyWarp.app "PyWarp-intel-v${{ github.event.inputs.version }}.app"
+
+      - name: Create DMG
+        run: |
+          hdiutil create \
+            -volname "PyWarp Intel" \
+            -srcfolder "PyWarp-intel-v${{ github.event.inputs.version }}.app" \
+            -format UDZO \
+            -ov \
+            -o "pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg"
+
+      - name: Create PKG
+        run: |
+          pkgbuild \
+            --root "PyWarp-intel-v${{ github.event.inputs.version }}.app" \
+            --identifier "com.pywarp.app" \
+            --version "${{ github.event.inputs.version }}" \
+            --install-location "/Applications" \
+            --sign "-" \
+            "pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-macos-intel
+          path: |
+            pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg
+            pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg
+
+  # -------------------------
+  # RELEASE
+  # -------------------------
   release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
     needs:
       - build-windows-x64
       - build-linux-x64
-      - build-macos-universal
+      - build-macos-arm64
+      - build-macos-intel
 
     steps:
       - uses: actions/checkout@v4
@@ -203,54 +288,72 @@ jobs:
 
           WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
           LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
-          MAC=$(find artifacts -name "*macos-universal*.dmg" | head -n1 || true)
+          MAC_ARM_DMG=$(find artifacts -name "*macos-arm64*.dmg" | head -n1 || true)
+          MAC_ARM_PKG=$(find artifacts -name "*macos-arm64*.pkg" | head -n1 || true)
+          MAC_INTEL_DMG=$(find artifacts -name "*macos-intel*.dmg" | head -n1 || true)
+          MAC_INTEL_PKG=$(find artifacts -name "*macos-intel*.pkg" | head -n1 || true)
 
           cat >> RELEASE_NOTES.md <<EOF
 
-            ## 🧩 Downloads
+          ## 🧩 Downloads
 
-            <table>
-              <thead>
-                <tr><th>Download</th><th>Compatibility</th></tr>
-              </thead>
-              <tbody>
+          <table>
+            <thead>
+              <tr><th>Downloads</th><th>Compatibility</th></tr>
+            </thead>
+            <tbody>
 
-                <tr>
-                  <td>
-                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip">
-                      Windows (x64)
-                    </a>
-                  </td>
-                  <td>Windows 10+</td>
-                </tr>
+              <tr>
+                <td>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-windows-x64-v$VERSION.zip">
+                    <img src="https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows" />
+                  </a>
+                </td>
+                <td>Windows 10+</td>
+              </tr>
 
-                <tr>
-                  <td>
-                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-universal-v$VERSION.dmg">
-                      macOS (Universal)
-                    </a>
-                  </td>
-                  <td>macOS 10.15+</td>
-                </tr>
+              <tr>
+                <td>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-arm64-v$VERSION.dmg">
+                    <img src="https://img.shields.io/badge/macOS-ARM64-999999?style=for-the-badge&logo=apple" />
+                  </a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-arm64-v$VERSION.pkg">
+                    <img src="https://img.shields.io/badge/PKG-ARM64-555555?style=for-the-badge&logo=apple" />
+                  </a>
+                  <br/>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-intel-v$VERSION.dmg">
+                    <img src="https://img.shields.io/badge/macOS-Intel-888888?style=for-the-badge&logo=apple" />
+                  </a>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-macos-intel-v$VERSION.pkg">
+                    <img src="https://img.shields.io/badge/PKG-Intel-444444?style=for-the-badge&logo=apple" />
+                  </a>
+                </td>
+                <td>macOS 10.15+</td>
+              </tr>
 
-                <tr>
-                  <td>
-                    <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz">
-                      Linux (x64)
-                    </a>
-                  </td>
-                  <td>GNOME / KDE</td>
-                </tr>
+              <tr>
+                <td>
+                  <a href="https://github.com/$REPO/releases/download/$TAG/pywarp-linux-x64-v$VERSION.tar.gz">
+                    <img src="https://img.shields.io/badge/Linux-x64-F0C419?style=for-the-badge&logo=linux" />
+                  </a>
+                </td>
+                <td>GNOME / KDE</td>
+              </tr>
 
-              </tbody>
-            </table>
+            </tbody>
+          </table>
 
-            EOF
+          EOF
 
           echo "" >> RELEASE_NOTES.md
           echo "## 🔐 Checksums" >> RELEASE_NOTES.md
 
-          for file in "$WIN_X64" "$LINUX_X64" "$MAC"; do
+          for file in \
+              "$WIN_X64" \
+              "$LINUX_X64" \
+              "$MAC_ARM_DMG" "$MAC_ARM_PKG" \
+              "$MAC_INTEL_DMG" "$MAC_INTEL_PKG"
+          do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
               name=$(basename "$file")
@@ -270,5 +373,6 @@ jobs:
             artifacts/**/*windows*.zip
             artifacts/**/*linux*.tar.gz
             artifacts/**/*macos*.dmg
+            artifacts/**/*macos*.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
