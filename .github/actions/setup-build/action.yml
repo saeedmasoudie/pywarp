@@ -9,10 +9,9 @@ runs:
       run: |
         python -m venv .venv
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          # Use 'source' for bash on Windows
-          echo "VENV_ACTIVATE=source .venv/Scripts/activate" >> $GITHUB_ENV
+          echo 'VENV_ACTIVATE=". .venv/Scripts/activate"' >> $GITHUB_ENV
         else
-          echo "VENV_ACTIVATE=source .venv/bin/activate" >> $GITHUB_ENV
+          echo 'VENV_ACTIVATE=". .venv/bin/activate"' >> $GITHUB_ENV
         fi
 
     - name: Install pip + deps
@@ -31,4 +30,4 @@ runs:
       shell: bash
       run: |
         eval "$VENV_ACTIVATE"
-        pip install "nuitka>=2.8" ordered-set zstandard
+        pip install "nuitka>=2.9" ordered-set zstandard
