@@ -130,7 +130,7 @@ jobs:
 
       - uses: ./.github/actions/setup-build
 
-      - name: Build macOS App
+      - name: Build macOS Universal App
         run: |
           source .venv/bin/activate
           python -m nuitka main.py \
@@ -138,6 +138,7 @@ jobs:
             --remove-output \
             --disable-console \
             --macos-create-app-bundle \
+            --macos-universal2 \
             --macos-app-name="PyWarp" \
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \
@@ -149,7 +150,9 @@ jobs:
             --assume-yes-for-downloads \
             --disable-ccache
 
-      - run: mv PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
+      - name: Move App Out of dist
+        run: |
+          mv PyWarp.dist/PyWarp.app "PyWarp-v${{ github.event.inputs.version }}.app"
 
       - name: Create DMG
         run: |
