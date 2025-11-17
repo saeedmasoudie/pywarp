@@ -138,7 +138,6 @@ jobs:
             --remove-output \
             --disable-console \
             --macos-create-app-bundle \
-            --macos-arch=arm64,x86_64 \
             --macos-app-name="PyWarp" \
             --macos-app-icon=assets/logo.icns \
             --macos-app-version="${{ github.event.inputs.version }}" \
