@@ -9,9 +9,10 @@ runs:
       run: |
         python -m venv .venv
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          echo 'VENV_ACTIVATE=". .venv/Scripts/activate"' >> $GITHUB_ENV
+          # Use 'source' for bash on Windows
+          echo "VENV_ACTIVATE=source .venv/Scripts/activate" >> $GITHUB_ENV
         else
-          echo 'VENV_ACTIVATE=". .venv/bin/activate"' >> $GITHUB_ENV
+          echo "VENV_ACTIVATE=source .venv/bin/activate" >> $GITHUB_ENV
         fi
 
     - name: Install pip + deps
