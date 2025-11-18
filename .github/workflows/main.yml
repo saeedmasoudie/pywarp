@@ -309,15 +309,55 @@ jobs:
           MAC_INTEL_DMG=$(find artifacts -name "*macos-intel*.dmg" | head -n1 || true)
           MAC_INTEL_PKG=$(find artifacts -name "*macos-intel*.pkg" | head -n1 || true)
 
-          cat >> RELEASE_NOTES.md <<EOF
+          cat <<EOF | sed -e 's/^[[:space:]]\{0,4\}//' >> RELEASE_NOTES.md
 
-          ## 🧩 Downloads
+            ## 🧩 Downloads
 
-          | Downloads | Compatibility |
-          |---:|:---|
-          | [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) | Windows 10+ |
-          | [![macOS ARM64](https://img.shields.io/badge/macOS-ARM64-999999?style=for-the-badge&logo=apple)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) [![PKG ARM64](https://img.shields.io/badge/PKG-ARM64-555555?style=for-the-badge&logo=apple)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.pkg) <br/> [![macOS Intel](https://img.shields.io/badge/macOS-Intel-888888?style=for-the-badge&logo=apple)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) [![PKG Intel](https://img.shields.io/badge/PKG-Intel-444444?style=for-the-badge&logo=apple)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.pkg) | macOS 10.15+ |
-          | [![Linux x64](https://img.shields.io/badge/Linux-x64-F0C419?style=for-the-badge&logo=linux)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) | GNOME / KDE |
+            <table>
+              <thead>
+                <tr><th>Downloads</th><th>Compatibility</th></tr>
+              </thead>
+              <tbody>
+
+                <tr>
+                  <td>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip">
+                      <img src="https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows" />
+                    </a>
+                  </td>
+                  <td>Windows 10+</td>
+                </tr>
+
+                <tr>
+                  <td>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg">
+                      <img src="https://img.shields.io/badge/macOS-ARM64-999999?style=for-the-badge&logo=apple" />
+                    </a>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.pkg">
+                      <img src="https://img.shields.io/badge/PKG-ARM64-555555?style=for-the-badge&logo=apple" />
+                    </a>
+                    <br/>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg">
+                      <img src="https://img.shields.io/badge/macOS-Intel-888888?style=for-the-badge&logo=apple" />
+                    </a>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.pkg">
+                      <img src="https://img.shields.io/badge/PKG-Intel-444444?style=for-the-badge&logo=apple" />
+                    </a>
+                  </td>
+                  <td>macOS 10.15+</td>
+                </tr>
+
+                <tr>
+                  <td>
+                    <a href="https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz">
+                      <img src="https://img.shields.io/badge/Linux-x64-F0C419?style=for-the-badge&logo=linux" />
+                    </a>
+                  </td>
+                  <td>GNOME / KDE</td>
+                </tr>
+
+              </tbody>
+            </table>
 
           EOF
 
