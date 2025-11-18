@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
                                QTreeWidget, QTreeWidgetItem)
 
-CURRENT_VERSION = "1.2.8"
+CURRENT_VERSION = "1.2.9"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
