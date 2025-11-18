@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.9 - 2025-11-18
+### Changes
+- Added Smart MASQUE feature to automatically check all HTTP protocols and connect to the working one
+- Reworked and optimized power button functionality for improved performance
+- Updated GitHub release content with new information
+- Added Intel and AMD64 .pkg support for macOS in the download table
+- Performed minor fixes and code cleanup
+
 ## v1.2.8 - 2025-11-11
 ### Highlights
 - New status handler for faster and lighter performance.

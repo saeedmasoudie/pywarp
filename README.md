@@ -4,7 +4,7 @@
 
 ---
 
-## **Features**
+## Features
 - 🌟 **Enhanced Protocol Support**: Includes UI for changing protocols.
 - 🌐 **DNS Mode Management**: Easily toggle between "off," "block adult-content" and "block malware" DNS filters.
 - 🔗 **Custom Endpoint Configuration**: Set, save, and reset connection endpoints directly in the app.
@@ -12,6 +12,19 @@
 - 🎨 **Dynamic Theme Compatibility**: Automatically adapts to your system's dark/light mode.
 - 🗂 **Resource Integration**: Bundles settings and assets directly into the app with Qt Resource System for portability.
 - ⚡ **Exclude IP/Domain**: Manage exclusions directly from the Advanced Settings.
+- 🖥️ **Per-App Split Tunneling**: Configure split tunnel rules per application on Windows, macOS, and Linux.
+- 🚀 **Smart MASQUE Protocol**: Automatically selects the fastest working HTTP protocol for improved connection speed and reliability.
+
+---
+
+## 📥 Download
+
+You can always grab the latest version of the app from the **[GitHub Releases](../../releases/latest)** page.  
+Choose the package that matches your operating system:
+
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-blue?logo=windows)](../../releases/latest)
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-lightgrey?logo=apple)](../../releases/latest)
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-green?logo=linux)](../../releases/latest)
 
 ---
 
@@ -22,9 +35,9 @@
 - ✅ Rework on Theme
 - ✅ Multi Language support
 - ✅ Change Settings Section
+- ✅ Split Tunnel Future
 
 **Planned / In Progress:**
-- 🔁 Split Tunnel Future
 - 🌟 MTM (Masque to Masque)
 - 🌐 Support Russian and Chinese language
 
@@ -44,19 +57,29 @@ Every contribution helps keep the project alive. Thank you!
 ![PyWarp Normal](screenshots/Screenshot-2.jpg)
 ---
 
-## **Prerequisites**
-- Python 3.x installed on your machine.
-- Install necessary libraries: pip install -r requirements.txt
+## 🛠 Build from Source
 
----
+If you prefer to build the app yourself instead of downloading the prebuilt release:
 
-## **Usage**
-- download the app from Releases
-- make sure you installed the offical version of WARP (open the app for links)
-- close the offical warp (you dont need it anymore)
-- enjoy it
+### Prerequisites
+- Python 3.x installed on your machine
+- Install required libraries:
+  ```bash
+  pip install -r requirements.txt
 
----
+### Build
+- Clone the repository
+- Run the build scripts provided in the repo
+- Generated binaries will be available in the dist/ folder
+
+## 🚀 Usage (Recommended)
+
+For most users, downloading the prebuilt app is easier:
+
+- Download the app from [Releases](../../releases/latest)
+- Make sure you have the official version of WARP installed (open the app for links)
+- Close the official WARP app (you don’t need it anymore once this is running)
+- Enjoy 🎉
 
 ## **Contributing**
 We welcome contributions from the community! To contribute:
