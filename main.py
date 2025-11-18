@@ -23,9 +23,9 @@ from pathlib import Path
 
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
-    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation, QProcess, QSize
+    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation, QProcess, QSize, QPointF
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor, QPainter, QPen, \
-    QPixmap
+    QPixmap, QPainterPath
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
@@ -1684,8 +1684,9 @@ class UpdateChecker(QObject):
 class WarpStatusHandler(QObject):
     status_signal = Signal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, settings, parent=None):
         super().__init__(parent)
+        self.settings_handler = settings
         self._process = QProcess(self)
         self._process.setProcessChannelMode(QProcess.MergedChannels)
         self._process.readyReadStandardOutput.connect(self._on_ready_read)
@@ -1697,6 +1698,12 @@ class WarpStatusHandler(QObject):
         self._restart_timer.setInterval(5000)
         self._restart_timer.timeout.connect(self.start_listener)
 
+        self._stuck_timer = QTimer(self)
+        self._stuck_timer.setSingleShot(True)
+        self._stuck_timer.setInterval(10000)
+        self._stuck_timer.timeout.connect(self._check_connection_stuck)
+
+        self._is_auto_fixing = False
         self._last_status = None
         self._last_reason = None
 
@@ -1720,11 +1727,40 @@ class WarpStatusHandler(QObject):
 
     def stop_listener(self):
         self._restart_timer.stop()
+        self._stuck_timer.stop()
         if self._process.state() == QProcess.Running:
             try:
                 self._process.kill()
             except Exception as e:
                 logger.debug(f"Error stopping listener: {e}")
+
+    def _check_connection_stuck(self):
+        if self._is_auto_fixing:
+            return
+
+        logger.info("Connection stuck. Checking protocol settings...")
+        res = run_warp_command("warp-cli", "settings")
+        if not res or res.returncode != 0:
+            return
+
+        output = res.stdout.lower()
+        is_masque = "masque" in output
+        is_already_h2 = "(HTTP/2)" in output
+
+        if is_masque and not is_already_h2:
+            logger.info("MASQUE stuck on HTTP/3. Switching to HTTP/2...")
+            self._is_auto_fixing = True
+
+            self.status_signal.emit("Connecting",
+                                    QCoreApplication.translate("WarpStatusHandler", "Optimizing protocol (HTTP/2)..."))
+
+            run_warp_command("warp-cli", "tunnel", "masque-options", "set", "h2-only")
+            self.settings_handler.save_settings("masque_option", "h2-only")
+
+            QTimer.singleShot(8000, lambda: setattr(self, '_is_auto_fixing', False))
+
+        else:
+            logger.debug("Connection stuck but not due to MASQUE H3 (or already H2).")
 
     def _on_ready_read(self):
         try:
@@ -1764,14 +1800,13 @@ class WarpStatusHandler(QObject):
                 update_type = event.get("update", "")
                 self._emit_status("Update", update_type)
 
-            else:
-                logger.debug(f"WARP: Unknown event: {event}")
-
     def _translate_reason(self, key: str, value: str = "") -> str:
-
         mapping = {
-            "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler", "Trying to connect to Cloudflare"),
-            "EstablishingConnection": QCoreApplication.translate("WarpStatusHandler", f"Connecting to {value}") if value else QCoreApplication.translate("WarpStatusHandler", "Connecting to Cloudflare"),
+            "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler",
+                                                                  "Trying to connect to Cloudflare"),
+            "EstablishingConnection": QCoreApplication.translate("WarpStatusHandler",
+                                                                 f"Connecting to {value}") if value else QCoreApplication.translate(
+                "WarpStatusHandler", "Connecting to Cloudflare"),
             "InitializingTunnelInterface": QCoreApplication.translate("WarpStatusHandler", "Setting up secure tunnel"),
             "ConfiguringInitialFirewall": QCoreApplication.translate("WarpStatusHandler", "Configuring firewall"),
             "SettingRoutes": QCoreApplication.translate("WarpStatusHandler", "Setting routes"),
@@ -1783,18 +1818,29 @@ class WarpStatusHandler(QObject):
             "SettingsChanged": QCoreApplication.translate("WarpStatusHandler", "Settings changed"),
             "Manual": QCoreApplication.translate("WarpStatusHandler", "Disconnected manually"),
         }
-
         return mapping.get(key, key)
 
     def _emit_status(self, status: str, reason: str):
+        if status == "Connecting":
+            if not self._stuck_timer.isActive() and not self._is_auto_fixing:
+                self._stuck_timer.start()
+        else:
+            self._stuck_timer.stop()
+            if status == "Connected":
+                self._is_auto_fixing = False
+            elif status == "Disconnected":
+                pass
+
         if (status, reason) != (self._last_status, self._last_reason):
             self._last_status, self._last_reason = status, reason
             if status == 'Update':
                 return
+
             if status == "Failed":
                 logger.warning(f"WARP: {status} ({reason})")
             else:
                 logger.debug(f"WARP: {status} ({reason})")
+
             self.status_signal.emit(status, reason)
 
     def _on_process_error(self, error):
@@ -1806,7 +1852,6 @@ class WarpStatusHandler(QObject):
         logger.warning(f"WARP listener exited unexpectedly (code {code}, status {status})")
         self.status_signal.emit("Failed", "warp-cli listener stopped unexpectedly.")
         self._restart_timer.start()
-
 
 class WarpStatsHandler(QObject):
     stats_signal = Signal(list)
@@ -2087,172 +2132,149 @@ class PowerButton(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(150, 150)
-
-        self.STATES = {
-            "Connected": {"style": "on", "text": self.tr("ON")},
-            "Disconnected": {"style": "off", "text": self.tr("OFF")},
-            "Connecting": {"style": "unknown", "text": "..."},
-            "Disconnecting": {"style": "unknown", "text": "..."},
-            "No Network": {"style": "off", "text": self.tr("ERR")},
-            "unknown": {"style": "unknown", "text": self.tr("ERR")}
+        self.setFixedSize(120, 120)
+        self.setCursor(Qt.PointingHandCursor)
+        self._state = "Disconnected"
+        self._hover = False
+        self._angle = 0
+        self._colors = {
+            "Connected": QColor("#10b981"),
+            "Disconnected": QColor("#ef4444"),
+            "Connecting": QColor("#f59e0b"),
+            "Disconnecting": QColor("#f59e0b"),
+            "No Network": QColor("#6b7280"),
+            "unknown": QColor("#6b7280")
         }
+        self._current_color = self._colors["Disconnected"]
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(30)
+        self._shadow.setOffset(0, 0)
+        self._shadow.setColor(QColor(0, 0, 0, 0))
+        self.setGraphicsEffect(self._shadow)
 
-        self.state = "Disconnected"
-        self._toggle_lock = False
-        self.current_error_box = None
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(16)
+        self._anim_timer.timeout.connect(self._update_rotation)
 
-        palette = QApplication.palette()
-        is_dark_mode = palette.color(QPalette.Window).lightness() < 128
-        self.theme = "dark" if is_dark_mode else "light"
+        self._color_anim = QVariantAnimation(self)
+        self._color_anim.setDuration(400)
+        self._color_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._color_anim.valueChanged.connect(self._apply_color)
 
-        self.button_styles = {
-            "off": {"dark": {"border": "#f85149", "text": "#f85149"},
-                    "light": {"border": "#d1242f", "text": "#d1242f"}},
-            "unknown": {"dark": {"border": "#f0883e", "text": "#f0883e"},
-                        "light": {"border": "#f97316", "text": "#f97316"}},
-            "on": {"dark": {"border": "#3fb950", "text": "#3fb950"}, "light": {"border": "#2da44e", "text": "#2da44e"}}
-        }
+    def _apply_color(self, color):
+        self._current_color = color
+        shadow_color = QColor(color)
+        shadow_color.setAlpha(100 if self._state == "Connected" else 0)
+        self._shadow.setColor(shadow_color)
+        self.update()
 
-        self.gradient_colors = {
-            "off": ("#fdecea", "#f9d6d0") if self.theme == "light" else ("#2b1010", "#1a0707"),
-            "unknown": ("#fff4e6", "#ffe6cc") if self.theme == "light" else ("#3a2110", "#1f1208"),
-            "on": ("#e6f5ea", "#d1efd4") if self.theme == "light" else ("#1b2a1f", "#0f1b12")
-        }
-
-        self.power_button = QPushButton("...", self)
-        self.power_button.setGeometry(25, 25, 100, 100)
-        self.power_button.setFont(QFont("Arial", 20, QFont.Bold))
-        self.power_button.setStyleSheet("border-radius: 50px; font-size: 24px;")
-
-        self.glow_effect = QGraphicsDropShadowEffect()
-        self.glow_effect.setBlurRadius(50)
-        self.glow_effect.setOffset(0, 0)
-        self.power_button.setGraphicsEffect(self.glow_effect)
-
-        self.connecting_dots = 0
-        self.connecting_timer = QTimer()
-        self.connecting_timer.setInterval(500)
-        self.connecting_timer.timeout.connect(self.update_dots)
-
-        self.glow_animation = QPropertyAnimation(self.glow_effect, b"blurRadius")
-        self.glow_animation.setStartValue(20)
-        self.glow_animation.setEndValue(50)
-        self.glow_animation.setDuration(800)
-        self.glow_animation.setLoopCount(-1)
-
-        self.glow_color_anim = QVariantAnimation()
-        self.glow_color_anim.setStartValue(QColor("#f97316"))
-        self.glow_color_anim.setEndValue(QColor("#ffb347"))
-        self.glow_color_anim.setDuration(800)
-        self.glow_color_anim.setLoopCount(-1)
-        self.glow_color_anim.valueChanged.connect(self.update_glow_color)
-
-        self.power_button.clicked.connect(self.toggle_power)
-        self.command_error_signal.connect(self.show_error_dialog)
-
-    def update_dots(self):
-        self.connecting_dots = (self.connecting_dots + 1) % 4
-        self.power_button.setText("." * self.connecting_dots)
-
-    def get_glow_color(self, style_key):
-        color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("text", "#999999")
-        qcolor = QColor(color)
-        qcolor.setAlpha(200 if style_key == "unknown" else 255)
-        return qcolor
-
-    def update_glow_color(self, color):
-        if isinstance(color, QColor):
-            color.setAlpha(200)
-            self.glow_effect.setColor(color)
-
-    def apply_style(self, style_key, text):
-        border_color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("border", "#999999")
-        text_color = self.button_styles.get(style_key, {}).get(self.theme, {}).get("text", "#999999")
-        bg_start, bg_end = self.gradient_colors.get(style_key, ("#ffffff", "#f6f8fa"))
-
-        self.power_button.setStyleSheet(f"""
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 {bg_start}, stop:1 {bg_end});
-            border: 4px solid {border_color};
-            color: {text_color};
-            font-weight: 700;
-            border-radius: 50px;
-            font-size: 24px;
-        """)
-
-        if style_key == "unknown" and text == "...":
-            if not self.connecting_timer.isActive():
-                self.connecting_timer.start()
-            if self.glow_animation.state() != QAbstractAnimation.Running:
-                self.glow_animation.start()
-            if self.glow_color_anim.state() != QAbstractAnimation.Running:
-                self.glow_color_anim.start()
-
-            QTimer.singleShot(3000, lambda: self.connecting_timer.stop())
-
-        else:
-            self.connecting_timer.stop()
-            self.glow_animation.stop()
-            self.glow_color_anim.stop()
-            self.glow_effect.setBlurRadius(50 if style_key != "unknown" else 30)
-            self.glow_effect.setColor(self.get_glow_color(style_key))
-            self.power_button.setText(text)
+    def _update_rotation(self):
+        self._angle = (self._angle + 5) % 360
+        self.update()
 
     def update_button_state(self, new_state):
-        self.state = new_state
-        config = self.STATES.get(new_state, self.STATES["unknown"])
+        if self._state == new_state:
+            return
 
-        self.power_button.setDisabled(new_state == "No Network")
+        self._state = new_state
+        target_color = self._colors.get(new_state, self._colors["unknown"])
 
-        self.apply_style(config["style"], config["text"])
+        if new_state in ["Connecting", "Disconnecting"]:
+            if not self._anim_timer.isActive():
+                self._anim_timer.start()
+        else:
+            self._anim_timer.stop()
+            self._angle = 0
+
+        self._color_anim.stop()
+        self._color_anim.setStartValue(self._current_color)
+        self._color_anim.setEndValue(target_color)
+        self._color_anim.start()
+
+        self.setEnabled(new_state != "Unable")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggle_power()
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = self.rect()
+        center = rect.center()
+        radius = (min(rect.width(), rect.height()) / 2) - 8
+        track_pen = QPen(self._current_color.darker(150), 4)
+        if self._state == "Disconnected":
+            track_pen.setColor(QColor("#333333"))
+
+        track_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(track_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(center, radius, radius)
+
+        if self._anim_timer.isActive():
+            spinner_pen = QPen(self._current_color, 4)
+            spinner_pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(spinner_pen)
+            painter.drawArc(
+                rect.adjusted(8, 8, -8, -8),
+                -self._angle * 16,
+                90 * 16
+            )
+
+        icon_pen = QPen(self._current_color, 5)
+        icon_pen.setCapStyle(Qt.RoundCap)
+
+        if self._hover or self._state == "Connected":
+            icon_pen.setColor(self._current_color.lighter(130))
+
+        painter.setPen(icon_pen)
+
+        icon_radius = radius * 0.55
+
+        painter.drawArc(
+            int(center.x() - icon_radius),
+            int(center.y() - icon_radius),
+            int(icon_radius * 2),
+            int(icon_radius * 2),
+            45 * 16,
+            -270 * 16
+        )
+
+        line_top = center.y() - icon_radius - 2
+        line_bottom = center.y() - (icon_radius * 0.2)
+        painter.drawLine(QPointF(center.x(), line_top), QPointF(center.x(), line_bottom))
 
     def toggle_power(self):
-        self.power_button.setDisabled(True)
+        self.setEnabled(False)
+        next_state = "Connecting" if self._state == "Disconnected" else "Disconnecting"
+        self.update_button_state(next_state)
 
         def work():
-            cmd = "connect" if self.state == "Disconnected" else "disconnect"
+            cmd = "connect" if next_state == "Connecting" else "disconnect"
             return run_warp_command("warp-cli", cmd)
 
         def done(result):
-            QTimer.singleShot(3000, lambda: self.power_button.setDisabled(False))
+            QTimer.singleShot(1500, lambda: self.setEnabled(True))
             if not result or result.returncode != 0:
                 error = result.stderr.strip() if result else self.tr("Unknown error")
                 self.command_error_signal.emit(self.tr("Command Error"), error)
+                self.update_button_state("Disconnected" if next_state == "Connecting" else "Connected")
 
         def fail(exc):
             self.command_error_signal.emit(self.tr("Command Error"), str(exc))
-            QTimer.singleShot(3000, lambda: self.power_button.setDisabled(False))
+            self.setEnabled(True)
 
         run_in_worker(work, parent=self, on_done=done, on_error=fail)
-
-    def reset_button_state(self):
-        if self._toggle_lock:
-            self._toggle_lock = False
-            self.power_button.setDisabled(False)
-
-    def customEvent(self, event):
-        if event.type() == QEvent.User:
-            self.show_error_dialog(self.tr("Warning"), self.tr("No network detected. Please check your connection."))
-        elif event.type() == QEvent.Type(QEvent.User + 1):
-            self.show_error_dialog(self.tr("Command Error"), event.error_message)
-        elif event.type() == QEvent.MaxUser:
-            self.show_error_dialog(self.tr("Error"), self.tr("An unexpected error occurred. Please try again later."))
-
-    def show_error_dialog(self, title, message):
-        if self.current_error_box:
-            self.current_error_box.close()
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning if title == self.tr("Warning") else QMessageBox.Critical)
-        box.setWindowTitle(title)
-        box.setText(message)
-        box.setAttribute(Qt.WA_DeleteOnClose)
-        box.finished.connect(self._on_error_dialog_closed)
-        self.current_error_box = box
-        box.show()
-
-    def _on_error_dialog_closed(self):
-        self.current_error_box = None
 
 
 class ExclusionManager(QDialog):
@@ -3139,8 +3161,8 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 400, 480)
         self.setWindowFlags(Qt.Window)
         self.current_error_box = None
-        self.setMinimumSize(360, 600)
-        self.setMaximumSize(450, 750)
+        self.setMinimumSize(330, 555)
+        self.setMaximumSize(395, 600)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -3292,7 +3314,7 @@ class MainWindow(QMainWindow):
         ))
 
         try:
-            self.status_checker = WarpStatusHandler(parent=self)
+            self.status_checker = WarpStatusHandler(self.settings_handler, parent=self)
             self.status_checker.status_signal.connect(self._on_status_ready_with_reason)
         except Exception:
             logger.exception("Status checker failed")
