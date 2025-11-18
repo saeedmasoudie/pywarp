@@ -344,7 +344,7 @@ jobs:
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
           draft: false
-          prerelease: false
+          prerelease: true
           files: |
             artifacts/**/*windows*.zip
             artifacts/**/*linux*.tar.gz
