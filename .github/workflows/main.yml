@@ -208,6 +208,11 @@ jobs:
           python-version: "3.11"
       - uses: ./.github/actions/setup-build
 
+      - name: Remove conflicting OpenSSL (Fix Nuitka fatal scan bug)
+        run: |
+          sudo rm -f /usr/local/lib/libcrypto.dylib || true
+          sudo rm -f /usr/local/lib/libssl.dylib || true
+
       - name: Build macOS Intel
         run: |
           source .venv/bin/activate
@@ -226,8 +231,6 @@ jobs:
             --enable-plugin=pyside6 \
             --nofollow-import-to=OpenSSL \
             --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-            --macos-no-dependency-scan-pattern=/usr/local/opt/openssl@3/*
-            --macos-no-dependency-scan-pattern=/usr/local/lib/libcrypto.dylib
             --include-data-dir=assets=assets \
             --include-qt-plugins=platforms,imageformats,iconengines \
             --assume-yes-for-downloads \
