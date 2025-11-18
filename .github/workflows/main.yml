@@ -147,7 +147,6 @@ jobs:
           python -m nuitka main.py \
             --standalone \
             --remove-output \
-            --disable-console \
             --macos-create-app-bundle \
             --macos-sign-identity="-" \
             --macos-app-name="PyWarp" \
@@ -222,7 +221,6 @@ jobs:
           python -m nuitka main.py \
             --standalone \
             --remove-output \
-            --disable-console \
             --macos-create-app-bundle \
             --macos-sign-identity="-" \
             --macos-app-name="PyWarp" \
@@ -258,7 +256,6 @@ jobs:
             --identifier "com.pywarp.app" \
             --version "${{ github.event.inputs.version }}" \
             --install-location "/Applications" \
-            --sign "-" \
             "pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg"
 
       - uses: actions/upload-artifact@v4
