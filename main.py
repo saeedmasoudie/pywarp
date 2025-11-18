@@ -22,10 +22,10 @@ from types import SimpleNamespace
 from pathlib import Path
 
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
-from PySide6.QtCore import Qt, QThread, Signal, QEvent, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
-    QTranslator, QCoreApplication, QPropertyAnimation, QAbstractAnimation, QProcess, QSize, QPointF
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
+    QTranslator, QCoreApplication, QPropertyAnimation, QProcess, QSize, QPointF
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor, QPainter, QPen, \
-    QPixmap, QPainterPath
+    QPixmap
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
