@@ -82,11 +82,18 @@ def get_warp_cli_executable() -> str | None:
 
     if os_name == "Windows":
         portable_path = (
-            Path(os.getenv("APPDATA", "")) /
-            "pywarp" / "warp" / "warp-cli.exe"
+                Path(os.getenv("APPDATA", ""))
+                / "pywarp"
+                / "warp"
+                / "warp-cli.exe"
         )
     else:
-        portable_path = Path.home() / ".pywarp" / "warp" / "warp-cli"
+        portable_path = (
+                Path.home()
+                / ".pywarp"
+                / "warp"
+                / "warp-cli"
+        )
 
     if portable_path.exists():
         return str(portable_path)
