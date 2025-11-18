@@ -81,27 +81,15 @@ def get_warp_cli_executable() -> str | None:
     os_name = platform.system()
 
     if os_name == "Windows":
-        portable_path = (
-                Path(os.getenv("APPDATA", ""))
-                / "pywarp"
-                / "warp"
-                / "warp-cli.exe"
-        )
+        portable_path = Path(os.getenv("APPDATA", "")) / "pywarp" / "warp" / "warp-cli.exe"
     else:
-        portable_path = (
-                Path.home()
-                / ".pywarp"
-                / "warp"
-                / "warp-cli"
-        )
+        portable_path = Path.home() / ".pywarp" / "warp" / "warp-cli"
 
     if portable_path.exists():
         return str(portable_path)
 
     if os_name == "Darwin":
-        mac_app_path = Path(
-            "/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli"
-        )
+        mac_app_path = Path("/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli")
         if mac_app_path.exists():
             return str(mac_app_path)
 
