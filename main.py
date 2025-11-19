@@ -74,34 +74,42 @@ def safe_subprocess_args():
     return {"shell": False}
 
 def get_warp_cli_executable() -> str | None:
-    system_path = shutil.which("warp-cli")
-    if system_path:
-        return system_path
-
     os_name = platform.system()
 
     if os_name == "Windows":
-        portable_path = Path(os.getenv("APPDATA", "")) / "pywarp" / "warp" / "warp-cli.exe"
-    else:
-        portable_path = Path.home() / ".pywarp" / "warp" / "warp-cli"
+        system_path = shutil.which("warp-cli.exe")
+        if system_path:
+            return system_path
 
-    if portable_path.exists():
-        return str(portable_path)
+        portable = Path(os.getenv("APPDATA", "")) / "pywarp" / "warp" / "warp-cli.exe"
+        if portable.exists():
+            return str(portable)
+
+        return None
+
+    if os_name == "Linux":
+        system_path = shutil.which("warp-cli")
+        if system_path:
+            return system_path
+
+        portable = Path.home() / ".pywarp" / "warp" / "warp-cli"
+        if portable.exists():
+            return str(portable)
+
+        return None
 
     if os_name == "Darwin":
-        mac_app_path = Path("/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli")
-        if mac_app_path.exists():
-            return str(mac_app_path)
-
-        brew_path = Path("/usr/local/bin/warp-cli")
-        if brew_path.exists():
-            return str(brew_path)
-
-        brew_path_new = Path("/opt/homebrew/bin/warp-cli")
-        if brew_path_new.exists():
-            return str(brew_path_new)
-
-    logger.warning("warp-cli executable not found on this system.")
+        mac_paths = [
+            "/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli",
+            "/opt/homebrew/bin/warp-cli",
+            "/usr/local/bin/warp-cli",
+            "/usr/local/sbin/warp-cli",
+            str(Path.home() / ".pywarp" / "warp" / "warp-cli"),
+        ]
+        for p in mac_paths:
+            if Path(p).exists():
+                return p
+        return None
     return None
 
 def run_warp_command(*args):
@@ -1715,7 +1723,7 @@ class WarpStatusHandler(QObject):
 
         self._stuck_timer = QTimer(self)
         self._stuck_timer.setSingleShot(True)
-        self._stuck_timer.setInterval(10000)
+        self._stuck_timer.setInterval(5000)
         self._stuck_timer.timeout.connect(self._check_connection_stuck)
 
         self._is_auto_fixing = False
