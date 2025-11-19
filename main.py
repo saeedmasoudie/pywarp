@@ -34,6 +34,22 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
                                QTreeWidget, QTreeWidgetItem)
 
+if platform.system() == "Darwin":
+    extra_paths = [
+        "/Applications/Cloudflare WARP.app/Contents/Resources",
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin"
+    ]
+    current_path = os.environ.get("PATH", "")
+    for p in extra_paths:
+        if p not in current_path and os.path.exists(p):
+            current_path += os.pathsep + p
+    os.environ["PATH"] = current_path
+
 CURRENT_VERSION = "1.2.9"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
@@ -109,7 +125,7 @@ def get_warp_cli_executable() -> str | None:
         for p in mac_paths:
             if Path(p).exists():
                 return p
-        return None
+        return shutil.which("warp-cli")
     return None
 
 def run_warp_command(*args):
@@ -4021,15 +4037,15 @@ class WarpInstaller:
         if os_name == "Windows":
             if shutil.which("warp-cli"):
                 return True
-
             warp_cli, warp_svc = self._portable_paths()
             if warp_cli.exists() and warp_svc.exists():
                 if not self._is_warp_svc_running_windows():
                     self._ensure_warp_svc_running_windows()
                 return True
             return False
-
-        return shutil.which("warp-cli") is not None
+        if get_warp_cli_executable():
+            return True
+        return False
 
     def get_os_download_link(self):
         os_name = platform.system()
