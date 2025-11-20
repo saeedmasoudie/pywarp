@@ -128,24 +128,34 @@ def get_warp_cli_executable() -> str | None:
         return shutil.which("warp-cli")
     return None
 
-def run_warp_command(*args):
+def run_warp_command(*cmd_args, timeout=30):
+    """
+    Runs the warp-cli command with given arguments.
+    :param cmd_args: warp-cli commands, e.g. ('connect',)
+    :param timeout: timeout in seconds
+    :return: dict with returncode, stdout, stderr
+    """
     warp_cli_path = get_warp_cli_executable()
     if not warp_cli_path:
-        return SimpleNamespace(returncode=-1, stdout="", stderr="warp-cli executable not found")
+        logger.error("warp-cli executable not found")
+        return {"returncode": -1, "stdout": "", "stderr": "warp-cli executable not found"}
 
-    command = [warp_cli_path] + list(args[1:])
-
+    command = [warp_cli_path] + list(cmd_args)
     try:
         result = subprocess.run(
-            command, capture_output=True, text=True, timeout=30, **safe_subprocess_args()
+            command, capture_output=True, text=True, timeout=timeout, **safe_subprocess_args()
         )
-        return result
+        return {
+            "returncode": result.returncode,
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip()
+        }
     except subprocess.TimeoutExpired:
-        logger.error(f"Command timeout: {' '.join(args)}")
-        return SimpleNamespace(returncode=-1, stdout="", stderr="timeout")
+        logger.error(f"Command timeout: {' '.join(command)}")
+        return {"returncode": -1, "stdout": "", "stderr": "timeout"}
     except Exception as e:
-        logger.error(f"Command failed: {' '.join(args)}: {e}")
-        return SimpleNamespace(returncode=-1, stdout="", stderr=str(e))
+        logger.error(f"Command failed: {' '.join(command)}: {e}")
+        return {"returncode": -1, "stdout": "", "stderr": str(e)}
 
 def notify_update(update_type, latest_version, current_version):
     app = QApplication.instance()
