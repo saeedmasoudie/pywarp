@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QDialog, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
-                               QTreeWidget, QTreeWidgetItem)
+                               QTreeWidget, QTreeWidgetItem, QScrollArea)
 
 if platform.system() == "Darwin":
     extra_paths = [
@@ -50,7 +50,7 @@ if platform.system() == "Darwin":
             current_path += os.pathsep + p
     os.environ["PATH"] = current_path
 
-CURRENT_VERSION = "1.2.9"
+CURRENT_VERSION = "1.3.0"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
@@ -2333,74 +2333,253 @@ class ExclusionManager(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(self.tr("Add Exclusion"))
-        self.setFixedSize(320, 240)
+        self.setWindowTitle(self.tr("Add Exclusions"))
+        self.resize(450, 500)
+        self.pending = []
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        self.selector = QComboBox()
-        self.selector.addItems([self.tr("IP"), self.tr("Domain")])
-        layout.addWidget(self.selector)
+        input_group = QGroupBox(self.tr("New Exclusion"))
+        input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(10, 10, 10, 10)
 
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText(self.tr("Enter IP or Domain"))
-        layout.addWidget(self.input_field)
-        layout.addSpacing(10)
+        self.input_field.setPlaceholderText(self.tr("e.g., google.com or 192.168.1.5"))
+        self.input_field.setMinimumHeight(36)
+        self.input_field.returnPressed.connect(self.add_item)
 
-        self.submit_button = QPushButton(self.tr("Add"))
-        self.submit_button.setMinimumHeight(40)
-        self.submit_button.clicked.connect(self.add_item)
-        layout.addWidget(self.submit_button, alignment=Qt.AlignCenter)
+        self.add_btn = QPushButton(self.tr("Add"))
+        self.add_btn.setCursor(Qt.PointingHandCursor)
+        self.add_btn.setMinimumHeight(36)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0078D4; 
+                color: white; 
+                font-weight: bold; 
+                border-radius: 4px;
+                padding: 0 15px;
+            }
+            QPushButton:hover { background-color: #0063b1; }
+        """)
+        self.add_btn.clicked.connect(self.add_item)
+
+        input_layout.addWidget(self.input_field)
+        input_layout.addWidget(self.add_btn)
+        input_group.setLayout(input_layout)
+        layout.addWidget(input_group)
+
+        list_label = QLabel(self.tr("Pending Items (Not saved yet)"))
+        list_label.setStyleSheet("color: #888; font-size: 11px; margin-bottom: 5px;")
+        layout.addWidget(list_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        self.list_container = QWidget()
+        self.list_layout = QVBoxLayout(self.list_container)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(8)
+        self.list_layout.setAlignment(Qt.AlignTop)
+
+        scroll.setWidget(self.list_container)
+        layout.addWidget(scroll, 1)
+
+        row = QHBoxLayout()
+        self.remove_all_btn = QPushButton(self.tr("Clear All"))
+        self.remove_all_btn.setMinimumHeight(32)
+
+        self.submit_btn = QPushButton(self.tr("Apply Changes"))
+        self.submit_btn.setMinimumHeight(36)
+        self.submit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #107c10; 
+                color: white; 
+                font-weight: bold; 
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #0b5a0b; }
+        """)
+
+        row.addWidget(self.remove_all_btn)
+        row.addStretch()
+        row.addWidget(self.submit_btn)
+        layout.addLayout(row)
+
+        self.remove_all_btn.clicked.connect(self.clear_all)
+        self.submit_btn.clicked.connect(self.submit_all)
+        self.input_field.setFocus()
 
     @staticmethod
-    def is_valid_ip(value):
+    def is_valid_ip(value: str) -> bool:
         try:
-            ipaddress.ip_address(value)
+            ipaddress.ip_network(value, strict=False)
             return True
-        except ValueError:
+        except Exception:
             return False
 
     @staticmethod
-    def is_valid_domain(value):
-        return bool(re.match(r"^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,63}$", value))
-
-    def add_item(self):
-        value = self.input_field.text().strip()
-        if not value:
-            return
-
-        exclusion_type = self.selector.currentText().lower()
-        is_ip_mode = exclusion_type == self.tr("ip").lower()
-
-        if is_ip_mode and not self.is_valid_ip(value):
-            QMessageBox.warning(self, self.tr("Invalid Input"), self.tr("Please enter a valid IP address."))
-            return
-        if not is_ip_mode and not self.is_valid_domain(value):
-            QMessageBox.warning(self, self.tr("Invalid Input"), self.tr("Please enter a valid domain name."))
-            return
-        if is_ip_mode and value in self.DEFAULT_IPS:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Cannot add a default IP to exclusions."))
-            return
-
-        try:
-            cmd = "ip" if is_ip_mode else "host"
-            result = run_warp_command("warp-cli", "tunnel", cmd, "add", value)
-            if result.returncode == 0:
-                self.exclusions_updated.emit()
-                self.accept()
-            else:
-                QMessageBox.warning(self, self.tr("Error"),
-                                    self.tr("Failed to add {}: {}").format(exclusion_type, result.stderr.strip()))
-        except subprocess.TimeoutExpired:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Command timed out"))
-        except Exception as e:
-            QMessageBox.warning(self, self.tr("Error"), f"Command failed: {e}")
+    def is_valid_domain(value: str) -> bool:
+        value = value.lower().strip()
+        return bool(
+            re.match(r"^([a-z0-9-]+\.)+[a-z]{2,63}$", value)
+        )
 
     @classmethod
     def filter_default_ips(cls, ip_list):
         return [ip for ip in ip_list if ip not in cls.DEFAULT_IPS]
+
+    def _add_row_widget(self, type_str, value):
+        row_widget = QFrame()
+        row_widget.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d30; /* Darker bg for rows */
+                border: 1px solid #3e3e42;
+                border-radius: 6px;
+            }
+        """)
+        if not ThemeManager.is_dark_mode():
+            row_widget.setStyleSheet("""
+                QFrame {
+                    background-color: #ffffff;
+                    border: 1px solid #d1d1d1;
+                    border-radius: 6px;
+                }
+            """)
+
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(10, 8, 10, 8)
+
+        badge = QLabel(type_str.upper())
+        badge.setFixedWidth(60)
+        badge.setAlignment(Qt.AlignCenter)
+
+        if type_str == "ip":
+            badge_color = "#0078D4"
+        else:
+            badge_color = "#986f0b"
+
+        badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {badge_color};
+                color: white;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 2px;
+            }}
+        """)
+
+        text_lbl = QLabel(value)
+        text_lbl.setStyleSheet("border: none; background: transparent; font-size: 13px; padding-left: 10px;")
+
+        del_btn = QPushButton("×")
+        del_btn.setObjectName("exclusion_del_btn")
+        del_btn.setFixedSize(28, 28)
+        del_btn.setCursor(Qt.PointingHandCursor)
+        del_btn.setToolTip(self.tr("Remove from list"))
+        del_btn.setStyleSheet("""
+            #exclusion_del_btn {
+                padding: 0;
+                margin: 0;
+                line-height: 1; 
+                color: #ff5555;                  
+                font-size: 16px;
+                font-weight: 600;
+                background-color: rgba(255, 255, 255, 0.1); 
+                border: none;                                
+                border-radius: 14px;                         
+            }
+            #exclusion_del_btn:hover {
+                background-color: #ff3333;                   
+                color: white; 
+            }
+            #exclusion_del_btn:pressed {
+                background-color: #b30000;
+            }
+        """)
+
+        row_layout.addWidget(badge)
+        row_layout.addWidget(text_lbl, 1)
+        row_layout.addWidget(del_btn)
+
+        def remove_it():
+            entry = (type_str, value)
+            if entry in self.pending:
+                self.pending.remove(entry)
+
+            row_widget.deleteLater()
+            QTimer.singleShot(10, self.list_container.adjustSize)
+
+        del_btn.clicked.connect(remove_it)
+        self.list_layout.addWidget(row_widget)
+
+    def add_item(self):
+        raw = self.input_field.text().strip()
+        if not raw:
+            return
+
+        detected_type = None
+        clean_value = raw
+
+        if self.is_valid_ip(raw):
+            if raw in self.DEFAULT_IPS:
+                QMessageBox.warning(self, self.tr("Error"), self.tr("Default IP cannot be excluded"))
+                self.input_field.clear()
+                return
+            detected_type = "ip"
+
+        elif self.is_valid_domain(raw.replace("*", "")):
+            detected_type = "host"
+            clean_value = raw.lower()
+
+        else:
+            QMessageBox.warning(self, self.tr("Invalid Input"),
+                                self.tr("Input is not a valid IP address or Domain name."))
+            return
+
+        entry = (detected_type, clean_value)
+        if entry in self.pending:
+            self.input_field.clear()
+            return
+
+        self.pending.append(entry)
+        self._add_row_widget(detected_type, clean_value)
+        self.input_field.clear()
+
+    def clear_all(self):
+        self.pending.clear()
+        while self.list_layout.count():
+            item = self.list_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def submit_all(self):
+        if not self.pending:
+            self.accept()
+            return
+
+        failed = []
+
+        for type_str, value in self.pending:
+            r = run_warp_command("warp-cli", "tunnel", type_str, "add", value)
+
+            if not (r and r.returncode == 0):
+                failed.append(f"{value} ({type_str})")
+
+        if failed:
+            QMessageBox.warning(
+                self, self.tr("Warning"),
+                self.tr("Failed to add the following:\n") + "\n".join(failed)
+            )
+
+        self.exclusions_updated.emit()
+        self.accept()
 
 
 class AdvancedSettings(QDialog):
