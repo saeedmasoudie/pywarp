@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.0 - 2025-11-24
+### Changes
+- Improved input handling in ExclusionManager
+- Streamlined addition method with intelligent IP/domain detection
+- Enhanced Persian language support
+- General stability and minor bug fixes
+
 ## v1.2.9 - 2025-11-18
 ### Changes
 - Added Smart MASQUE feature to automatically check all HTTP protocols and connect to the working one
