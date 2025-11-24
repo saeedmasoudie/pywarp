@@ -2355,9 +2355,9 @@ class ExclusionManager(QDialog):
         self.add_btn.setMinimumHeight(36)
         self.add_btn.setStyleSheet("""
             QPushButton {
-                background-color: #0078D4; 
-                color: white; 
-                font-weight: bold; 
+                background-color: #0078D4;
+                color: white;
+                font-weight: bold;
                 border-radius: 4px;
                 padding: 0 15px;
             }
@@ -2396,9 +2396,9 @@ class ExclusionManager(QDialog):
         self.submit_btn.setMinimumHeight(36)
         self.submit_btn.setStyleSheet("""
             QPushButton {
-                background-color: #107c10; 
-                color: white; 
-                font-weight: bold; 
+                background-color: #107c10;
+                color: white;
+                font-weight: bold;
                 border-radius: 6px;
                 font-size: 14px;
             }
@@ -2437,7 +2437,7 @@ class ExclusionManager(QDialog):
         row_widget = QFrame()
         row_widget.setStyleSheet("""
             QFrame {
-                background-color: #2d2d30; /* Darker bg for rows */
+                background-color: #2d2d30;
                 border: 1px solid #3e3e42;
                 border-radius: 6px;
             }
@@ -2486,17 +2486,17 @@ class ExclusionManager(QDialog):
             #exclusion_del_btn {
                 padding: 0;
                 margin: 0;
-                line-height: 1; 
-                color: #ff5555;                  
+                line-height: 1;
+                color: #ff5555;
                 font-size: 16px;
                 font-weight: 600;
-                background-color: rgba(255, 255, 255, 0.1); 
-                border: none;                                
-                border-radius: 14px;                         
+                background-color: rgba(255, 255, 255, 0.1);
+                border: none;
+                border-radius: 14px;
             }
             #exclusion_del_btn:hover {
-                background-color: #ff3333;                   
-                color: white; 
+                background-color: #ff3333;
+                color: white;
             }
             #exclusion_del_btn:pressed {
                 background-color: #b30000;
