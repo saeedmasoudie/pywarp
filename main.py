@@ -728,18 +728,19 @@ class IpFetcher(QObject):
                     "https": f"socks5://127.0.0.1:{port}"
                 }
 
-        def do_request():
+        def do_request(max_attempts=2):
             url = "https://ipwho.is/"
-            try:
-                resp = requests.get(url, timeout=8, proxies=proxies)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("success", True):
-                        return data.get("ip", "Unavailable")
-                return "Unavailable"
-            except Exception as e:
-                logger.debug(f"IpFetcher.do_request exception: {e}")
-                return "Unavailable"
+            for attempt in range(max_attempts):
+                try:
+                    resp = requests.get(url, timeout=8, proxies=proxies)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("success", True):
+                            return data.get("ip", "Unavailable")
+                    logger.debug(f"Attempt {attempt + 1}: status {resp.status_code}, failed to get IP")
+                except Exception as e:
+                    logger.debug(f"Attempt {attempt + 1}: IpFetcher.do_request exception: {e}")
+            return "Unavailable"
 
         try:
             if self._worker and getattr(self._worker, "isRunning", None) and self._worker.isRunning():
@@ -757,45 +758,6 @@ class IpFetcher(QObject):
         )
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
-
-    def get_country_info(self, ip: str) -> dict:
-        result = {
-            "country": "Unknown",
-            "country_code": "",
-            "flag": "",
-            "region": "",
-            "city": ""
-        }
-
-        if not ip or ip.lower() == "unavailable":
-            return result
-
-        try:
-            resp = requests.get(f"https://ipwho.is/{ip}", timeout=6)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("success", True):
-                    country = data.get("country") or "Unknown"
-                    code = data.get("country_code") or ""
-                    region = data.get("region") or ""
-                    city = data.get("city") or ""
-                    flag = ""
-                    if code:
-                        try:
-                            flag = chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
-                        except Exception:
-                            pass
-                    result.update({
-                        "country": country,
-                        "country_code": code,
-                        "flag": flag,
-                        "region": region,
-                        "city": city
-                    })
-        except Exception as e:
-            logger.debug(f"IpFetcher.get_country_info error: {e}")
-
-        return result
 
 
 class LogsWindow(QDialog):
@@ -1726,6 +1688,7 @@ class WarpStatusHandler(QObject):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings_handler = settings
+
         self._process = QProcess(self)
         self._process.setProcessChannelMode(QProcess.MergedChannels)
         self._process.readyReadStandardOutput.connect(self._on_ready_read)
@@ -1737,14 +1700,18 @@ class WarpStatusHandler(QObject):
         self._restart_timer.setInterval(5000)
         self._restart_timer.timeout.connect(self.start_listener)
 
-        self._stuck_timer = QTimer(self)
-        self._stuck_timer.setSingleShot(True)
-        self._stuck_timer.setInterval(5000)
-        self._stuck_timer.timeout.connect(self._check_connection_stuck)
-
-        self._is_auto_fixing = False
         self._last_status = None
         self._last_reason = None
+        self._default_candidates = ["h3-only", "h3-with-h2-fallback", "h2-only"]
+        self._auto_detect_running = False
+        self._auto_candidates = []
+        self._auto_index = 0
+        self._current_candidate = None
+        self._auto_try_timeout_ms = 7000
+        self._auto_timer = QTimer(self)
+        self._auto_timer.setSingleShot(True)
+        self._auto_timer.timeout.connect(self._on_auto_timeout)
+        self._observed_connected = False
 
         QTimer.singleShot(0, self.start_listener)
 
@@ -1766,40 +1733,117 @@ class WarpStatusHandler(QObject):
 
     def stop_listener(self):
         self._restart_timer.stop()
-        self._stuck_timer.stop()
         if self._process.state() == QProcess.Running:
             try:
                 self._process.kill()
             except Exception as e:
                 logger.debug(f"Error stopping listener: {e}")
 
-    def _check_connection_stuck(self):
-        if self._is_auto_fixing:
+
+    def _build_candidate_list(self):
+        self._auto_candidates = []
+        try:
+            last = self.settings_handler.get("masque_last_working", "")
+            if isinstance(last, str) and last:
+                self._auto_candidates.append(last)
+        except Exception:
+            last = ""
+
+        for c in self._default_candidates:
+            if c not in self._auto_candidates:
+                self._auto_candidates.append(c)
+
+        logger.debug(f"MASQUE probe list: {self._auto_candidates}")
+
+    def _start_masque_auto_detect(self):
+        try:
+            cur = self.settings_handler.get("masque_option", "")
+            if cur and cur != "auto":
+                return
+        except Exception:
             return
 
-        logger.info("Connection stuck. Checking protocol settings...")
-        res = run_warp_command("warp-cli", "settings")
-        if not res or res.returncode != 0:
+        if self._auto_detect_running:
             return
 
-        output = res.stdout.lower()
-        is_masque = "masque" in output
-        is_already_h2 = "(HTTP/2)" in output
+        self._build_candidate_list()
+        if not self._auto_candidates:
+            return
 
-        if is_masque and not is_already_h2:
-            logger.info("MASQUE stuck on HTTP/3. Switching to HTTP/2...")
-            self._is_auto_fixing = True
+        logger.info("Starting MASQUE auto-detect probe (auto mode).")
+        self._auto_detect_running = True
+        self._auto_index = 0
+        self._current_candidate = None
+        self._observed_connected = False
 
-            self.status_signal.emit("Connecting",
-                                    QCoreApplication.translate("WarpStatusHandler", "Optimizing protocol (HTTP/2)..."))
+        QTimer.singleShot(0, self._apply_current_candidate)
 
-            run_warp_command("warp-cli", "tunnel", "masque-options", "set", "h2-only")
-            self.settings_handler.save_settings("masque_option", "h2-only")
+    def _apply_current_candidate(self):
+        if not self._auto_detect_running:
+            return
 
-            QTimer.singleShot(8000, lambda: setattr(self, '_is_auto_fixing', False))
+        if self._last_status == "Connected":
+            logger.debug("Already connected before trying candidate; stopping probe.")
+            self._stop_masque_auto_detect(success=False)
+            return
 
+        if self._auto_index >= len(self._auto_candidates):
+            logger.info("MASQUE auto-detect: no candidate produced a connection.")
+            self._stop_masque_auto_detect(success=False)
+            return
+
+        candidate = self._auto_candidates[self._auto_index]
+        self._current_candidate = candidate
+        logger.info(f"MASQUE auto-detect: applying '{candidate}' (attempt {self._auto_index+1}/{len(self._auto_candidates)})")
+
+        try:
+            res = run_warp_command("warp-cli", "tunnel", "masque-options", "set", candidate)
+        except Exception as e:
+            logger.exception(f"Error while trying to set masque-options to {candidate}: {e}")
+            res = None
+
+        if not res or getattr(res, "returncode", 1) != 0:
+            logger.warning(f"Setting masque-options to '{candidate}' failed: {getattr(res, 'stderr', '')}")
+            self._auto_index += 1
+            QTimer.singleShot(300, self._apply_current_candidate)
+            return
+
+        self._observed_connected = False
+        self._auto_timer.start(self._auto_try_timeout_ms)
+
+    def _on_auto_timeout(self):
+        if not self._auto_detect_running:
+            return
+
+        if self._observed_connected:
+            logger.debug("Auto-detect timer expired but connection was observed - stopping (success).")
+            self._stop_masque_auto_detect(success=True)
+            return
+
+        logger.debug(f"MASQUE auto-detect: timeout for '{self._current_candidate}', trying next.")
+        self._auto_index += 1
+        QTimer.singleShot(0, self._apply_current_candidate)
+
+    def _stop_masque_auto_detect(self, success=False):
+        try:
+            self._auto_timer.stop()
+        except Exception:
+            pass
+
+        if success and self._current_candidate:
+            try:
+                self.settings_handler.save_settings("masque_last_working", self._current_candidate)
+                logger.info(f"MASQUE auto-detect: saved masque_last_working = '{self._current_candidate}'")
+            except Exception:
+                logger.exception("Failed to save masque_last_working after successful auto-detect.")
         else:
-            logger.debug("Connection stuck but not due to MASQUE H3 (or already H2).")
+            logger.info("MASQUE auto-detect finished without success (keeps previous masque_last_working).")
+
+        self._auto_detect_running = False
+        self._auto_candidates = []
+        self._auto_index = 0
+        self._current_candidate = None
+        self._observed_connected = False
 
     def _on_ready_read(self):
         try:
@@ -1816,7 +1860,6 @@ class WarpStatusHandler(QObject):
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
-                logger.debug(f"WARP: Non-JSON line: {line}")
                 continue
 
             if "status" in event:
@@ -1824,10 +1867,13 @@ class WarpStatusHandler(QObject):
                 reason = event.get("reason", "")
 
                 if isinstance(reason, dict):
-                    key, value = next(iter(reason.items()))
-                    if isinstance(value, list):
-                        value = value[0] if value else ""
-                    reason = self._translate_reason(key, value)
+                    try:
+                        key, value = next(iter(reason.items()))
+                        if isinstance(value, list):
+                            value = value[0] if value else ""
+                        reason = self._translate_reason(key, value)
+                    except Exception:
+                        reason = str(reason)
                 elif isinstance(reason, str):
                     reason = self._translate_reason(reason)
                 else:
@@ -1841,32 +1887,51 @@ class WarpStatusHandler(QObject):
 
     def _translate_reason(self, key: str, value: str = "") -> str:
         mapping = {
-            "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler",
-                                                                  "Trying to connect to Cloudflare"),
+            "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler", "Trying to connect..."),
             "EstablishingConnection": QCoreApplication.translate("WarpStatusHandler",
                                                                  f"Connecting to {value}") if value else QCoreApplication.translate(
                 "WarpStatusHandler", "Connecting to Cloudflare"),
-            "InitializingTunnelInterface": QCoreApplication.translate("WarpStatusHandler", "Setting up secure tunnel"),
-            "ConfiguringInitialFirewall": QCoreApplication.translate("WarpStatusHandler", "Configuring firewall"),
-            "SettingRoutes": QCoreApplication.translate("WarpStatusHandler", "Setting routes"),
-            "ConfiguringFirewallRules": QCoreApplication.translate("WarpStatusHandler", "Applying firewall rules"),
-            "PerformingConnectivityChecks": QCoreApplication.translate("WarpStatusHandler", "Checking connectivity"),
-            "ValidatingDnsConfiguration": QCoreApplication.translate("WarpStatusHandler", "Validating DNS settings"),
-            "CheckingNetwork": QCoreApplication.translate("WarpStatusHandler", "Checking network"),
-            "InitializingSettings": QCoreApplication.translate("WarpStatusHandler", "Initializing settings"),
-            "SettingsChanged": QCoreApplication.translate("WarpStatusHandler", "Settings changed"),
+            "InitializingTunnelInterface": QCoreApplication.translate("WarpStatusHandler",
+                                                                      "Setting up secure connection"),
+            "ConfiguringInitialFirewall": QCoreApplication.translate("WarpStatusHandler",
+                                                                     "Preparing security settings"),
+            "SettingRoutes": QCoreApplication.translate("WarpStatusHandler", "Setting up network access"),
+            "ConfiguringFirewallRules": QCoreApplication.translate("WarpStatusHandler", "Applying security rules"),
+            "PerformingConnectivityChecks": QCoreApplication.translate("WarpStatusHandler",
+                                                                       "Checking internet connection"),
+            "ValidatingDnsConfiguration": QCoreApplication.translate("WarpStatusHandler", "Checking DNS settings"),
+            "CheckingNetwork": QCoreApplication.translate("WarpStatusHandler", "Checking network status"),
+            "InitializingSettings": QCoreApplication.translate("WarpStatusHandler", "Loading settings"),
+            "SettingsChanged": QCoreApplication.translate("WarpStatusHandler", "Settings updated"),
             "Manual": QCoreApplication.translate("WarpStatusHandler", "Disconnected manually"),
+            "NetworkHealthy": QCoreApplication.translate("WarpStatusHandler", "Connection is working normally"),
+            "NoNetwork": QCoreApplication.translate("WarpStatusHandler", "No internet connection"),
+            "HappyEyeballsFailed": QCoreApplication.translate("WarpStatusHandler", "Connection attempt failed"),
         }
         return mapping.get(key, key)
 
     def _emit_status(self, status: str, reason: str):
         if status == "Connecting":
-            if not self._stuck_timer.isActive() and not self._is_auto_fixing:
-                self._stuck_timer.start()
+            try:
+                cur = self.settings_handler.get("masque_option", "")
+            except Exception:
+                cur = ""
+
+            if (not cur or cur == "auto") and not self._auto_detect_running:
+                self._start_masque_auto_detect()
+
         else:
-            self._stuck_timer.stop()
             if status == "Connected":
-                self._is_auto_fixing = False
+                if self._auto_detect_running:
+                    self._observed_connected = True
+                    if self._current_candidate:
+                        try:
+                            self.settings_handler.save_settings("masque_last_working", self._current_candidate)
+                            logger.info(f"MASQUE auto-detect: connection successful with '{self._current_candidate}'")
+                        except Exception:
+                            logger.exception("Failed to persist masque_last_working on Connected.")
+                    self._stop_masque_auto_detect(success=True)
+
             elif status == "Disconnected":
                 pass
 
@@ -1874,12 +1939,10 @@ class WarpStatusHandler(QObject):
             self._last_status, self._last_reason = status, reason
             if status == 'Update':
                 return
-
             if status == "Failed":
                 logger.warning(f"WARP: {status} ({reason})")
             else:
                 logger.debug(f"WARP: {status} ({reason})")
-
             self.status_signal.emit(status, reason)
 
     def _on_process_error(self, error):
@@ -1891,6 +1954,7 @@ class WarpStatusHandler(QObject):
         logger.warning(f"WARP listener exited unexpectedly (code {code}, status {status})")
         self.status_signal.emit("Failed", "warp-cli listener stopped unexpectedly.")
         self._restart_timer.start()
+
 
 class WarpStatsHandler(QObject):
     stats_signal = Signal(list)
@@ -2697,6 +2761,7 @@ class AdvancedSettings(QDialog):
         self.masque_input = QComboBox()
         self.masque_input.setMinimumWidth(200)
         options = [
+            ("auto", self.tr("detect the best MASQUE protocol on connect (recommended)")),
             ("h3-only", self.tr("Use only HTTP/3 (fastest, best for modern networks)")),
             ("h2-only", self.tr("Force HTTP/2 (may help in restrictive networks)")),
             ("h3-with-h2-fallback", self.tr("Use HTTP/3, fallback to HTTP/2 if needed")),
@@ -2705,11 +2770,16 @@ class AdvancedSettings(QDialog):
             self.masque_input.addItem(value, value)
             idx = self.masque_input.count() - 1
             self.masque_input.setItemData(idx, desc, Qt.ToolTipRole)
+
         current_masque = self.settings_handler.get("masque_option", "")
-        if current_masque:
-            index = self.masque_input.findData(current_masque)
-            if index != -1:
-                self.masque_input.setCurrentIndex(index)
+        if not current_masque:
+            current_masque = "auto"
+        index = self.masque_input.findData(current_masque)
+        if index != -1:
+            self.masque_input.setCurrentIndex(index)
+        else:
+            self.masque_input.setCurrentIndex(0)
+
         self.masque_set_button = QPushButton(self.tr("Set"))
         self.masque_reset_button = QPushButton(self.tr("Reset"))
         self.masque_set_button.clicked.connect(self.save_masque_option)
@@ -3109,15 +3179,37 @@ class AdvancedSettings(QDialog):
         option = self.masque_input.currentData()
         if not option:
             return
+
+        current_mode = self.settings_handler.get("mode", "warp")
+        if option == "h2-only" and current_mode == "proxy":
+            QMessageBox.warning(
+                self,
+                self.tr("Incompatible Option"),
+                self.tr(
+                    "MASQUE option 'HTTP/2 (h2-only)' is incompatible with Proxy mode.\n"
+                    "Please switch the application mode from 'proxy' to another mode before using HTTP/2."
+                ),
+            )
+            saved_masque = self.settings_handler.get("masque_option", "") or "auto"
+            idx = self.masque_input.findData(saved_masque)
+            if idx != -1:
+                self.masque_input.setCurrentIndex(idx)
+            else:
+                self.masque_input.setCurrentIndex(self.masque_input.findData("auto"))
+            return
+
         try:
+            option_text = option
+            if option == "auto":
+                option = "h3-with-h2-fallback"
             result = run_warp_command("warp-cli", "tunnel", "masque-options", "set", option)
             if result.returncode != 0:
                 error_line = result.stderr.strip().split("\n")[0]
                 QMessageBox.warning(self, self.tr("Error"), error_line)
                 return
-            self.settings_handler.save_settings("masque_option", option)
+            self.settings_handler.save_settings("masque_option", option_text)
             QMessageBox.information(self, self.tr("Saved"),
-                                    self.tr("MASQUE option set to {}.").format(option))
+                                    self.tr("MASQUE option set to {}.").format(option_text))
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), str(e))
 
@@ -3128,10 +3220,11 @@ class AdvancedSettings(QDialog):
                 error_line = result.stderr.strip().split("\n")[0]
                 QMessageBox.warning(self, self.tr("Error"), error_line)
                 return
+
             self.settings_handler.save_settings("masque_option", "")
-            self.masque_input.setCurrentIndex(-1)
+            self.masque_input.setCurrentIndex(self.masque_input.findData("auto"))
             QMessageBox.information(self, self.tr("Reset"),
-                                    self.tr("MASQUE option reset successfully."))
+                                    self.tr("MASQUE option reset successfully (now Auto)."))
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), str(e))
 
@@ -3299,6 +3392,19 @@ class SettingsPage(QWidget):
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
+
+        current_masque = self.settings_handler.get("masque_option", "") or "auto"
+        if selected_mode == "proxy" and current_masque == "h2-only":
+            QMessageBox.warning(
+                self,
+                self.tr("Incompatible Mode"),
+                self.tr(
+                    "Proxy mode is not compatible with MASQUE set to HTTP/2 (h2-only).\n"
+                    "Please change MASQUE from 'h2-only' to another option before switching to Proxy mode."
+                ),
+            )
+            self.modes_dropdown.setCurrentText(self.current_mode)
+            return
 
         if selected_mode == "proxy":
             saved_port = self.settings_handler.get("proxy_port", "40000")
@@ -3542,13 +3648,6 @@ class MainWindow(QMainWindow):
             self.stats_checker.stats_signal.connect(self.update_stats_display)
         except Exception:
             logger.exception("Stats checker failed")
-
-        try:
-            self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
-            self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
-            self.ip_fetcher.fetch_ip()
-        except Exception:
-            logger.exception("IP fetcher failed")
 
     def restart_app(self):
         logger.info("Restart requested by user.")
@@ -4033,7 +4132,6 @@ class MainWindow(QMainWindow):
 
         try:
             protocol, endpoints, handshake_time, sent, received, latency, loss = stats_list
-
             # --- Protocol & Endpoints ---
             self.stats_table.setItem(0, 1, QTableWidgetItem(protocol))
             endpoints_value = endpoints.split(',')
@@ -4089,7 +4187,14 @@ class MainWindow(QMainWindow):
                 return "red"
 
             prev_latency = getattr(self, "_prev_latency", 0)
-            self.animate_number(6, 1, prev_latency, latency_value, " ms", latency_color, decimals=0)
+            if latency_value <= 0:
+                sus_latency = "0 ms" if latency_value == 0 else "Not Available"
+                sus_final = QTableWidgetItem(sus_latency)
+                if latency_value == 0:
+                    sus_final.setForeground(QBrush(QColor("green")))
+                self.stats_table.setItem(6, 1, sus_final)
+            else:
+                self.animate_number(6, 1, prev_latency, latency_value, " ms", latency_color, decimals=0)
             self._prev_latency = latency_value
 
             # --- Loss ---
@@ -4101,7 +4206,10 @@ class MainWindow(QMainWindow):
                 return "red"
 
             prev_loss = getattr(self, "_prev_loss", 0.00)
-            self.animate_number(7, 1, prev_loss, loss, "%", loss_color, decimals=2)
+            if loss < 0:
+                self.stats_table.setItem(7, 1, QTableWidgetItem("Not Available"))
+            else:
+                self.animate_number(7, 1, prev_loss, loss, "%", loss_color, decimals=2)
             self._prev_loss = loss
 
         except Exception as e:
