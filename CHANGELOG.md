@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.1 - 2025-11-27
+### Changes
+- Add automatic protocol selection in MASQUE options
+- Add warning when using proxy mode with MASQUE over HTTP/2
+- Fix HTTP/2 stats inaccuracies for packet loss and ping
+- Improve smart MASQUE handling and fallback behavior
+- Remove dead code and perform general cleanup
+- Simplify WARP status messages for clearer, user-friendly wording
+- update persian language
+
 ## v1.3.0 - 2025-11-24
 ### Changes
 - Improved input handling in ExclusionManager
