@@ -3617,11 +3617,6 @@ class MainWindow(QMainWindow):
         self._ready_checks["protocol"] = True
         self._check_ready()
 
-    def _on_ip_ready(self, ip):
-        self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip))
-        self._ready_checks["ip"] = True
-        self._check_ready()
-
     def _on_status_ready_with_reason(self, status: str, reason: str):
         self.update_status(status)
 
@@ -3656,7 +3651,7 @@ class MainWindow(QMainWindow):
             )
         else:
             self.ip_label.setText(
-                self.tr(f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
+                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip)
             )
 
     def _update_reason_label(self, reason: str = "", proxy_text: str = "", persist: bool = False):
