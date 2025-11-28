@@ -300,6 +300,24 @@ def fetch_protocol():
         logger.error(f"fetch_protocol failed: {e}")
         return "Error"
 
+def _fetch_public_ip(proxy: str | None = None) -> str | None:
+    proxies = {}
+    try:
+        if proxy:
+            proxies = {
+                "http": f"socks5://127.0.0.1:{proxy}",
+                "https": f"socks5://127.0.0.1:{proxy}"
+            }
+
+        r = requests.get("https://www.cloudflare.com/cdn-cgi/trace", timeout=3, proxies=proxies)
+        if r.status_code == 200:
+            for line in r.text.strip().splitlines():
+                if line.startswith("ip="):
+                    return line.split("=", 1)[1].strip()
+    except Exception as er:
+        logger.error(f"Fetch-IP error: {er}")
+    return None
+
 def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwargs):
     worker = GenericWorker(func, *args, parent=parent, **kwargs)
     if on_done:
@@ -694,71 +712,6 @@ class AsyncProcess(QObject):
     def _on_error(self, proc_error):
         self._timeout_timer.stop()
         self.error.emit(str(proc_error))
-
-class IpFetcher(QObject):
-    ip_ready = Signal(str)
-
-    def __init__(self, settings_handler=None, status_checker=None, parent=None):
-        super().__init__(parent)
-        self.settings_handler = settings_handler
-        self.status_checker = status_checker
-        self.is_connected = False
-        self._worker = None
-        self._retry_timer = QTimer(self)
-        self._retry_timer.setSingleShot(True)
-        self._retry_timer.timeout.connect(self.fetch_ip)
-
-        if self.status_checker is not None:
-            try:
-                self.status_checker.status_signal.connect(self.update_status)
-            except Exception:
-                logger.debug("IpFetcher: status_checker provided but couldn't connect to status_signal")
-
-    def update_status(self, status):
-        self.is_connected = (status == "Connected")
-
-    def fetch_ip(self):
-        proxies = {}
-        if self.settings_handler and self.is_connected:
-            mode = self.settings_handler.get("mode", "warp")
-            if mode == "proxy":
-                port = self.settings_handler.get("proxy_port", "40000")
-                proxies = {
-                    "http": f"socks5://127.0.0.1:{port}",
-                    "https": f"socks5://127.0.0.1:{port}"
-                }
-
-        def do_request(max_attempts=2):
-            url = "https://ipwho.is/"
-            for attempt in range(max_attempts):
-                try:
-                    resp = requests.get(url, timeout=8, proxies=proxies)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        if data.get("success", True):
-                            return data.get("ip", "Unavailable")
-                    logger.debug(f"Attempt {attempt + 1}: status {resp.status_code}, failed to get IP")
-                except Exception as e:
-                    logger.debug(f"Attempt {attempt + 1}: IpFetcher.do_request exception: {e}")
-            return "Unavailable"
-
-        try:
-            if self._worker and getattr(self._worker, "isRunning", None) and self._worker.isRunning():
-                try:
-                    self._worker.terminate()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        self._worker = GenericWorker(do_request, parent=self)
-        self._worker.finished_signal.connect(lambda ip: self.ip_ready.emit(str(ip)))
-        self._worker.error_signal.connect(
-            lambda e: (logger.error(f"IP fetch error: {e}"), self.ip_ready.emit("Unavailable"))
-        )
-        self._worker.finished.connect(self._worker.deleteLater)
-        self._worker.start()
-
 
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
@@ -1907,6 +1860,8 @@ class WarpStatusHandler(QObject):
             "NetworkHealthy": QCoreApplication.translate("WarpStatusHandler", "Connection is working normally"),
             "NoNetwork": QCoreApplication.translate("WarpStatusHandler", "No internet connection"),
             "HappyEyeballsFailed": QCoreApplication.translate("WarpStatusHandler", "Connection attempt failed"),
+            "ConfiguringForwardProxy": QCoreApplication.translate("WarpStatusHandler", "Setting up proxy"),
+            "ValidatingProxyConfiguration": QCoreApplication.translate("WarpStatusHandler", "Checking proxy setup"),
         }
         return mapping.get(key, key)
 
@@ -3669,27 +3624,40 @@ class MainWindow(QMainWindow):
 
     def _on_status_ready_with_reason(self, status: str, reason: str):
         self.update_status(status)
+
         current_mode = self.settings_handler.get("mode", "warp")
         show_proxy_banner = current_mode == "proxy" and status == "Connected"
         is_error_state = status not in ("Connected", "Disconnected")
+        port = None
 
-        if reason:
-            display_reason = reason
-            proxy_text = ""
-        elif show_proxy_banner:
+        if show_proxy_banner:
             port = self.settings_handler.get("proxy_port", "40000")
-            proxy_text = self.tr(f"WARP proxy running on 127.0.0.1:<b>{port}</b>")
+            proxy_text = self.tr(f"<b>Listening on: 127.0.0.1:{port} (HTTP + SOCKS5)</b>")
             display_reason = ""
+            persist = True
         else:
-            display_reason = status
             proxy_text = ""
-
-        persist = is_error_state or show_proxy_banner
+            display_reason = reason if reason else status
+            persist = is_error_state
 
         self._update_reason_color(status, proxy_active=show_proxy_banner)
         self._update_reason_label(reason=display_reason, proxy_text=proxy_text, persist=persist)
         self._ready_checks["status"] = True
         self._check_ready()
+
+        if status in ("Connected", "Disconnected"):
+            QTimer.singleShot(800, lambda: self._update_ip_label(port))
+
+    def _update_ip_label(self, proxy: str | None):
+        ip = _fetch_public_ip(proxy)
+        if not ip:
+            self.ip_label.setText(
+                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>")
+            )
+        else:
+            self.ip_label.setText(
+                self.tr(f"IPv4: <span style='color: #0078D4; font-weight: bold;'>{ip}</span>")
+            )
 
     def _update_reason_label(self, reason: str = "", proxy_text: str = "", persist: bool = False):
         if not hasattr(self, "_reason_hide_timer"):
@@ -4215,34 +4183,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error updating stats display: {e}")
 
-    def on_warp_status_changed(self, status):
-        if status in ["Connected", "Disconnected"]:
-            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
-            if hasattr(self, "ip_fetcher") and self.ip_fetcher is not None:
-                QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
-            else:
-                try:
-                    self.ip_fetcher = IpFetcher(self.settings_handler, self.status_checker, parent=self)
-                    self.ip_fetcher.ip_ready.connect(self._on_ip_ready)
-                    QTimer.singleShot(2000, self.ip_fetcher.fetch_ip)
-                except Exception as e:
-                    logger.error("Failed to lazy-create ip_fetcher: %s", e)
-        elif status in ["Failed", "No Network"]:
-            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>"))
-        else:
-            self.ip_label.setText(self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Receiving...</span>"))
-
-    def update_ip_label(self, ip):
-        self.ip_label.setText(
-            self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip)
-        )
-
     def update_status(self, status):
         if self._last_ui_status == status:
             return
 
         self._last_ui_status = status
-        self.on_warp_status_changed(status)
 
         if status == 'Connected':
             self.tray_icon.setIcon(self.color_icon)
