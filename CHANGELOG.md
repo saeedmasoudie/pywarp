@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.2 - 2025-11-29
+### Changes
+- Resolved issue where proxy address was not displayed in the status label
+- Replaced legacy, resource‑heavy IP fetcher class with a lightweight function
+- Enhanced IP fetcher to respect proxy mode, ensuring the correct IP is shown when connected through a proxy
+- Update persian translate
+
 ## v1.3.1 - 2025-11-27
 ### Changes
 - Add automatic protocol selection in MASQUE options
