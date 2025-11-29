@@ -6,7 +6,7 @@ on:
       version:
         description: "The version to build and release"
         required: true
-        default: "1.2.9"
+        default: "1.3.2"
 
 permissions:
   contents: write
