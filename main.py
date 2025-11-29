@@ -309,11 +309,10 @@ def _fetch_public_ip(proxy: str | None = None) -> str | None:
                 "https": f"socks5://127.0.0.1:{proxy}"
             }
 
-        r = requests.get("https://www.cloudflare.com/cdn-cgi/trace", timeout=3, proxies=proxies)
+        r = requests.get("https://api.ipify.org?format=json", timeout=3, proxies=proxies)
         if r.status_code == 200:
-            for line in r.text.strip().splitlines():
-                if line.startswith("ip="):
-                    return line.split("=", 1)[1].strip()
+            return r.json().get("ip")
+        return None
     except Exception as er:
         logger.error(f"Fetch-IP error: {er}")
     return None
