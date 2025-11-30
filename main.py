@@ -254,6 +254,9 @@ def on_about_to_quit():
     if getattr(window, '_is_restarting', False):
         QProcess.startDetached(sys.executable, sys.argv)
 
+def is_masque_proxy_incompatible(masque: str, mode: str) -> bool:
+    return mode == "proxy" and masque == "h2-only"
+
 def load_language(app, lang_code="en", settings_handler=None):
     if hasattr(app, "_translator") and app._translator:
         app.removeTranslator(app._translator)
@@ -300,21 +303,31 @@ def fetch_protocol():
         logger.error(f"fetch_protocol failed: {e}")
         return "Error"
 
-def _fetch_public_ip(proxy: str | None = None) -> str | None:
+def fetch_public_ip(proxy: str | None = None) -> str | None:
     proxies = {}
-    try:
-        if proxy:
-            proxies = {
-                "http": f"socks5://127.0.0.1:{proxy}",
-                "https": f"socks5://127.0.0.1:{proxy}"
-            }
+    ip_apis = [
+        "https://api.ipify.org?format=json",
+        "https://checkip.amazonaws.com",
+        "https://ifconfig.me/ip",
+        "https://ipv4.icanhazip.com",
+    ]
+    if proxy:
+        proxies = {
+            "http":  f"socks5://127.0.0.1:{proxy}",
+            "https": f"socks5://127.0.0.1:{proxy}",
+        }
 
-        r = requests.get("https://api.ipify.org?format=json", timeout=3, proxies=proxies)
-        if r.status_code == 200:
-            return r.json().get("ip")
-        return None
-    except Exception as er:
-        logger.error(f"Fetch-IP error: {er}")
+    for url in ip_apis:
+        try:
+            r = requests.get(url, timeout=2, proxies=proxies)
+            if r.status_code == 200:
+                content = r.text.strip()
+                if content.startswith("{"):
+                    return r.json().get("ip")
+                return content
+        except Exception as e:
+            continue
+
     return None
 
 def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwargs):
@@ -813,7 +826,7 @@ class AppExcludeManager(QObject):
         "Dota 2": [],
     }
 
-    def __init__(self, settings_handler, parent=None, scan_interval_ms: int = 3000):
+    def __init__(self, settings_handler, parent=None, scan_interval_ms: int = 15000):
         super().__init__(parent)
         self.settings_handler = settings_handler
         self._scan_interval = scan_interval_ms
@@ -1691,21 +1704,23 @@ class WarpStatusHandler(QObject):
             except Exception as e:
                 logger.debug(f"Error stopping listener: {e}")
 
-
     def _build_candidate_list(self):
-        self._auto_candidates = []
         try:
-            last = self.settings_handler.get("masque_last_working", "")
-            if isinstance(last, str) and last:
-                self._auto_candidates.append(last)
+            mode = self.settings_handler.get("mode", "warp")
         except Exception:
-            last = ""
+            mode = "warp"
 
-        for c in self._default_candidates:
-            if c not in self._auto_candidates:
-                self._auto_candidates.append(c)
-
-        logger.debug(f"MASQUE probe list: {self._auto_candidates}")
+        if mode == "proxy":
+            self._auto_candidates = [
+                "h3-only",
+                "h3-with-h2-fallback"
+            ]
+        else:
+            self._auto_candidates = [
+                "h3-only",
+                "h3-with-h2-fallback",
+                "h2-only"
+            ]
 
     def _start_masque_auto_detect(self):
         try:
@@ -1781,15 +1796,6 @@ class WarpStatusHandler(QObject):
             self._auto_timer.stop()
         except Exception:
             pass
-
-        if success and self._current_candidate:
-            try:
-                self.settings_handler.save_settings("masque_last_working", self._current_candidate)
-                logger.info(f"MASQUE auto-detect: saved masque_last_working = '{self._current_candidate}'")
-            except Exception:
-                logger.exception("Failed to save masque_last_working after successful auto-detect.")
-        else:
-            logger.info("MASQUE auto-detect finished without success (keeps previous masque_last_working).")
 
         self._auto_detect_running = False
         self._auto_candidates = []
@@ -1874,20 +1880,9 @@ class WarpStatusHandler(QObject):
             if (not cur or cur == "auto") and not self._auto_detect_running:
                 self._start_masque_auto_detect()
 
-        else:
-            if status == "Connected":
-                if self._auto_detect_running:
-                    self._observed_connected = True
-                    if self._current_candidate:
-                        try:
-                            self.settings_handler.save_settings("masque_last_working", self._current_candidate)
-                            logger.info(f"MASQUE auto-detect: connection successful with '{self._current_candidate}'")
-                        except Exception:
-                            logger.exception("Failed to persist masque_last_working on Connected.")
-                    self._stop_masque_auto_detect(success=True)
-
-            elif status == "Disconnected":
-                pass
+        if status == "Connected" and self._auto_detect_running:
+            self._observed_connected = True
+            self._stop_masque_auto_detect(success=True)
 
         if (status, reason) != (self._last_status, self._last_reason):
             self._last_status, self._last_reason = status, reason
@@ -2786,80 +2781,131 @@ class AdvancedSettings(QDialog):
         super().closeEvent(event)
 
     def populate_app_list(self, apps):
+        self.app_tree.setUpdatesEnabled(False)
+        self.app_tree.blockSignals(True)
+
         try:
-            self.app_tree.blockSignals(True)
-        except Exception:
-            pass
-        expanded_apps = self._load_expanded_apps()
+            new_keys = tuple(sorted(a.get("key", "") for a in apps))
+            if getattr(self, "_last_app_list_keys", None) == new_keys:
+                excluded = self.app_exclude_manager.desired_app_set
 
-        for i in range(self.app_tree.topLevelItemCount()):
-            item = self.app_tree.topLevelItem(i)
-            if item.isExpanded():
-                expanded_apps.add(item.text(0))
-        self.app_tree.clear()
+                for i in range(self.app_tree.topLevelItemCount()):
+                    item = self.app_tree.topLevelItem(i)
+                    name = item.text(0)
+                    item.setCheckState(0, Qt.Checked if name in excluded else Qt.Unchecked)
 
-        excluded_apps = self.app_exclude_manager.desired_app_set
+                    # update children background for excluded apps
+                    if name in excluded:
+                        for c in range(item.childCount()):
+                            for col in range(2):
+                                item.child(c).setBackground(col, self._brush_saved)
+                    else:
+                        for c in range(item.childCount()):
+                            for col in range(2):
+                                item.child(c).setBackground(col, Qt.NoBrush)
+                return
 
-        for app in sorted(apps, key=lambda a: a.get("key", "").lower()):
-            name = app.get("key")
-            pid = app.get("pid", -1)
-            top = QTreeWidgetItem([name, str(pid)])
-            top.setFlags(top.flags() | Qt.ItemIsUserCheckable)
+            self._last_app_list_keys = new_keys
+            expanded_apps = self._load_expanded_apps()
+            for i in range(self.app_tree.topLevelItemCount()):
+                item = self.app_tree.topLevelItem(i)
+                if item.isExpanded():
+                    expanded_apps.add(item.text(0))
 
-            top.setCheckState(0, Qt.Checked if name in excluded_apps else Qt.Unchecked)
-            top.setData(0, Qt.UserRole, ("app", name))
+            self.app_tree.clear()
+            excluded_apps = self.app_exclude_manager.desired_app_set
 
-            def add_child(label, kind, value, checked=False, color=None):
-                child = QTreeWidgetItem([label, ""])
-                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
-                child.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                child.setData(0, Qt.UserRole, ("endpoint", name, kind, value))
-                if color:
-                    brush = QBrush(QColor(*color))
-                    for i in range(2):
-                        child.setBackground(i, brush)
-                top.addChild(child)
+            if not hasattr(self, "_brush_saved"):
+                self._brush_saved = QBrush(QColor(200, 255, 200, 60))
+                self._brush_new = QBrush(QColor(255, 165, 69, 80))
 
-            for h in app.get("saved", {}).get("hosts", []):
-                add_child(h, "host", h, checked=True, color=(200, 255, 200, 60))
-            for ip in app.get("saved", {}).get("ips", []):
-                add_child(ip, "ip", ip, checked=True, color=(200, 255, 200, 60))
+            for app in sorted(apps, key=lambda a: a.get("key", "").lower()):
+                name = app.get("key")
+                pid = app.get("pid", -1)
 
-            for h in app.get("known", {}).get("hosts", []):
-                if h in app.get("saved", {}).get("hosts", []):
-                    continue
-                add_child(h, "host", h, checked=False)
-            for ip in app.get("known", {}).get("ips", []):
-                if ip in app.get("saved", {}).get("ips", []):
-                    continue
-                add_child(ip, "ip", ip, checked=False)
+                saved = app.get("saved", {})
+                known = app.get("known", {})
+                new = app.get("new", {})
 
-            for h in app.get("new", {}).get("hosts", []):
-                if h in app.get("known", {}).get("hosts", []):
-                    continue
-                add_child(h, "host", h, checked=False, color=(255, 165, 69, 80))
-            for ip in app.get("new", {}).get("ips", []):
-                if ip in app.get("known", {}).get("ips", []):
-                    continue
-                add_child(ip, "ip", ip, checked=False, color=(255, 165, 69, 80))
+                saved_hosts = saved.get("hosts", [])
+                saved_ips = saved.get("ips", [])
+                known_hosts = known.get("hosts", [])
+                known_ips = known.get("ips", [])
+                new_hosts = new.get("hosts", [])
+                new_ips = new.get("ips", [])
 
-            self.app_tree.addTopLevelItem(top)
+                top = QTreeWidgetItem([name, str(pid)])
+                top.setFlags(top.flags() | Qt.ItemIsUserCheckable)
+                top.setCheckState(0, Qt.Checked if name in excluded_apps else Qt.Unchecked)
+                top.setData(0, Qt.UserRole, ("app", name))
 
-            if name in expanded_apps:
-                top.setExpanded(True)
-            else:
-                top.setExpanded(False)
+                add_child = top.addChild
 
-            if name in excluded_apps:
-                for i in range(top.childCount()):
-                    brush = QBrush(QColor(200, 255, 200, 60))
+                for h in saved_hosts:
+                    child = QTreeWidgetItem([h, ""])
+                    child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                    child.setCheckState(0, Qt.Checked)
+                    child.setData(0, Qt.UserRole, ("endpoint", name, "host", h))
                     for col in range(2):
-                        top.child(i).setBackground(col, brush)
+                        child.setBackground(col, self._brush_saved)
+                    add_child(child)
 
-        try:
+                for ip in saved_ips:
+                    child = QTreeWidgetItem([ip, ""])
+                    child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                    child.setCheckState(0, Qt.Checked)
+                    child.setData(0, Qt.UserRole, ("endpoint", name, "ip", ip))
+                    for col in range(2):
+                        child.setBackground(col, self._brush_saved)
+                    add_child(child)
+
+                for h in known_hosts:
+                    if h not in saved_hosts:
+                        child = QTreeWidgetItem([h, ""])
+                        child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                        child.setCheckState(0, Qt.Unchecked)
+                        child.setData(0, Qt.UserRole, ("endpoint", name, "host", h))
+                        add_child(child)
+
+                for ip in known_ips:
+                    if ip not in saved_ips:
+                        child = QTreeWidgetItem([ip, ""])
+                        child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                        child.setCheckState(0, Qt.Unchecked)
+                        child.setData(0, Qt.UserRole, ("endpoint", name, "ip", ip))
+                        add_child(child)
+
+                for h in new_hosts:
+                    if h not in known_hosts:
+                        child = QTreeWidgetItem([h, ""])
+                        child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                        child.setCheckState(0, Qt.Unchecked)
+                        child.setData(0, Qt.UserRole, ("endpoint", name, "host", h))
+                        for col in range(2):
+                            child.setBackground(col, self._brush_new)
+                        add_child(child)
+
+                for ip in new_ips:
+                    if ip not in known_ips:
+                        child = QTreeWidgetItem([ip, ""])
+                        child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                        child.setCheckState(0, Qt.Unchecked)
+                        child.setData(0, Qt.UserRole, ("endpoint", name, "ip", ip))
+                        for col in range(2):
+                            child.setBackground(col, self._brush_new)
+                        add_child(child)
+
+                self.app_tree.addTopLevelItem(top)
+                top.setExpanded(name in expanded_apps)
+
+                if name in excluded_apps:
+                    for c in range(top.childCount()):
+                        for col in range(2):
+                            top.child(c).setBackground(col, self._brush_saved)
+
+        finally:
             self.app_tree.blockSignals(False)
-        except Exception:
-            pass
+            self.app_tree.setUpdatesEnabled(True)
 
     def _save_expanded_apps(self):
         try:
@@ -3135,35 +3181,40 @@ class AdvancedSettings(QDialog):
             return
 
         current_mode = self.settings_handler.get("mode", "warp")
-        if option == "h2-only" and current_mode == "proxy":
+
+        if is_masque_proxy_incompatible(option, current_mode):
             QMessageBox.warning(
                 self,
-                self.tr("Incompatible Option"),
+                self.tr("Incompatible MASQUE Option"),
                 self.tr(
-                    "MASQUE option 'HTTP/2 (h2-only)' is incompatible with Proxy mode.\n"
-                    "Please switch the application mode from 'proxy' to another mode before using HTTP/2."
-                ),
+                    "MASQUE option 'HTTP/2 (h2-only)' cannot be used while in Proxy mode.\n"
+                    "Switch the mode to something other than Proxy, or choose another MASQUE option."
+                )
             )
-            saved_masque = self.settings_handler.get("masque_option", "") or "auto"
-            idx = self.masque_input.findData(saved_masque)
-            if idx != -1:
-                self.masque_input.setCurrentIndex(idx)
-            else:
-                self.masque_input.setCurrentIndex(self.masque_input.findData("auto"))
+
+            saved = self.settings_handler.get("masque_option", "auto")
+            idx = self.masque_input.findData(saved)
+            self.masque_input.setCurrentIndex(idx if idx != -1 else 0)
             return
 
         try:
-            option_text = option
+            warp_value = option
             if option == "auto":
-                option = "h3-with-h2-fallback"
-            result = run_warp_command("warp-cli", "tunnel", "masque-options", "set", option)
+                warp_value = "h3-with-h2-fallback"
+
+            result = run_warp_command("warp-cli", "tunnel", "masque-options", "set", warp_value)
             if result.returncode != 0:
                 error_line = result.stderr.strip().split("\n")[0]
                 QMessageBox.warning(self, self.tr("Error"), error_line)
                 return
-            self.settings_handler.save_settings("masque_option", option_text)
-            QMessageBox.information(self, self.tr("Saved"),
-                                    self.tr("MASQUE option set to {}.").format(option_text))
+
+            self.settings_handler.save_settings("masque_option", option)
+            QMessageBox.information(
+                self,
+                self.tr("Saved"),
+                self.tr("MASQUE option set to {}.").format(option)
+            )
+
         except Exception as e:
             QMessageBox.warning(self, self.tr("Error"), str(e))
 
@@ -3346,16 +3397,16 @@ class SettingsPage(QWidget):
     def set_mode(self):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
-
         current_masque = self.settings_handler.get("masque_option", "") or "auto"
-        if selected_mode == "proxy" and current_masque == "h2-only":
+
+        if is_masque_proxy_incompatible(current_masque, selected_mode):
             QMessageBox.warning(
                 self,
                 self.tr("Incompatible Mode"),
                 self.tr(
-                    "Proxy mode is not compatible with MASQUE set to HTTP/2 (h2-only).\n"
-                    "Please change MASQUE from 'h2-only' to another option before switching to Proxy mode."
-                ),
+                    "Proxy mode cannot be used with MASQUE option 'HTTP/2 (h2-only)'.\n"
+                    "Please change MASQUE to 'auto' or an HTTP/3 option before switching to Proxy mode."
+                )
             )
             self.modes_dropdown.setCurrentText(self.current_mode)
             return
@@ -3371,6 +3422,7 @@ class SettingsPage(QWidget):
             if not ok:
                 self.modes_dropdown.setCurrentText(self.current_mode)
                 return
+
             try:
                 port = int(port_str)
                 if not (1 <= port <= 65535):
@@ -3401,8 +3453,12 @@ class SettingsPage(QWidget):
             self.modes_dropdown.setEnabled(True)
             self.current_mode = result
             self.settings_handler.save_settings("mode", result)
-            QMessageBox.information(self, self.tr("Mode Changed"),
-                                    self.tr("Mode set to: {}").format(result))
+
+            QMessageBox.information(
+                self,
+                self.tr("Mode Changed"),
+                self.tr("Mode set to: {}").format(result)
+            )
 
         def on_error(exc):
             self.modes_dropdown.setEnabled(True)
@@ -3643,15 +3699,25 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(800, lambda: self._update_ip_label(port))
 
     def _update_ip_label(self, proxy: str | None):
-        ip = _fetch_public_ip(proxy)
-        if not ip:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>")
-            )
-        else:
-            self.ip_label.setText(
-                self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip)
-            )
+        def task():
+            return fetch_public_ip(proxy)
+
+        def on_done(ip):
+            if ip:
+                self.ip_label.setText(
+                    self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(ip)
+                )
+            else:
+                self.ip_label.setText(
+                    self.tr("IPv4: <span style='color: #0078D4; font-weight: bold;'>Unavailable</span>")
+                )
+
+        run_in_worker(
+            task,
+            parent=self,
+            on_done=on_done,
+            on_error=lambda e: logger.debug(f"Fetch_IP failed: {e}")
+        )
 
     def _update_reason_label(self, reason: str = "", proxy_text: str = "", persist: bool = False):
         if not hasattr(self, "_reason_hide_timer"):
