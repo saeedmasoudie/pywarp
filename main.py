@@ -1672,7 +1672,9 @@ class WarpStatusHandler(QObject):
         self._auto_candidates = []
         self._auto_index = 0
         self._current_candidate = None
-        self._auto_try_timeout_ms = 7000
+        self._auto_try_timeout_ms = 12000
+        self._auto_positive_required = 2
+        self._auto_positive_count = 0
         self._auto_timer = QTimer(self)
         self._auto_timer.setSingleShot(True)
         self._auto_timer.timeout.connect(self._on_auto_timeout)
@@ -1881,18 +1883,15 @@ class WarpStatusHandler(QObject):
                 self._start_masque_auto_detect()
 
         if status == "Connected" and self._auto_detect_running:
-            self._observed_connected = True
-            self._stop_masque_auto_detect(success=True)
+            self._auto_positive_count += 1
+            if self._auto_positive_count >= self._auto_positive_required:
+                self._observed_connected = True
+                self._stop_masque_auto_detect(success=True)
 
         if (status, reason) != (self._last_status, self._last_reason):
             self._last_status, self._last_reason = status, reason
-            if status == 'Update':
-                return
-            if status == "Failed":
-                logger.warning(f"WARP: {status} ({reason})")
-            else:
-                logger.debug(f"WARP: {status} ({reason})")
-            self.status_signal.emit(status, reason)
+            if status != 'Update':
+                self.status_signal.emit(status, reason)
 
     def _on_process_error(self, error):
         logger.warning(f"WARP listener process error: {error}")
