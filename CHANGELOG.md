@@ -8,7 +8,9 @@ All notable changes to this project will be documented in this file.
 - Smart MASQUE now checks all protocols on startup (previously it restored the last-checked protocol)
 - Improved performance of tree list rendering in Exclude Apps
 - Updated Auto MASQUE: when Proxy Mode is active, HTTP/2 is excluded due to compatibility issues
+- Replace the existing update checker with a more user‑friendly version, as the previous one was not functioning properly
 - fix a few problems on smart masque
+- update persian language
 
 ## v1.3.2 - 2025-11-29
 ### Changes

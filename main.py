@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
-    QTranslator, QCoreApplication, QPropertyAnimation, QProcess, QSize, QPointF
+    QTranslator, QCoreApplication, QPropertyAnimation, QProcess, QSize, QPointF, QParallelAnimationGroup
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction, QColor, QBrush, QActionGroup, QTextCursor, QPainter, QPen, \
     QPixmap
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -51,7 +51,7 @@ if platform.system() == "Darwin":
     os.environ["PATH"] = current_path
 
 CURRENT_VERSION = "1.3.3"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.txt"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.json"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
@@ -1526,65 +1526,78 @@ class UpdateChecker(QObject):
     def start_check(self, delay_ms=3000):
         QTimer.singleShot(delay_ms, self._run_check_for_update)
 
-    def perform_portable_warp_update(self):
-        worker = run_in_worker(self._portable_update_task,
-                               parent=self,
-                               on_done=lambda _: self._on_worker_done(worker),
-                               on_error=self._on_worker_error)
-        self._workers.append(worker)
-
     def _run_check_for_update(self):
         worker = run_in_worker(self._check_for_update_task,
                                parent=self,
                                on_done=lambda _: self._on_worker_done(worker),
-                               on_error=self._on_worker_error)
+                               on_error=lambda e: self._on_worker_error(e, worker))
         self._workers.append(worker)
 
     def _check_for_update_task(self):
-        versions = self._get_latest_versions()
-        if not versions:
-            return
-
-        latest_pywarp = versions.get("pywarp")
-        if latest_pywarp and self._is_newer_version(latest_pywarp, CURRENT_VERSION):
-            self.update_available.emit("pywarp", latest_pywarp, CURRENT_VERSION)
-
-        latest_warp = versions.get("warp")
-        local_version, _, is_portable = self.get_warp_info()
-        if latest_warp and local_version and self._is_newer_version(latest_warp, local_version):
-            update_type = "warp_portable" if is_portable else "warp_installed"
-            self.update_available.emit(update_type, latest_warp, local_version)
-
-    def _get_latest_versions(self):
         try:
             r = requests.get(GITHUB_VERSION_URL, timeout=10)
             r.raise_for_status()
-            lines = r.text.strip().splitlines()
-            if not lines:
-                return None
+            data = r.json()
 
-            versions = {"pywarp": lines[0].strip()}
-            for line in lines[1:]:
-                if "=" in line:
-                    key, val = line.split("=", 1)
-                    versions[key.strip()] = val.strip()
-            return versions
-        except Exception:
-            logger.exception("Failed to fetch latest versions")
-            return None
+            remote_pywarp = data.get("pywarp", {}).get("version")
+            if remote_pywarp and self._is_newer_version(remote_pywarp, CURRENT_VERSION):
+                self.update_available.emit("pywarp", remote_pywarp, CURRENT_VERSION)
+                return
+
+            remote_warp = data.get("warp", {}).get("version")
+            local_warp, _, is_portable = self.get_warp_info()
+
+            if remote_warp and local_warp and self._is_newer_version(remote_warp, local_warp):
+                update_type = "warp_portable" if is_portable else "warp_installed"
+                self.update_available.emit(update_type, remote_warp, local_warp)
+
+        except Exception as e:
+            logger.warning(f"Update check failed: {e}")
+
+    def perform_portable_warp_update(self):
+        worker = run_in_worker(self._portable_update_task,
+                               parent=self,
+                               on_done=lambda _: self._on_worker_done(worker),
+                               on_error=lambda e: self._on_worker_error(e, worker))
+        self._workers.append(worker)
+
+    def _portable_update_task(self):
+        zip_path = self.installer.appdata_dir / "warp_assets.zip"
+        try:
+            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+
+                with open(zip_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if not chunk: continue
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(self.installer.appdata_dir)
+
+            zip_path.unlink(missing_ok=True)
+
+            self.update_finished.emit(self.tr("Portable WARP has been successfully updated!"))
+
+        except Exception as e:
+            zip_path.unlink(missing_ok=True)
+            self.update_finished.emit(f"Update failed: {e}")
 
     def get_warp_info(self):
         warp_cli_path_str = get_warp_cli_executable()
-
         if not warp_cli_path_str:
             return None, None, False
 
         try:
-            version = subprocess.check_output(
+            output = subprocess.check_output(
                 [warp_cli_path_str, "--version"],
                 text=True,
                 **safe_subprocess_args()
-            ).strip().split()[-1]
+            )
+            version = output.strip().split()[-1]
 
             warp_cli_path = Path(warp_cli_path_str)
             is_portable = "pywarp" in warp_cli_path.parts
@@ -1592,48 +1605,19 @@ class UpdateChecker(QObject):
             return version, warp_cli_path, is_portable
 
         except Exception as e:
-            logger.error(f"Failed to get warp version from '{warp_cli_path_str}': {e}")
+            logger.error(f"Failed to get warp version: {e}")
             return None, None, False
 
-    def _portable_update_task(self):
-        zip_path = self.installer.appdata_dir / "warp_assets.zip"
-
-        progress = QProgressDialog(
-            self.tr("Updating portable WARP..."),
-            self.tr("Cancel"), 0, 100, self.parent()
-        )
-        progress.setWindowTitle(self.tr("Updating"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setValue(0)
-
-        with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("content-length", 0))
-            downloaded = 0
-            with open(zip_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total:
-                        progress.setValue(int(downloaded * 100 / total))
-                    if progress.wasCanceled():
-                        zip_path.unlink(missing_ok=True)
-                        self.update_finished.emit(self.tr("Update canceled by user."))
-                        return
-
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(self.installer.appdata_dir)
-        zip_path.unlink(missing_ok=True)
-
-        logger.info("Portable WARP update successful")
-        self.update_finished.emit(self.tr("Portable WARP has been successfully updated!"))
-
     def _is_newer_version(self, latest, current):
-        def parse(v):
-            return [int(x) for x in re.findall(r"\d+", v)]
-        return parse(latest) > parse(current)
+        if not latest or not current:
+            return False
+        try:
+            def parse(v):
+                return [int(x) for x in re.findall(r"\d+", str(v))]
+
+            return parse(latest) > parse(current)
+        except Exception:
+            return False
 
     def _on_worker_done(self, worker):
         if worker in self._workers:
@@ -1645,7 +1629,6 @@ class UpdateChecker(QObject):
         self.update_finished.emit(self.tr("Update failed: {}").format(exc))
         if worker in self._workers:
             self._workers.remove(worker)
-
 
 class WarpStatusHandler(QObject):
     status_signal = Signal(str, str)
@@ -2096,6 +2079,160 @@ class SpinnerWidget(QWidget):
     def start(self):
         if not self._timer.isActive():
             self._timer.start()
+
+
+class UpdateBanner(QFrame):
+    update_action_clicked = Signal(str, str)
+
+    HEIGHT = 34
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("updateBanner")
+        self.setVisible(False)
+        self.setFixedHeight(0)
+
+        dark = ThemeManager.is_dark_mode()
+
+        self.base_color = QColor("#b87e1a") if dark else QColor("#e6a23c")
+        self.glow_color = QColor("#d89b39") if dark else QColor("#f2b564")
+        self.text_color = QColor("#f0f6fc") if dark else QColor("#1a1f24")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(8)
+
+        self.label = QLabel("")
+        self.label.setStyleSheet(f"""
+            background: transparent;
+            color: {self.text_color.name()};
+            font-weight: 600;
+            font-size: 12px;
+        """)
+        layout.addWidget(self.label, 1)
+
+        self.btn_update = QPushButton("")
+        self.btn_update.setCursor(Qt.PointingHandCursor)
+        self.btn_update.setFixedHeight(22)
+        self.btn_update.setMinimumWidth(68)
+        self.btn_update.clicked.connect(self._on_update_clicked)
+
+        pill_bg = QColor("#ffffff") if dark else QColor("#1a1f24")
+        pill_txt = self.base_color
+
+        self.btn_update.setStyleSheet(f"""
+            QPushButton {{
+                background: {pill_bg.name()};
+                color: {pill_txt.name()};
+                border-radius: 11px;
+                padding: 0 10px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+        """)
+        layout.addWidget(self.btn_update)
+
+        self.btn_close = QPushButton("×")
+        self.btn_close.setCursor(Qt.PointingHandCursor)
+        self.btn_close.setFixedSize(20, 20)
+        self.btn_close.clicked.connect(self.hide_banner)
+
+        icon_color = "#e6e6e6" if dark else "#444"
+        icon_hover = "#ffffff" if dark else "#000"
+        bg_hover = "rgba(255,255,255,0.14)" if dark else "rgba(0,0,0,0.08)"
+
+        self.btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent !important;
+                color: {icon_color} !important;
+                font-size: 12px !important;
+                font-weight: 500 !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                border-radius: 10px !important;
+                min-width: 20px !important;
+            }}
+            QPushButton:hover {{
+                color: {icon_hover} !important;
+                background: {bg_hover} !important;
+            }}
+        """)
+        layout.addWidget(self.btn_close)
+
+        self._pulse = QVariantAnimation(self)
+        self._pulse.setDuration(1800)
+        self._pulse.setLoopCount(-1)
+        self._pulse.setKeyValueAt(0,   self.base_color)
+        self._pulse.setKeyValueAt(0.5, self.glow_color)
+        self._pulse.setKeyValueAt(1,   self.base_color)
+        self._pulse.valueChanged.connect(self._set_bg)
+
+    def _set_bg(self, c: QColor):
+        self.setStyleSheet(f"""
+            #updateBanner {{
+                background-color: {c.darker(105).name()};
+                border-radius: 6px;
+            }}
+        """)
+
+    def show_update(self, update_type, version):
+        self._current_type = update_type
+        self._current_ver = version
+
+        short = version if len(version) < 14 else version[:12] + "…"
+
+        if update_type == "pywarp":
+            self.label.setText(f"PyWarp update · {short}")
+            self.btn_update.setText("Download")
+        else:
+            self.label.setText(f"WARP update · {short}")
+            self.btn_update.setText("Update")
+
+        self.setVisible(True)
+        self._pulse.start()
+
+        self.anim = QPropertyAnimation(self, b"maximumHeight")
+        self.anim.setStartValue(0)
+        self.anim.setEndValue(self.HEIGHT)
+        self.anim.setDuration(320)
+        self.anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.anim.start()
+
+        self.setWindowOpacity(0)
+        fade = QPropertyAnimation(self, b"windowOpacity")
+        fade.setStartValue(0)
+        fade.setEndValue(1)
+        fade.setDuration(300)
+        fade.start()
+
+    def hide_banner(self):
+        self._pulse.stop()
+
+        self._hide_anim = QPropertyAnimation(self, b"maximumHeight")
+        self._hide_anim.setStartValue(self.height())
+        self._hide_anim.setEndValue(0)
+        self._hide_anim.setDuration(240)
+        self._hide_anim.setEasingCurve(QEasingCurve.InCubic)
+
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_anim.setStartValue(1)
+        self._fade_anim.setEndValue(0)
+        self._fade_anim.setDuration(220)
+
+        self._combo = QParallelAnimationGroup()
+        self._combo.addAnimation(self._hide_anim)
+        self._combo.addAnimation(self._fade_anim)
+        self._combo.finished.connect(lambda: self.setVisible(False))
+        self._combo.start()
+
+    def _on_update_clicked(self):
+        if self._current_type and self._current_ver:
+            self.update_action_clicked.emit(self._current_type, self._current_ver)
+
 
 class LoadingOverlay(QWidget):
     def __init__(self, parent, icon_path=":/logo.png"):
@@ -3503,6 +3640,10 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(10)
 
+        self.update_banner = UpdateBanner()
+        self.update_banner.update_action_clicked.connect(self.handle_update_action)
+        main_layout.addWidget(self.update_banner)
+
         # Status frame
         status_frame = QFrame()
         status_frame.setObjectName("statusFrame")
@@ -3663,6 +3804,31 @@ class MainWindow(QMainWindow):
         self._is_restarting = True
         self.force_exit = True
         self.close()
+
+    def handle_update_available(self, update_type, new_ver, current_ver):
+        self.update_banner.show_update(update_type, new_ver)
+
+    def handle_update_action(self, update_type, version):
+        if update_type == "pywarp":
+            webbrowser.open("https://github.com/saeedmasoudie/pywarp/releases")
+
+        elif update_type == "warp_installed":
+            QMessageBox.information(self, self.tr("Update Available"),
+                                    self.tr(
+                                        "A new version of Cloudflare WARP is available ({})\nPlease update it via the official installer.").format(
+                                        version))
+            webbrowser.open(
+                "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/")
+
+        elif update_type == "warp_portable":
+            resp = QMessageBox.question(self, self.tr("Auto Update"),
+                                        self.tr(
+                                            "Do you want to download and install the new portable WARP assets automatically?"),
+                                        QMessageBox.Yes | QMessageBox.No)
+
+            if resp == QMessageBox.Yes:
+                self.update_banner.hide()
+                threading.Thread(target=self._update_checker.perform_portable_warp_update, daemon=True).start()
 
     def _on_protocol_ready(self, protocol):
         self.protocol_label.setText(
@@ -4691,9 +4857,9 @@ if __name__ == "__main__":
     app.aboutToQuit.connect(on_about_to_quit)
 
     update_checker = UpdateChecker(installer=installer)
-    update_checker.update_available.connect(notify_update)
-    update_checker.start_check(delay_ms=3000)
-
     window._update_checker = update_checker
+    update_checker.update_available.connect(window.handle_update_available)
+    update_checker.update_finished.connect(lambda msg: QMessageBox.information(window, "Update", msg))
+    update_checker.start_check(delay_ms=3000)
 
     sys.exit(app.exec())
