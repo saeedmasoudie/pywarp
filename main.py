@@ -1566,7 +1566,6 @@ class UpdateChecker(QObject):
         try:
             with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
                 r.raise_for_status()
-                total = int(r.headers.get("content-length", 0))
                 downloaded = 0
 
                 with open(zip_path, "wb") as f:
