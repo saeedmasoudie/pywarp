@@ -313,7 +313,7 @@ def fetch_public_ip(proxy: str | None = None) -> str | None:
     ]
     if proxy:
         proxies = {
-            "http":  f"socks5://127.0.0.1:{proxy}",
+            "http": f"socks5://127.0.0.1:{proxy}",
             "https": f"socks5://127.0.0.1:{proxy}",
         }
 
@@ -325,7 +325,7 @@ def fetch_public_ip(proxy: str | None = None) -> str | None:
                 if content.startswith("{"):
                     return r.json().get("ip")
                 return content
-        except Exception as e:
+        except Exception:
             continue
 
     return None
