@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.3 - 2025-12-02
+### Changes
+- Optimized IP fetcher function for faster and more reliable lookups
+- Smart MASQUE now checks all protocols on startup (previously it restored the last-checked protocol)
+- Improved performance of tree list rendering in Exclude Apps
+- Updated Auto MASQUE: when Proxy Mode is active, HTTP/2 is excluded due to compatibility issues
+- fix a few problems on smart masque
+
 ## v1.3.2 - 2025-11-29
 ### Changes
 - Resolved issue where proxy address was not displayed in the status label
