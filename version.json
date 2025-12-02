@@ -1,0 +1,11 @@
+{
+  "pywarp": {
+    "version": "1.3.3",
+    "url": "https://github.com/saeedmasoudie/pywarp/releases/latest",
+    "critical": false
+  },
+  "warp": {
+    "version": "2025.8.779.0",
+    "critical": false
+  }
+}
