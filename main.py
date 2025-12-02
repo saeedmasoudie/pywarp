@@ -2165,9 +2165,9 @@ class UpdateBanner(QFrame):
         self._pulse = QVariantAnimation(self)
         self._pulse.setDuration(1800)
         self._pulse.setLoopCount(-1)
-        self._pulse.setKeyValueAt(0,   self.base_color)
+        self._pulse.setKeyValueAt(0, self.base_color)
         self._pulse.setKeyValueAt(0.5, self.glow_color)
-        self._pulse.setKeyValueAt(1,   self.base_color)
+        self._pulse.setKeyValueAt(1, self.base_color)
         self._pulse.valueChanged.connect(self._set_bg)
 
     def _set_bg(self, c: QColor):
