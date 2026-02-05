@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ import socket
 import resources_rc  # noqa: F401
 from types import SimpleNamespace
 from pathlib import Path
+from dataclasses import dataclass
 
 from PySide6.QtNetwork import QLocalSocket, QLocalServer
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QVariantAnimation, QEasingCurve, \
@@ -339,7 +341,184 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
     worker.start()
     return worker
 
+def udp_probe(ip, port, timeout=2.0):
+    start = time.monotonic()
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.connect((ip, port))
+        sock.send(b"\x00")
+        return (time.monotonic() - start) * 1000
+    except Exception:
+        return None
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+def tls_probe(ip, port, sni, timeout=3.0):
+    start = time.monotonic()
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((ip, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=sni):
+                return (time.monotonic() - start) * 1000
+    except Exception:
+        return None
+
+def sample_probe(probe_func, attempts=3):
+    results = []
+    for _ in range(attempts):
+        r = probe_func()
+        if r is not None:
+            results.append(r)
+        time.sleep(0.15)
+
+    if not results:
+        return None, 100
+
+    avg = sum(results) / len(results)
+    loss = int(100 - (len(results) / attempts) * 100)
+    return avg, loss
+
+def run_warp_connection_tests(is_warp_connected=False):
+    results: list[WarpTestResult] = []
+
+    # WireGuard
+    avg, loss = sample_probe(
+        lambda: udp_probe("162.159.193.1", 2408)
+    )
+    results.append(
+        WarpTestResult(
+            name="WireGuard UDP 2408",
+            protocol="WireGuard",
+            transport="UDP",
+            target="162.159.193.1",
+            port=2408,
+            reachable=avg is not None,
+            avg_latency_ms=avg,
+            loss_percent=loss,
+            status=_status_from_metrics(avg, loss)
+        )
+    )
+
+    # MASQUE UDP
+    avg, loss = sample_probe(
+        lambda: udp_probe("162.159.197.1", 443)
+    )
+    results.append(
+        WarpTestResult(
+            name="MASQUE UDP 443",
+            protocol="MASQUE",
+            transport="UDP",
+            target="162.159.197.1",
+            port=443,
+            reachable=avg is not None,
+            avg_latency_ms=avg,
+            loss_percent=loss,
+            status=_status_from_metrics(avg, loss)
+        )
+    )
+
+    # MASQUE TCP fallback
+    avg, loss = sample_probe(
+        lambda: tls_probe("162.159.197.3", 443, "engage.cloudflareclient.com")
+    )
+    results.append(
+        WarpTestResult(
+            name="MASQUE TCP 443 (TLS)",
+            protocol="MASQUE",
+            transport="TCP",
+            target="engage.cloudflareclient.com",
+            port=443,
+            reachable=avg is not None,
+            avg_latency_ms=avg,
+            loss_percent=loss,
+            status=_status_from_metrics(avg, loss)
+        )
+    )
+
+    # Control Plane
+    avg, loss = sample_probe(
+        lambda: tls_probe("162.159.197.3", 443, "engage.cloudflareclient.com")
+    )
+    results.append(
+        WarpTestResult(
+            name="Cloudflare Control Plane",
+            protocol=None,
+            transport="TLS",
+            target="engage.cloudflareclient.com",
+            port=443,
+            reachable=avg is not None,
+            avg_latency_ms=avg,
+            loss_percent=loss,
+            status="OK" if avg else "Blocked"
+        )
+    )
+
+    # Inside tunnel
+    if is_warp_connected:
+        avg, loss = sample_probe(
+            lambda: tls_probe("162.159.197.4", 443, "connectivity.cloudflareclient.com")
+        )
+        results.append(
+            WarpTestResult(
+                name="Inside Tunnel Connectivity",
+                protocol=None,
+                transport="TLS",
+                target="connectivity.cloudflareclient.com",
+                port=443,
+                reachable=avg is not None,
+                avg_latency_ms=avg,
+                loss_percent=loss,
+                status="OK" if avg else "Connected but filtered"
+            )
+        )
+
+    _mark_recommended(results)
+
+    return results
+
+def _status_from_metrics(avg, loss):
+    if avg is None:
+        return "Blocked"
+    if loss >= 50:
+        return "Unstable"
+    if avg > 300:
+        return "Slow"
+    return "OK"
+
+def _mark_recommended(results):
+    candidates = [
+        r for r in results
+        if r.protocol and r.status == "OK"
+    ]
+    if not candidates:
+        return
+
+    best = min(
+        candidates,
+        key=lambda r: r.avg_latency_ms or 9999
+    )
+    best.recommended = True
+
+
 # -----------------------------------------------------
+
+@dataclass
+class WarpTestResult:
+    name: str
+    protocol: str | None
+    transport: str
+    target: str
+    port: int | None
+    reachable: bool
+    avg_latency_ms: float | None
+    loss_percent: int
+    status: str
+    recommended: bool = False
+
 
 class ThemeManager:
     @staticmethod
@@ -792,6 +971,201 @@ class LogsWindow(QDialog):
             self.text_edit.setPlainText(self.tr("Logs cleared."))
         except Exception as e:
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to clear logs:\n{}").format(e))
+
+
+class WarpConnectionTesterDialog(QDialog):
+    def __init__(self, settings_handler=None, parent=None):
+        super().__init__(parent)
+        self.settings_handler = settings_handler
+
+        self.setWindowTitle(self.tr("WARP Connection Tester"))
+        self.resize(650, 420)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(self.tr(
+            "This tool tests all known WARP connection paths and ranks them\n"
+            "based on reachability and latency."
+        ))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels([
+            self.tr("Test"),
+            self.tr("Protocol"),
+            self.tr("Ping"),
+            self.tr("Loss"),
+            self.tr("Status"),
+        ])
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.table.setColumnWidth(1, 90)
+        self.table.setColumnWidth(2, 80)
+        self.table.setColumnWidth(3, 80)
+        self.table.setColumnWidth(4, 90)
+        layout.addWidget(self.table)
+
+        self.summary_label = QLabel()
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet("""
+            QLabel {
+                padding: 10px;
+                background: #1e1e1e;
+                border-radius: 6px;
+            }
+        """)
+        layout.addWidget(self.summary_label)
+
+        btns = QHBoxLayout()
+        self.run_btn = QPushButton(self.tr("Start Test"))
+        self.run_btn.clicked.connect(self.start_test)
+
+        close_btn = QPushButton(self.tr("Close"))
+        close_btn.clicked.connect(self.reject)
+
+        btns.addStretch()
+        btns.addWidget(self.run_btn)
+        btns.addWidget(close_btn)
+        layout.addLayout(btns)
+
+    def start_test(self):
+        self.run_btn.setEnabled(False)
+        self.run_btn.setText(self.tr("Testing..."))
+        self.table.setRowCount(0)
+
+        self._worker = run_in_worker(
+            run_warp_connection_tests,
+            parent=self,
+            on_done=self.on_results_ready,
+            on_error=self.on_test_error
+        )
+
+    def _user_friendly_status(self, result: WarpTestResult):
+        if not result.reachable:
+            return (
+                self.tr("Blocked"),
+                self.tr("This connection path is blocked by the network or firewall.")
+            )
+
+        if result.avg_latency_ms is None:
+            return (
+                self.tr("Reachable"),
+                self.tr(
+                    "Traffic is allowed, but latency cannot be measured without an active tunnel."
+                )
+            )
+
+        if result.loss_percent >= 50:
+            return (
+                self.tr("Unstable"),
+                self.tr(
+                    "Connection works but packet loss is high. Expect disconnects."
+                )
+            )
+
+        if result.avg_latency_ms > 300:
+            return (
+                self.tr("Slow but Stable"),
+                self.tr(
+                    "Connection is stable but latency is high. Speed may feel slower."
+                )
+            )
+
+        return (
+            self.tr("Good"),
+            self.tr(
+                "Connection is stable and suitable for daily use."
+            )
+        )
+
+    def _update_summary(self, results: list[WarpTestResult]):
+        recommended = next((r for r in results if r.recommended), None)
+
+        if not recommended:
+            self.summary_label.setText(
+                self.tr(
+                    "⚠ No reliable connection path was found.\n"
+                    "Your network is likely blocking WARP traffic."
+                )
+            )
+            return
+
+        if recommended.protocol == "WireGuard":
+            text = self.tr(
+                "✅ Recommended: WireGuard\n\n"
+                "Your network allows WireGuard UDP traffic. "
+                "This usually provides the best speed and lowest latency.\n\n"
+                "If you experience disconnects, try MASQUE as a fallback."
+            )
+        else:
+            text = self.tr(
+                "✅ Recommended: MASQUE\n\n"
+                "Your network blocks or interferes with UDP traffic. "
+                "MASQUE uses HTTPS (TCP 443), which is slower but much more stable "
+                "under censorship.\n\n"
+                "This is the most reliable option for your network."
+            )
+
+        self.summary_label.setText(text)
+
+    def on_results_ready(self, results: list[WarpTestResult]):
+        self.table.setRowCount(0)
+
+        for r in results:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            name = r.name
+            if r.recommended:
+                name += "  ✓"
+
+            name_item = QTableWidgetItem(name)
+            name_item.setToolTip(
+                f"{r.transport} → {r.target}"
+            )
+            self.table.setItem(row, 0, name_item)
+            self.table.setItem(
+                row, 1,
+                QTableWidgetItem(r.protocol or self.tr("System"))
+            )
+
+            if r.avg_latency_ms is None:
+                ping_text = self.tr("Reachable")
+            else:
+                ping_text = f"{int(r.avg_latency_ms)} ms"
+
+            self.table.setItem(row, 2, QTableWidgetItem(ping_text))
+            self.table.setItem(
+                row, 3,
+                QTableWidgetItem(f"{r.loss_percent}%")
+            )
+
+            status_text, tooltip = self._user_friendly_status(r)
+            status_item = QTableWidgetItem(status_text)
+            status_item.setToolTip(tooltip)
+
+            if status_text in ("Good", "Reachable"):
+                status_item.setForeground(Qt.green)
+            elif status_text in ("Slow but Stable",):
+                status_item.setForeground(Qt.yellow)
+            else:
+                status_item.setForeground(Qt.red)
+
+            self.table.setItem(row, 4, status_item)
+
+        self._update_summary(results)
+
+        self.run_btn.setEnabled(True)
+        self.run_btn.setText(self.tr("Start Test"))
+
+    def on_test_error(self, exc):
+        QMessageBox.warning(self, self.tr("Error"), str(exc))
+        self.run_btn.setEnabled(True)
+        self.run_btn.setText(self.tr("Start Test"))
 
 
 class AppExcludeManager(QObject):
@@ -3455,17 +3829,46 @@ class SettingsPage(QWidget):
         main_layout.addLayout(grid)
 
         more_group = self.create_groupbox(self.tr("More Options"))
-        more_layout = QHBoxLayout()
+
+        more_vlayout = QVBoxLayout()
+
+        row1 = QHBoxLayout()
         logs_button = QPushButton(self.tr("View Logs"))
         logs_button.clicked.connect(self.open_logs_window)
         advanced_settings_button = QPushButton(self.tr("Advanced Settings"))
         advanced_settings_button.clicked.connect(self.open_advanced_settings)
-        more_layout.addWidget(logs_button)
-        more_layout.addWidget(advanced_settings_button)
-        more_group.setLayout(more_layout)
+        row1.addWidget(logs_button)
+        row1.addWidget(advanced_settings_button)
+
+        row2 = QHBoxLayout()
+        dns_logs_button = QPushButton(self.tr("Live DNS Logs"))
+        dns_logs_button.clicked.connect(self.open_live_dns_logs)  # todo : implant this later
+        warp_test_button = QPushButton(self.tr("Connection Test"))
+        warp_test_button.clicked.connect(self.open_warp_connection_tester)
+        row2.addWidget(dns_logs_button)
+        row2.addWidget(warp_test_button)
+
+        more_vlayout.addLayout(row1)
+        more_vlayout.addLayout(row2)
+
+        more_group.setLayout(more_vlayout)
         main_layout.addWidget(more_group)
 
         self.setLayout(main_layout)
+
+    def open_live_dns_logs(self):
+        QMessageBox.information(
+            self,
+            self.tr("Coming Soon"),
+            self.tr("Live DNS logs will be available soon.")
+        )
+
+    def open_warp_connection_tester(self):
+        dialog = WarpConnectionTesterDialog(
+            settings_handler=self.settings_handler,
+            parent=self
+        )
+        dialog.exec()
 
     def change_language(self):
         lang_code = self.language_dropdown.currentData()
