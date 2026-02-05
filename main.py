@@ -3533,8 +3533,9 @@ class SettingsPage(QWidget):
         selected_mode = self.modes_dropdown.currentText()
         port_to_set = None
         current_masque = self.settings_handler.get("masque_option", "") or "auto"
+        protocol = self.settings_handler.get("protocol", "WireGuard")
 
-        if is_masque_proxy_incompatible(current_masque, selected_mode):
+        if is_masque_proxy_incompatible(current_masque, selected_mode) and protocol == "MASQUE":
             QMessageBox.warning(
                 self,
                 self.tr("Incompatible Mode"),
@@ -3779,12 +3780,20 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(200, self._start_background_tasks)
 
     def _start_background_tasks(self):
-        QTimer.singleShot(1000, lambda: run_in_worker(
-            fetch_protocol,
-            parent=self,
-            on_done=self._on_protocol_ready,
-            on_error=lambda e: self._on_protocol_ready("Error")
-        ))
+        saved_protocol = self.settings_handler.get("protocol")
+
+        if saved_protocol in ("WireGuard", "MASQUE"):
+            self._on_protocol_ready(saved_protocol)
+        else:
+            QTimer.singleShot(
+                1000,
+                lambda: run_in_worker(
+                    fetch_protocol,
+                    parent=self,
+                    on_done=self._on_protocol_ready,
+                    on_error=lambda e: self._on_protocol_ready("Error")
+                )
+            )
 
         try:
             self.status_checker = WarpStatusHandler(self.settings_handler, parent=self)
@@ -3830,9 +3839,23 @@ class MainWindow(QMainWindow):
                 threading.Thread(target=self._update_checker.perform_portable_warp_update, daemon=True).start()
 
     def _on_protocol_ready(self, protocol):
+        if not protocol:
+            protocol = "Unknown"
+
+        try:
+            saved_protocol = self.settings_handler.get("protocol")
+            if not saved_protocol and protocol in ("WireGuard", "MASQUE"):
+                self.settings_handler.save_settings("protocol", protocol)
+                logger.info(f"Fetched protocol saved to settings: {protocol}")
+        except Exception as e:
+            logger.warning(f"Failed to persist fetched protocol: {e}")
+
         self.protocol_label.setText(
-            self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(protocol)
+            self.tr(
+                "Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>"
+            ).format(protocol)
         )
+
         self._ready_checks["protocol"] = True
         self._check_ready()
 
@@ -4465,6 +4488,7 @@ class MainWindow(QMainWindow):
         try:
             result = run_warp_command('warp-cli', 'tunnel', 'protocol', 'set', protocol)
             if result.returncode == 0:
+                self.settings_handler.save_settings("protocol", protocol)
                 QMessageBox.information(
                     self, self.tr("Protocol Changed"),
                     self.tr("Protocol successfully changed to {}.").format(protocol))
