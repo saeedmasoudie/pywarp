@@ -2005,10 +2005,12 @@ class UpdateChecker(QObject):
 
 class WarpStatusHandler(QObject):
     status_signal = Signal(str, str)
+    dns_log_signal = Signal(dict)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings_handler = settings
+        self._dns_enabled_runtime = False
 
         self._process = QProcess(self)
         self._process.setProcessChannelMode(QProcess.MergedChannels)
@@ -2038,6 +2040,14 @@ class WarpStatusHandler(QObject):
 
         QTimer.singleShot(0, self.start_listener)
 
+    def _is_masque_protocol(self) -> bool:
+        try:
+            protocol = self.settings_handler.get("protocol", "").lower()
+        except Exception:
+            return False
+
+        return protocol == "masque"
+
     def start_listener(self):
         if self._process.state() == QProcess.Running:
             return
@@ -2053,6 +2063,23 @@ class WarpStatusHandler(QObject):
         self._process.setArguments(["-l", "-j", "status"])
         self._process.start()
         logger.info("warp-cli JSON listener started")
+
+    def set_dns_logging(self, enable: bool):
+        saved = self.settings_handler.get("dns_log_enabled", False)
+
+        if enable == saved:
+            self._dns_enabled_runtime = enable
+            return
+
+        cmd = "enable" if enable else "disable"
+        res = run_warp_command("warp-cli", "dns", "log", cmd)
+
+        if res and res.returncode == 0:
+            self.settings_handler.save_settings("dns_log_enabled", enable)
+            self._dns_enabled_runtime = enable
+            logger.info(f"DNS logging {cmd}d")
+        else:
+            logger.error(f"Failed to {cmd} DNS logging: {res.stderr if res else 'no result'}")
 
     def stop_listener(self):
         self._restart_timer.stop()
@@ -2081,6 +2108,9 @@ class WarpStatusHandler(QObject):
             ]
 
     def _start_masque_auto_detect(self):
+        if not self._is_masque_protocol():
+            return
+
         try:
             cur = self.settings_handler.get("masque_option", "")
             if cur and cur != "auto":
@@ -2100,6 +2130,7 @@ class WarpStatusHandler(QObject):
         self._auto_index = 0
         self._current_candidate = None
         self._observed_connected = False
+        self._auto_positive_count = 0
 
         QTimer.singleShot(0, self._apply_current_candidate)
 
@@ -2201,6 +2232,9 @@ class WarpStatusHandler(QObject):
                 update_type = event.get("update", "")
                 self._emit_status("Update", update_type)
 
+            elif "dns_log" in event:
+                self.dns_log_signal.emit(event["dns_log"])
+
     def _translate_reason(self, key: str, value: str = "") -> str:
         mapping = {
             "PerformingHappyEyeballs": QCoreApplication.translate("WarpStatusHandler", "Trying to connect..."),
@@ -2225,18 +2259,26 @@ class WarpStatusHandler(QObject):
             "HappyEyeballsFailed": QCoreApplication.translate("WarpStatusHandler", "Connection attempt failed"),
             "ConfiguringForwardProxy": QCoreApplication.translate("WarpStatusHandler", "Setting up proxy"),
             "ValidatingProxyConfiguration": QCoreApplication.translate("WarpStatusHandler", "Checking proxy setup"),
+            "NetworkDegraded": QCoreApplication.translate("WarpStatusHandler", "Network performance degraded"),
+            "ConnectivityCheckFailed": QCoreApplication.translate("WarpStatusHandler", "Connectivity test unsuccessful"),
+            "CheckingForRouteToDnsEndpoint": QCoreApplication.translate("WarpStatusHandler", "Checking DNS route availability"),
         }
         return mapping.get(key, key)
 
     def _emit_status(self, status: str, reason: str):
-        if status == "Connecting":
-            try:
-                cur = self.settings_handler.get("masque_option", "")
-            except Exception:
-                cur = ""
+        if not self._is_masque_protocol() and self._auto_detect_running:
+            logger.debug("Protocol is WireGuard — stopping MASQUE auto-detect")
+            self._stop_masque_auto_detect(success=False)
 
-            if (not cur or cur == "auto") and not self._auto_detect_running:
-                self._start_masque_auto_detect()
+        if status == "Connecting":
+            if self._is_masque_protocol():
+                try:
+                    cur = self.settings_handler.get("masque_option", "")
+                except Exception:
+                    cur = ""
+
+                if (not cur or cur == "auto") and not self._auto_detect_running:
+                    self._start_masque_auto_detect()
 
         if status == "Connected" and self._auto_detect_running:
             self._auto_positive_count += 1
@@ -3744,6 +3786,8 @@ class AdvancedSettings(QDialog):
 
 
 class SettingsPage(QWidget):
+    request_dns_drawer = Signal()
+
     def __init__(self, parent=None, warp_status_handler=None, settings_handler=None):
         super().__init__(parent)
         self.settings_handler = settings_handler
@@ -3842,7 +3886,7 @@ class SettingsPage(QWidget):
 
         row2 = QHBoxLayout()
         dns_logs_button = QPushButton(self.tr("Live DNS Logs"))
-        dns_logs_button.clicked.connect(self.open_live_dns_logs)  # todo : implant this later
+        dns_logs_button.clicked.connect(self.emit_drawer_request)
         warp_test_button = QPushButton(self.tr("Connection Test"))
         warp_test_button.clicked.connect(self.open_warp_connection_tester)
         row2.addWidget(dns_logs_button)
@@ -3856,12 +3900,8 @@ class SettingsPage(QWidget):
 
         self.setLayout(main_layout)
 
-    def open_live_dns_logs(self):
-        QMessageBox.information(
-            self,
-            self.tr("Coming Soon"),
-            self.tr("Live DNS logs will be available soon.")
-        )
+    def emit_drawer_request(self):
+        self.request_dns_drawer.emit()
 
     def open_warp_connection_tester(self):
         dialog = WarpConnectionTesterDialog(
@@ -4007,6 +4047,229 @@ class SettingsPage(QWidget):
         self._worker = run_in_worker(task, parent=self, on_done=on_finished, on_error=on_error)
 
 
+class DnsDrawer(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(460)
+        self.hide()
+        self._paused = False
+        self._max_rows = 200
+
+        is_dark = ThemeManager.is_dark_mode()
+        bg_color = "#0d1117" if is_dark else "#f6f8fa"
+        border_color = "#30363d" if is_dark else "#d0d7de"
+        text_color = "#c9d1d9" if is_dark else "#24292f"
+        input_bg = "#010409" if is_dark else "#ffffff"
+
+        self.setStyleSheet(f"""
+            DnsDrawer {{
+                background-color: {bg_color};
+                border-left: 1px solid {border_color};
+            }}
+            QTableWidget {{
+                border: none;
+                background-color: transparent;
+                gridline-color: {border_color};
+                color: {text_color};
+            }}
+            QHeaderView::section {{
+                background-color: {bg_color};
+                color: {text_color};
+                border: none;
+                border-bottom: 1px solid {border_color};
+                padding: 4px;
+                font-weight: bold;
+            }}
+            QLineEdit {{
+                background-color: {input_bg};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        header_frame = QFrame()
+        header_frame.setFixedHeight(45)
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(10, 0, 10, 0)
+
+        title = QLabel(self.tr("Live DNS Logs"))
+        title.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        if is_dark:
+            title.setStyleSheet("color: #e6edf3;")
+
+        btn_style = f"""
+            QPushButton {{
+                background-color: {input_bg};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+                font-size: 11px;
+                padding: 2px 8px;
+            }}
+            QPushButton:checked {{
+                background-color: #d29922;
+                color: #000000;
+                border: none;
+            }}
+            QPushButton:hover {{ border-color: #8b949e; }}
+        """
+
+        self.pause_btn = QPushButton("Pause")
+        self.pause_btn.setCheckable(True)
+        self.pause_btn.setCursor(Qt.PointingHandCursor)
+        self.pause_btn.setFixedSize(60, 24)
+        self.pause_btn.clicked.connect(self.toggle_pause)
+        self.pause_btn.setStyleSheet(btn_style)
+
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setCursor(Qt.PointingHandCursor)
+        self.clear_btn.setFixedSize(50, 24)
+        self.clear_btn.clicked.connect(self.clear_logs)
+        self.clear_btn.setStyleSheet(btn_style)
+
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        header_layout.addWidget(self.pause_btn)
+        header_layout.addWidget(self.clear_btn)
+        layout.addWidget(header_frame)
+
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText(self.tr("Filter domains..."))
+        self.filter_input.textChanged.connect(self.apply_filter)
+
+        filter_layout = QVBoxLayout()
+        filter_layout.setContentsMargins(10, 5, 10, 5)
+        filter_layout.addWidget(self.filter_input)
+        layout.addLayout(filter_layout)
+
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Time", "Type", "Domain", "Status", "ms"])
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.open_context_menu)
+
+        layout.addWidget(self.table)
+
+    def toggle_pause(self):
+        self._paused = self.pause_btn.isChecked()
+
+    def add_log(self, data):
+        if self.isHidden() or self._paused:
+            return
+
+        query_list = data.get("query", [])
+        record_type = "?"
+        domain = "Unknown"
+
+        if isinstance(query_list, list) and len(query_list) >= 2:
+            record_type = str(query_list[0])
+            domain = str(query_list[1]).rstrip('.')
+
+        status_text = data.get("status", "Unknown")
+        duration_val = data.get("duration_ms", 0)
+        timestamp = time.strftime("%H:%M:%S")
+        answers = data.get("answers", [])
+        tooltip_text = f"Domain: {domain}\nType: {record_type}\nLatency: {duration_val}ms"
+
+        if answers and isinstance(answers, list):
+            ips = []
+            for ans in answers:
+                if isinstance(ans, list) and len(ans) > 0:
+                    ips.append(str(ans[-1]))
+            if ips:
+                tooltip_text += "\n\nResolved IPs:\n" + "\n".join(ips)
+
+        self.table.setSortingEnabled(False)
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        def make_item(text, color=None, is_bold=False):
+            item = QTableWidgetItem(str(text))
+            if color:
+                item.setForeground(QColor(color))
+            if is_bold:
+                f = QFont("Segoe UI", 9)
+                f.setBold(True)
+                item.setFont(f)
+            item.setToolTip(tooltip_text)
+            return item
+
+        status_color = "#8b949e"
+        if status_text == "NoError":
+            status_color = "#2ea043"
+        elif status_text == "NXDomain":
+            status_color = "#d29922"
+        elif status_text in ("Timeout", "ServFail", "Refused"):
+            status_color = "#cf222e"
+
+        latency_color = "#8b949e"
+        if duration_val > 1000:
+            latency_color = "#cf222e"
+        elif duration_val > 300:
+            latency_color = "#d29922"
+
+        self.table.setItem(row, 0, make_item(timestamp, "#8b949e"))
+        self.table.setItem(row, 1, make_item(record_type, "#58a6ff", is_bold=True))
+        self.table.setItem(row, 2, make_item(domain))
+        self.table.setItem(row, 3, make_item(status_text, status_color))
+        self.table.setItem(row, 4, make_item(duration_val, latency_color))
+
+        if row > self._max_rows:
+            self.table.removeRow(0)
+
+        if not self.filter_input.text():
+            self.table.scrollToBottom()
+        else:
+            self.apply_filter(self.filter_input.text())
+
+    def apply_filter(self, text):
+        text = text.lower()
+        for row in range(self.table.rowCount()):
+            domain_item = self.table.item(row, 2)
+            status_item = self.table.item(row, 3)
+
+            show = True
+            if text:
+                in_domain = text in domain_item.text().lower()
+                in_status = text in status_item.text().lower()
+                show = in_domain or in_status
+
+            self.table.setRowHidden(row, not show)
+
+    def clear_logs(self):
+        self.table.setRowCount(0)
+
+    def open_context_menu(self, position):
+        menu = QMenu()
+        copy_action = QAction(self.tr("Copy Domain"), self)
+
+        item = self.table.itemAt(position)
+        if item:
+            row = item.row()
+            domain_txt = self.table.item(row, 2).text()
+            copy_action.triggered.connect(lambda: QApplication.clipboard().setText(domain_txt))
+            menu.addAction(copy_action)
+
+        menu.exec(self.table.viewport().mapToGlobal(position))
+
+
 class MainWindow(QMainWindow):
     instance = None
     def __init__(self, settings_handler=None):
@@ -4034,12 +4297,21 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 400, 480)
         self.setWindowFlags(Qt.Window)
         self.current_error_box = None
-        self.setMinimumSize(330, 555)
+        self.setMinimumSize(330, 580)
         self.setMaximumSize(395, 600)
+        self.master_widget = QWidget()
+        self.setCentralWidget(self.master_widget)
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        self.master_layout = QHBoxLayout(self.master_widget)
+        self.master_layout.setContentsMargins(0, 0, 0, 0)
+        self.master_layout.setSpacing(0)
+
+        self.app_container = QWidget()
+        self.master_layout.addWidget(self.app_container)
+        self.dns_drawer = DnsDrawer(self)
+        self.master_layout.addWidget(self.dns_drawer)
+
+        main_layout = QVBoxLayout(self.app_container)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(10)
 
@@ -4180,7 +4452,30 @@ class MainWindow(QMainWindow):
         self._loading_fallback_timer.timeout.connect(self._force_ready)
         self._loading_fallback_timer.start(10000)
 
+        settings_page = self.stacked_widget.widget(1)
+        if isinstance(settings_page, SettingsPage):
+            settings_page.request_dns_drawer.connect(self.toggle_dns_drawer)
+
         QTimer.singleShot(200, self._start_background_tasks)
+
+    def toggle_dns_drawer(self):
+        drawer_width = 400
+        current_w = self.width()
+
+        if self.dns_drawer.isHidden():
+            self.setMinimumWidth(330 + drawer_width)
+            self.setMaximumWidth(395 + drawer_width)
+            self.resize(current_w + drawer_width, self.height())
+            self.dns_drawer.show()
+            if hasattr(self, 'status_checker'):
+                self.status_checker.set_dns_logging(True)
+        else:
+            self.dns_drawer.hide()
+            self.resize(current_w - drawer_width, self.height())
+            self.setMinimumWidth(330)
+            self.setMaximumWidth(395)
+            if hasattr(self, 'status_checker'):
+                self.status_checker.set_dns_logging(False)
 
     def _start_background_tasks(self):
         saved_protocol = self.settings_handler.get("protocol")
@@ -4201,6 +4496,9 @@ class MainWindow(QMainWindow):
         try:
             self.status_checker = WarpStatusHandler(self.settings_handler, parent=self)
             self.status_checker.status_signal.connect(self._on_status_ready_with_reason)
+            self.status_checker.dns_log_signal.connect(self.dns_drawer.add_log)
+            dns_enabled = self.settings_handler.get("dns_log_enabled", False)
+            self.status_checker.set_dns_logging(dns_enabled)
         except Exception:
             logger.exception("Status checker failed")
 
