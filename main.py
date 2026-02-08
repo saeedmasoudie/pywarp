@@ -1006,7 +1006,7 @@ class WarpConnectionTesterDialog(QDialog):
         self.table.setColumnWidth(1, 90)
         self.table.setColumnWidth(2, 80)
         self.table.setColumnWidth(3, 80)
-        self.table.setColumnWidth(4, 90)
+        self.table.setColumnWidth(4, 100)
         layout.addWidget(self.table)
 
         self.summary_label = QLabel()
@@ -4050,7 +4050,7 @@ class SettingsPage(QWidget):
 class DnsDrawer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(460)
+        self.setFixedWidth(400)
         self.hide()
         self._paused = False
         self._max_rows = 200
@@ -4071,14 +4071,16 @@ class DnsDrawer(QWidget):
                 background-color: transparent;
                 gridline-color: {border_color};
                 color: {text_color};
+                font-size: 11px;
             }}
             QHeaderView::section {{
                 background-color: {bg_color};
                 color: {text_color};
                 border: none;
                 border-bottom: 1px solid {border_color};
-                padding: 4px;
+                padding: 2px;
                 font-weight: bold;
+                font-size: 11px;
             }}
             QLineEdit {{
                 background-color: {input_bg};
@@ -4090,7 +4092,7 @@ class DnsDrawer(QWidget):
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 8, 0)
         layout.setSpacing(0)
 
         header_frame = QFrame()
@@ -4133,10 +4135,17 @@ class DnsDrawer(QWidget):
         self.clear_btn.clicked.connect(self.clear_logs)
         self.clear_btn.setStyleSheet(btn_style)
 
+        self.close_btn = QPushButton("Close")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFixedSize(50, 24)
+        self.close_btn.clicked.connect(self.close_drawer)
+        self.close_btn.setStyleSheet(btn_style)
+
         header_layout.addWidget(title)
         header_layout.addStretch()
         header_layout.addWidget(self.pause_btn)
         header_layout.addWidget(self.clear_btn)
+        header_layout.addWidget(self.close_btn)
         layout.addWidget(header_frame)
 
         self.filter_input = QLineEdit()
@@ -4166,6 +4175,13 @@ class DnsDrawer(QWidget):
         self.table.customContextMenuRequested.connect(self.open_context_menu)
 
         layout.addWidget(self.table)
+
+    def close_drawer(self):
+        main_window = self.window()
+        if hasattr(main_window, 'toggle_dns_drawer'):
+            main_window.toggle_dns_drawer()
+        else:
+            self.hide()
 
     def toggle_pause(self):
         self._paused = self.pause_btn.isChecked()
