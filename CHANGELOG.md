@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.4 - 2026-02-13
+### Changes
+- Fixed incorrect warning shown in WireGuard proxy mode
+- Optimized protocol detection by using saved data instead of running a command each time
+- Added connection test support for WARP-based protocols
+- Introduced a live DNS logs window
+- Resolved MASQUE-related issue in the status handler
+- Added a new example to the connection states section
+- Updated application size for the latest release
+- Fixed styling issues in the new window and drawer table
+- Updated Persian translation
+- Added Windows installer
+- Added macOS and Linux installers
+
 ## v1.3.3 - 2025-12-02
 ### Changes
 - Optimized IP fetcher function for faster and more reliable lookups
