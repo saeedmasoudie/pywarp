@@ -276,6 +276,26 @@ jobs:
             pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg
 
   # -------------------------
+  # UNIX INSTALLER SCRIPT
+  # -------------------------
+  build-unix-installer:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare Installer
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          cp installers/mac-linux/pywarp-installer.sh pywarp-installer.sh
+          chmod +x pywarp-installer.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-unix-installer
+          path: pywarp-installer.sh
+
+  # -------------------------
   # RELEASE
   # -------------------------
   release:
@@ -286,6 +306,7 @@ jobs:
       - build-linux-x64
       - build-macos-arm64
       - build-macos-intel
+      - build-unix-installer
 
     steps:
       - uses: actions/checkout@v4
@@ -319,6 +340,7 @@ jobs:
           MAC_ARM_PKG=$(find artifacts -name "*macos-arm64*.pkg" | head -n1 || true)
           MAC_INTEL_DMG=$(find artifacts -name "*macos-intel*.dmg" | head -n1 || true)
           MAC_INTEL_PKG=$(find artifacts -name "*macos-intel*.pkg" | head -n1 || true)
+          UNIX_INSTALLER=$(find artifacts -name "pywarp-installer.sh" | head -n1 || true)
 
           cat >> RELEASE_NOTES.md <<EOF
 
@@ -330,6 +352,18 @@ jobs:
           | [![macOS ARM64](https://img.shields.io/badge/macOS-ARM64-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) [![PKG ARM64](https://img.shields.io/badge/PKG-ARM64-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.pkg) <br/> [![macOS Intel](https://img.shields.io/badge/macOS-Intel-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) [![PKG Intel](https://img.shields.io/badge/PKG-Intel-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.pkg) | macOS 10.15+ |
           | [![Linux x64](https://img.shields.io/badge/Linux-x64-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) | GNOME / KDE |
 
+          ---
+
+          ## ⚡ Quick Install (Linux & macOS)
+
+          [![Download Installer Script](https://img.shields.io/badge/Unix-Installer.sh-2ea44f?style=for-the-badge&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh)
+
+          ### One-Line Install
+
+          \`\`\`bash
+          curl -fsSL https://github.com/${REPO}/releases/latest/download/pywarp-installer.sh | bash
+          \`\`\`
+
           EOF
 
           echo "" >> RELEASE_NOTES.md
@@ -339,7 +373,8 @@ jobs:
               "$WIN_X64" "$WIN_INSTALLER" \
               "$LINUX_X64" \
               "$MAC_ARM_DMG" "$MAC_ARM_PKG" \
-              "$MAC_INTEL_DMG" "$MAC_INTEL_PKG"
+              "$MAC_INTEL_DMG" "$MAC_INTEL_PKG" \
+              "$UNIX_INSTALLER"
           do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
@@ -361,5 +396,6 @@ jobs:
             artifacts/**/*linux*.tar.gz
             artifacts/**/*macos*.dmg
             artifacts/**/*macos*.pkg
+            artifacts/**/pywarp-installer.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
