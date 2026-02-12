@@ -71,6 +71,14 @@ jobs:
             --output-dir=dist `
             --output-filename="pywarp-windows-x64-v$version.exe" `
             --assume-yes-for-downloads
+      
+      - name: Zip Windows Installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          Compress-Archive installers\windows\* `
+            dist\pywarp-windows-installer-v$version.zip
+
 
       - name: Zip Output
         shell: pwsh
@@ -81,7 +89,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows-x64
-          path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
+          path: |
+            dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
+            dist/pywarp-windows-installer-v${{ github.event.inputs.version }}.zip
 
   # -------------------------
   # LINUX
@@ -303,6 +313,7 @@ jobs:
           TAG="v$VERSION"
 
           WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
+          WIN_INSTALLER=$(find artifacts -name "*windows-installer*.zip" | head -n1 || true)
           LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
           MAC_ARM_DMG=$(find artifacts -name "*macos-arm64*.dmg" | head -n1 || true)
           MAC_ARM_PKG=$(find artifacts -name "*macos-arm64*.pkg" | head -n1 || true)
@@ -315,7 +326,7 @@ jobs:
 
           | <div align="center">Downloads</div> | <div align="center">Compatibility</div> |
           |---|---|
-          | [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=git&logoColor=0078D6&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) | Windows 10+ |
+          | [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=git&logoColor=0078D6&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) <br/> [![Installer ZIP](https://img.shields.io/badge/Installer-ZIP-0078D6?style=for-the-badge&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-installer-v${VERSION}.zip) | Windows 10+ |
           | [![macOS ARM64](https://img.shields.io/badge/macOS-ARM64-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) [![PKG ARM64](https://img.shields.io/badge/PKG-ARM64-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.pkg) <br/> [![macOS Intel](https://img.shields.io/badge/macOS-Intel-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) [![PKG Intel](https://img.shields.io/badge/PKG-Intel-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.pkg) | macOS 10.15+ |
           | [![Linux x64](https://img.shields.io/badge/Linux-x64-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) | GNOME / KDE |
 
@@ -325,7 +336,7 @@ jobs:
           echo "## 🔐 Checksums" >> RELEASE_NOTES.md
 
           for file in \
-              "$WIN_X64" \
+              "$WIN_X64" "$WIN_INSTALLER" \
               "$LINUX_X64" \
               "$MAC_ARM_DMG" "$MAC_ARM_PKG" \
               "$MAC_INTEL_DMG" "$MAC_INTEL_PKG"
