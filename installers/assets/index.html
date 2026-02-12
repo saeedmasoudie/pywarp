@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>PyWarp Installer</title>
+<style>
+/* (Use the exact same CSS you had before, no changes needed here) */
+* { box-sizing: border-box; user-select: none; cursor: default; }
+body { margin: 0; padding: 0; font-family: "Segoe UI", sans-serif; background-color: #f0f0f0; color: #333; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.container { display: flex; flex: 1; background: #fff; }
+.sidebar { width: 180px; background: linear-gradient(180deg, #f3f4f6 0%, #e5e7eb 100%); border-right: 1px solid #d1d5db; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+.sidebar img { width: 80px; height: 80px; margin-bottom: 20px; }
+.step-list { width: 100%; }
+.step { padding: 8px 10px; font-size: 13px; color: #6b7280; border-radius: 4px; margin-bottom: 4px; }
+.step.active { background: #fff; color: #2563eb; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.main { flex: 1; padding: 30px 40px; position: relative; overflow-y: auto; }
+h2 { margin: 0 0 10px 0; font-size: 22px; font-weight: 400; color: #111827; }
+p { font-size: 13px; line-height: 1.5; color: #4b5563; margin-bottom: 15px; }
+.info-box { background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 6px; margin-bottom: 25px; }
+.info-box h4 { margin: 0 0 8px 0; font-size: 13px; color: #374151; }
+.info-box ul { margin: 0; padding-left: 20px; }
+.info-box li { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+.path-group { margin-top: 20px; }
+.path-label { font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block; }
+.input-row { display: flex; gap: 8px; }
+input[type="text"] { flex: 1; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; color: #374151; background: #fff; cursor: text; user-select: text; }
+button.browse { padding: 6px 12px; border: 1px solid #d1d5db; background: #f3f4f6; border-radius: 4px; cursor: pointer; font-size: 12px; }
+button.browse:hover { background: #e5e7eb; }
+.progress-container { margin-top: 40px; display: none; } 
+.progress-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+.progress-track { height: 16px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); }
+.bar { height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #2563eb); transition: width 0.3s; }
+.status-steps { margin-top: 20px; font-size: 12px; color: #666; }
+.status-step { margin-bottom: 4px; display: flex; align-items: center; }
+.status-step.done { color: #10b981; }
+.status-step.active { color: #2563eb; font-weight: bold; }
+.status-step span { margin-right: 8px; }
+.bottom-bar { height: 60px; background: #f3f4f6; border-top: 1px solid #d1d5db; display: flex; align-items: center; justify-content: flex-end; padding: 0 20px; flex-shrink: 0; }
+button.primary { background: #2563eb; color: #fff; border: none; border-radius: 5px; padding: 8px 24px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+button.primary:hover { background: #1d4ed8; }
+button.primary:disabled { background: #9ca3af; cursor: not-allowed; }
+.page { display: none; }
+.page.active { display: block; animation: fadein 0.3s; }
+@keyframes fadein { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="sidebar">
+    <img src="assets/logo.ico" onerror="this.style.display='none'">
+    <div class="step-list">
+      <div id="step1" class="step active">1. Configuration</div>
+      <div id="step2" class="step">2. Installation</div>
+      <div id="step3" class="step">3. Finish</div>
+    </div>
+  </div>
+
+  <div class="main">
+    
+    <div id="p1" class="page active">
+      <h2>Welcome to PyWarp Setup</h2>
+      <p>This wizard will guide you through the installation of PyWarp.</p>
+      <div class="info-box">
+        <h4>Installation Details</h4>
+        <ul>
+          <li><strong>Clean Install:</strong> Python will be isolated in a subfolder.</li>
+          <li><strong>Shortcuts:</strong> Desktop and Uninstall shortcuts included.</li>
+          <li><strong>Requirements:</strong> Internet connection required for initial download.</li>
+        </ul>
+      </div>
+      <div class="path-group">
+        <span class="path-label">Destination Folder</span>
+        <div class="input-row">
+          <input type="text" id="installPath" value="C:\Program Files\PyWarp">
+          <button class="browse" onclick="browseFolder()">Browse...</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="p2" class="page">
+      <h2>Installing PyWarp</h2>
+      <p>Please wait while Setup configures your environment.</p>
+      <div class="progress-container" style="display:block">
+        <div class="progress-label"><span>Overall Progress</span> <span id="overall_txt">0%</span></div>
+        <div class="progress-track"><div id="bar_overall" class="bar"></div></div>
+      </div>
+      <div class="status-steps">
+        <div id="st_1" class="status-step"><span>○</span> Downloading Python Engine</div>
+        <div id="st_2" class="status-step"><span>○</span> Downloading App Files</div>
+        <div id="st_3" class="status-step"><span>○</span> Installing Dependencies</div>
+        <div id="st_4" class="status-step"><span>○</span> Creating Runner & Shortcuts</div>
+      </div>
+      <p id="statusText" style="margin-top:20px; color:#2563eb; font-size:12px;">Initializing...</p>
+    </div>
+
+    <div id="p3" class="page">
+      <h2 style="color:#059669">Installation Complete</h2>
+      <p>PyWarp has been successfully installed.</p>
+      <p>You can launch the app from your Desktop.</p>
+      <p>Click Finish to exit setup.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <button id="btnAction" class="primary" onclick="handleNext()">Install</button>
+</div>
+
+<script>
+var state = 1; 
+
+function handleNext() {
+  if (state === 1) {
+    state = 2;
+    updateUI();
+    var path = document.getElementById("installPath").value;
+    try {
+      window.external.StartInstall(path);
+    } catch(e) {
+      console.log("External interface not found");
+    }
+  } else if (state === 3) {
+    try { window.external.CloseApp(); } catch(e) { window.close(); }
+  }
+}
+
+function updateUI() {
+  document.getElementById("p1").className = "page";
+  document.getElementById("p2").className = "page";
+  document.getElementById("p3").className = "page";
+  
+  document.getElementById("step1").className = "step";
+  document.getElementById("step2").className = "step";
+  document.getElementById("step3").className = "step";
+
+  document.getElementById("p" + state).className = "page active";
+  document.getElementById("step" + state).className = "step active";
+
+  var btn = document.getElementById("btnAction");
+  if (state === 1) {
+    btn.innerText = "Install";
+    btn.disabled = false;
+  } else if (state === 2) {
+    btn.innerText = "Installing...";
+    btn.disabled = true;
+  } else if (state === 3) {
+    btn.innerText = "Finish";
+    btn.disabled = false;
+  }
+}
+
+function browseFolder() {
+  try {
+    var selectedPath = window.external.SelectFolder();
+    if (selectedPath && selectedPath !== "") {
+      document.getElementById("installPath").value = selectedPath;
+    }
+  } catch(e) { }
+}
+
+function setProgress(percent, status) {
+  if (percent !== undefined && percent !== null) {
+      document.getElementById("bar_overall").style.width = percent + "%";
+      document.getElementById("overall_txt").innerText = percent + "%";
+  }
+  if (status !== undefined && status !== null) {
+      document.getElementById("statusText").innerText = status;
+  }
+}
+
+function setActiveStep(stepIndex) {
+    for(var i=1; i<=4; i++) {
+        var el = document.getElementById("st_" + i);
+        if(el) {
+            el.className = "status-step";
+            el.getElementsByTagName("span")[0].innerText = "○";
+        }
+    }
+    for(var i=1; i<stepIndex; i++) {
+        var el = document.getElementById("st_" + i);
+        if(el) {
+            el.className = "status-step done";
+            el.getElementsByTagName("span")[0].innerText = "✔";
+        }
+    }
+    if (stepIndex <= 4) {
+        var el = document.getElementById("st_" + stepIndex);
+        if(el) {
+            el.className = "status-step active";
+            el.getElementsByTagName("span")[0].innerText = "➤";
+        }
+    }
+}
+
+function installComplete() {
+  state = 3;
+  updateUI();
+}
+</script>
+
+</body>
+</html>
