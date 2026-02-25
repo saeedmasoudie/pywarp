@@ -344,7 +344,8 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
 def udp_probe(ip, port, timeout=2.0):
     start = time.monotonic()
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        family = socket.AF_INET6 if ":" in ip else socket.AF_INET
+        sock = socket.socket(family, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
         sock.connect((ip, port))
         sock.send(b"\x00")
@@ -1559,7 +1560,7 @@ class AppExcludeManager(QObject):
                     value = r.get("value", "")
                     if value:
                         if "/" in value:
-                            if value.endswith("/32"):
+                            if value.endswith("/32") or value.endswith("/128"):
                                 current_ips.add(value.split("/")[0])
                             else:
                                 current_ranges.add(value)
@@ -2995,7 +2996,24 @@ class ExclusionManager(QDialog):
 
     @classmethod
     def filter_default_ips(cls, ip_list):
-        return [ip for ip in ip_list if ip not in cls.DEFAULT_IPS]
+        default_nets = set()
+        for d in cls.DEFAULT_IPS:
+            try:
+                default_nets.add(ipaddress.ip_network(d, strict=False))
+            except ValueError:
+                pass
+
+        filtered = []
+        for ip in ip_list:
+            try:
+                clean_ip = ip.split("/")[0] if ip.endswith("/32") or ip.endswith("/128") else ip
+                net = ipaddress.ip_network(clean_ip, strict=False)
+                if net not in default_nets:
+                    filtered.append(ip)
+            except ValueError:
+                filtered.append(ip)
+
+        return filtered
 
     def _add_row_widget(self, type_str, value):
         row_widget = QFrame()
@@ -3096,6 +3114,14 @@ class ExclusionManager(QDialog):
                 self.input_field.clear()
                 return
             detected_type = "ip"
+            try:
+                net = ipaddress.ip_network(raw, strict=False)
+                if (net.version == 4 and net.prefixlen == 32) or (net.version == 6 and net.prefixlen == 128):
+                    clean_value = str(net.network_address)
+                else:
+                    clean_value = str(net)
+            except ValueError:
+                clean_value = raw
 
         elif self.is_valid_domain(raw.replace("*", "")):
             detected_type = "host"
@@ -3625,6 +3651,8 @@ class AdvancedSettings(QDialog):
                 data = json.loads(result_ip.stdout)
                 ips = [r.get("value", "") for r in data.get("routes", [])]
                 for ip in ExclusionManager.filter_default_ips(ips):
+                    if ip.endswith("/32") or ip.endswith("/128"):
+                        ip = ip.split("/")[0]
                     self._add_exclude_row("IP", ip)
             except json.JSONDecodeError:
                 pass
