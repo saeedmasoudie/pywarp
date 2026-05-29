@@ -9,14 +9,12 @@ import shutil
 import ssl
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import traceback
 import webbrowser
 import zipfile
 import requests
-import psutil
 import socket
 import resources_rc  # noqa: F401
 import concurrent.futures
@@ -35,7 +33,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QDialog, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
-                               QTreeWidget, QTreeWidgetItem, QScrollArea, QSplitter, QListWidget, QListWidgetItem)
+                               QScrollArea, QProgressBar)
 
 if platform.system() == "Darwin":
     extra_paths = [
@@ -58,6 +56,43 @@ GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/mai
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
+WARP_ENDPOINTS = [
+    "162.159.192.1",
+    "162.159.193.1",
+    "162.159.195.1",
+    "162.159.198.1",
+    "162.159.199.1",
+    "162.159.204.1",
+
+    "188.114.96.1",
+    "188.114.97.1",
+    "188.114.98.1",
+    "188.114.99.1",
+    "188.114.100.1",
+    "188.114.101.1",
+]
+WIREGUARD_PORTS = [
+    2408,
+    500,
+    1701,
+    4500,
+]
+MASQUE_PORTS = [
+    443,
+    8443,
+]
+AUTO_COMBINATIONS = [
+    ("MASQUE", "h3-only", "warp"),
+    ("MASQUE", "h3-with-h2-fallback", "warp"),
+    ("MASQUE", "h3-only", "doh"),
+    ("MASQUE", "h3-with-h2-fallback", "doh"),
+    ("MASQUE", "h2-only", "warp"),
+    ("MASQUE", "h2-only", "doh"),
+
+    ("WireGuard", None, "warp"),
+    ("WireGuard", None, "doh"),
+    ("WireGuard", None, "dot"),
+]
 
 # ------------------- Utilities ----------------------
 
@@ -351,135 +386,15 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
     worker.start()
     return worker
 
-def udp_probe(ip, port, timeout=2.0):
-    start = time.monotonic()
-    try:
-        family = socket.AF_INET6 if ":" in ip else socket.AF_INET
-        sock = socket.socket(family, socket.SOCK_DGRAM)
-        sock.settimeout(timeout)
-        sock.connect((ip, port))
-        sock.send(b"\x00")
-        return (time.monotonic() - start) * 1000
-    except Exception:
-        return None
-    finally:
-        try:
-            sock.close()
-        except Exception:
-            pass
+def calculate_score(avg, jitter, loss):
+    if avg is None:
+        return 999999
 
-def tls_probe(ip, port, sni, timeout=3.0):
-    start = time.monotonic()
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((ip, port), timeout=timeout) as sock:
-            with ctx.wrap_socket(sock, server_hostname=sni):
-                return (time.monotonic() - start) * 1000
-    except Exception:
-        return None
-
-def sample_probe(probe_func, attempts=3):
-    results = []
-    for _ in range(attempts):
-        r = probe_func()
-        if r is not None:
-            results.append(r)
-        time.sleep(0.15)
-
-    if not results:
-        return None, 100
-
-    avg = sum(results) / len(results)
-    loss = int(100 - (len(results) / attempts) * 100)
-    return avg, loss
-
-
-def run_warp_connection_tests(*args):
-
-    ips_to_test = [
-        "162.159.192.1", "162.159.192.5", "162.159.193.1", "162.159.193.5",
-        "162.159.195.1", "162.159.195.5", "162.159.197.1", "162.159.197.5",
-        "188.114.96.1", "188.114.96.5", "188.114.97.1", "188.114.97.5"
-    ]
-
-    def test_ip(ip):
-        start = time.monotonic()
-        tcp_ok = False
-        try:
-            with socket.create_connection((ip, 443), timeout=2.0):
-                tcp_ok = True
-        except Exception:
-            pass
-        tcp_time = (time.monotonic() - start) * 1000 if tcp_ok else None
-
-        if tcp_time is not None and tcp_time < 1.0:
-            tcp_time = None
-
-        tls_ok = False
-        tls_time = None
-        if tcp_time is not None:
-            start = time.monotonic()
-            try:
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
-                with socket.create_connection((ip, 443), timeout=2.0) as sock:
-                    with ctx.wrap_socket(sock, server_hostname="engage.cloudflareclient.com"):
-                        tls_ok = True
-            except Exception:
-                pass
-            tls_time = (time.monotonic() - start) * 1000 if tls_ok else None
-
-        if tls_time is not None and tls_time < 1.0:
-            tls_time = None
-
-        return ip, tcp_time, tls_time
-
-    valid_ips = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
-        futures = {executor.submit(test_ip, ip): ip for ip in ips_to_test}
-        for future in concurrent.futures.as_completed(futures):
-            ip, tcp_time, tls_time = future.result()
-            if tcp_time is not None or tls_time is not None:
-                valid_ips.append({
-                    "ip": ip,
-                    "tcp": tcp_time,
-                    "tls": tls_time
-                })
-
-    valid_ips.sort(key=lambda x: (x['tls'] if x['tls'] is not None else 9999, x['tcp'] if x['tcp'] is not None else 9999))
-
-    results = []
-    for idx, r in enumerate(valid_ips[:3]):
-        ip = r["ip"]
-        tls = r["tls"]
-        tcp = r["tcp"]
-        latency = tls if tls is not None else tcp
-
-        if latency is None:
-            status = "Blocked"
-        elif latency < 80:
-            status = "Excellent"
-        elif latency < 150:
-            status = "Good"
-        elif latency < 250:
-            status = "Fair"
-        else:
-            status = "Poor / Slow"
-
-        h2_status = status
-        h2_latency = latency
-
-        if tls is None and tcp is not None:
-            h2_status = "Blocked (SNI)"
-            h2_latency = None
-
-        results.append(WarpTestResult(ip, 443, "MASQUE", "h3-with-h2-fallback", latency, status, "MASQUE (H3 + H2 Fallback)"))
-        results.append(WarpTestResult(ip, 443, "MASQUE", "h3-only", latency, status, "MASQUE (HTTP/3 Only)"))
-        results.append(WarpTestResult(ip, 443, "MASQUE", "h2-only", h2_latency, h2_status, "MASQUE (HTTP/2 Only)"))
-        results.append(WarpTestResult(ip, 2408, "WireGuard", None, latency, status, "WireGuard"))
-
-    return results
+    return (
+        avg
+        + (jitter * 1.5)
+        + (loss * 12)
+    )
 
 def _status_from_metrics(avg, loss):
     if avg is None:
@@ -513,7 +428,11 @@ class WarpTestResult:
     port: int
     protocol: str
     masque_option: str | None
+    warp_mode: str
     latency_ms: float | None
+    jitter_ms: float | None
+    packet_loss: int
+    score: float
     status: str
     display_name: str
 
@@ -910,6 +829,98 @@ class AsyncProcess(QObject):
         self._timeout_timer.stop()
         self.error.emit(str(proc_error))
 
+
+class DiagnosticWorker(QThread):
+    progress_signal = Signal(int)
+    finished_signal = Signal(list)
+    error_signal = Signal(str)
+
+    def run(self):
+        try:
+            results = []
+            tasks = []
+
+            for protocol, masque_mode, warp_mode in AUTO_COMBINATIONS:
+                ports = WIREGUARD_PORTS if protocol == "WireGuard" else MASQUE_PORTS
+                for ip in WARP_ENDPOINTS:
+                    for port in ports:
+                        tasks.append((protocol, masque_mode, warp_mode, ip, port))
+
+            total_tasks = len(tasks)
+            completed_tasks = 0
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+                futures = {executor.submit(self.test_candidate, *task): task for task in tasks}
+
+                for future in concurrent.futures.as_completed(futures):
+                    res = future.result()
+                    if res:
+                        results.append(res)
+
+                    completed_tasks += 1
+                    progress = int((completed_tasks / total_tasks) * 100)
+                    self.progress_signal.emit(progress)
+
+            results.sort(key=lambda r: r.score)
+            self.finished_signal.emit(results[:20])
+
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
+    def test_candidate(self, protocol, masque_mode, warp_mode, ip, port):
+        samples = []
+
+        for _ in range(3):
+            lat = self.measure_https_ping(ip, port=port)
+            if lat is not None:
+                samples.append(lat)
+            time.sleep(0.1)
+
+        if not samples:
+            return None
+
+        avg = sum(samples) / len(samples)
+        jitter = max(samples) - min(samples) if len(samples) > 1 else 0
+        loss = int(100 - ((len(samples) / 3) * 100))
+        score = calculate_score(avg, jitter, loss)
+
+        if avg < 120:
+            status = "Excellent"
+        elif avg < 200:
+            status = "Good"
+        elif avg < 300:
+            status = "Fair"
+        else:
+            status = "Poor"
+
+        transport = (
+            "HTTP/3" if masque_mode == "h3-only"
+            else "HTTP/2" if masque_mode == "h2-only"
+            else "HTTP/3→2" if masque_mode
+            else "UDP"
+        )
+        display = f"{protocol} | {transport} | {warp_mode}"
+
+        return WarpTestResult(
+            ip=ip, port=port, protocol=protocol, masque_option=masque_mode,
+            warp_mode=warp_mode, latency_ms=avg, jitter_ms=jitter,
+            packet_loss=loss, score=score, status=status, display_name=display
+        )
+
+    def measure_https_ping(self, ip, port, timeout=2.0):
+        start = time.monotonic()
+        try:
+            test_port = 443 if port in WIREGUARD_PORTS else port
+
+            context = ssl._create_unverified_context()
+            with socket.create_connection((ip, test_port), timeout=timeout) as sock:
+                with context.wrap_socket(sock, server_hostname="engage.cloudflareclient.com") as ssock:
+                    ssock.sendall(b"GET / HTTP/1.1\r\nHost: engage.cloudflareclient.com\r\nConnection: close\r\n\r\n")
+                    ssock.recv(1)
+            return (time.monotonic() - start) * 1000
+        except Exception:
+            return None
+
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
         super().__init__(parent)
@@ -985,14 +996,13 @@ class WarpConnectionTesterDialog(QDialog):
         self.settings_handler = settings_handler
         self.test_results = []
         self.setWindowTitle(self.tr("WARP Network Diagnostic Report"))
-        self.resize(680, 480)
+        self.resize(850, 550)
 
         layout = QVBoxLayout(self)
 
-        # Introductory documentation text
         info = QLabel(self.tr(
             "This diagnostic tool checks which Cloudflare protocols (WireGuard vs MASQUE) "
-            "are currently performing best on your network. Select a row and click 'Apply Selected' to configure your connection."
+            "are currently performing best on your network. Select a row and click 'Apply Selected'."
         ))
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -1003,26 +1013,46 @@ class WarpConnectionTesterDialog(QDialog):
         self.summary_label.hide()
         layout.addWidget(self.summary_label)
 
-        self.table = QTableWidget(0, 4)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                text-align: center;
+                height: 18px;
+            }
+            QProgressBar::chunk {
+                background-color: #2ea043;
+                border-radius: 4px;
+            }
+        """)
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
+
+        self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels([
-            self.tr("Endpoint"),
-            self.tr("Protocol"),
-            self.tr("Latency"),
-            self.tr("Status")
+            self.tr("Endpoint"), self.tr("Protocol"), self.tr("Latency"),
+            self.tr("Jitter"), self.tr("Loss"), self.tr("Status")
         ])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.setColumnWidth(1, 210)
-        self.table.setColumnWidth(2, 90)
-        self.table.setColumnWidth(3, 160)
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Endpoint
+        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Protocol
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Latency
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Jitter
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Loss
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Status
 
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         layout.addWidget(self.table)
 
         btns = QHBoxLayout()
-
         self.run_btn = QPushButton(self.tr("Run Diagnostics"))
         self.run_btn.setMinimumHeight(32)
         self.run_btn.clicked.connect(self.start_test)
@@ -1049,46 +1079,6 @@ class WarpConnectionTesterDialog(QDialog):
     def _on_selection_changed(self):
         self.apply_btn.setEnabled(len(self.table.selectedItems()) > 0)
 
-    def apply_selected(self):
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self.test_results):
-            return
-
-        res = self.test_results[row]
-        endpoint_str = f"{res.ip}:{res.port}"
-
-        self.apply_btn.setEnabled(False)
-        self.apply_btn.setText(self.tr("Applying..."))
-
-        def task():
-            run_warp_command("warp-cli", "tunnel", "protocol", "set", res.protocol)
-            if res.masque_option:
-                run_warp_command("warp-cli", "tunnel", "masque-options", "set", res.masque_option)
-            run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint_str)
-
-        def on_done(result):
-            self.settings_handler.save_settings("protocol", res.protocol)
-            if res.masque_option:
-                self.settings_handler.save_settings("masque_option", res.masque_option)
-            self.settings_handler.save_settings("custom_endpoint", endpoint_str)
-
-            QMessageBox.information(
-                self,
-                self.tr("Settings Applied"),
-                self.tr("Successfully configured WARP with:\n\nProtocol: {}\nEndpoint: {}").format(
-                    res.display_name, endpoint_str
-                )
-            )
-            self.apply_btn.setEnabled(True)
-            self.apply_btn.setText(self.tr("Apply Selected"))
-
-        def on_error(e):
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to apply settings: {}").format(e))
-            self.apply_btn.setEnabled(True)
-            self.apply_btn.setText(self.tr("Apply Selected"))
-
-        run_in_worker(task, parent=self, on_done=on_done, on_error=on_error)
-
     def start_test(self):
         self.run_btn.setEnabled(False)
         self.run_btn.setText(self.tr("Testing..."))
@@ -1097,16 +1087,19 @@ class WarpConnectionTesterDialog(QDialog):
         self.summary_label.hide()
         self.test_results = []
 
-        self._worker = run_in_worker(
-            run_warp_connection_tests,
-            parent=self,
-            on_done=self.on_results_ready,
-            on_error=self.on_test_error
-        )
+        self.progress_bar.setValue(0)
+        self.progress_bar.show()
+
+        self.worker = DiagnosticWorker(self)
+        self.worker.progress_signal.connect(self.progress_bar.setValue)
+        self.worker.finished_signal.connect(self.on_results_ready)
+        self.worker.error_signal.connect(self.on_test_error)
+        self.worker.start()
 
     def on_results_ready(self, results):
         self.test_results = results
         self.table.setRowCount(0)
+        self.progress_bar.hide()
 
         if not results:
             self.summary_label.setText(
@@ -1121,31 +1114,67 @@ class WarpConnectionTesterDialog(QDialog):
                 self.table.setItem(row, 0, QTableWidgetItem(f"{r.ip}:{r.port}"))
                 self.table.setItem(row, 1, QTableWidgetItem(r.display_name))
 
-                ping_text = f"{int(r.latency_ms)} ms" if r.latency_ms is not None else self.tr("Unknown")
-                self.table.setItem(row, 2, QTableWidgetItem(ping_text))
+                latency_text = f"{int(r.latency_ms)} ms" if r.latency_ms is not None else "Unknown"
+                self.table.setItem(row, 2, QTableWidgetItem(latency_text))
 
-                status_item = QTableWidgetItem(r.status)
-                if "Excellent" in r.status:
-                    status_item.setForeground(QColor("#2ea043"))
-                elif "Good" in r.status:
-                    status_item.setForeground(QColor("#a3e635"))
-                elif "Fair" in r.status:
-                    status_item.setForeground(QColor("#f59e0b"))
-                elif "Poor" in r.status or "Slow" in r.status:
-                    status_item.setForeground(QColor("#ef4444"))
-                else:
-                    status_item.setForeground(QColor("#9ca3af"))
+                jitter_text = f"{int(r.jitter_ms)} ms" if r.jitter_ms is not None else "-"
+                self.table.setItem(row, 3, QTableWidgetItem(jitter_text))
 
-                self.table.setItem(row, 3, status_item)
+                self.table.setItem(row, 4, QTableWidgetItem(f"{r.packet_loss}%"))
+                self.table.setItem(row, 5, QTableWidgetItem(r.status))
 
         self.run_btn.setEnabled(True)
         self.run_btn.setText(self.tr("Run Diagnostics"))
 
     def on_test_error(self, exc):
+        self.progress_bar.hide()
         self.summary_label.setText(self.tr("❌ Diagnostic Error: {}").format(str(exc)))
         self.summary_label.show()
         self.run_btn.setEnabled(True)
         self.run_btn.setText(self.tr("Run Diagnostics"))
+
+    def apply_selected(self):
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self.test_results):
+            return
+
+        res = self.test_results[row]
+        endpoint_str = f"{res.ip}:{res.port}"
+
+        self.apply_btn.setEnabled(False)
+        self.apply_btn.setText(self.tr("Applying..."))
+
+        def task():
+            protocol_value = "MASQUE" if res.protocol == "MASQUE" else "WireGuard"
+            run_warp_command("warp-cli", "tunnel", "protocol", "set", protocol_value)
+            run_warp_command("warp-cli", "mode", res.warp_mode)
+
+            if res.protocol == "MASQUE" and res.masque_option:
+                run_warp_command("warp-cli", "tunnel", "masque-options", "set", res.masque_option)
+
+            run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint_str)
+
+        def on_done(result):
+            self.settings_handler.save_settings("protocol", res.protocol)
+            if res.masque_option:
+                self.settings_handler.save_settings("masque_option", res.masque_option)
+            self.settings_handler.save_settings("custom_endpoint", endpoint_str)
+
+            QMessageBox.information(
+                self, self.tr("Settings Applied"),
+                self.tr("Successfully configured WARP with:\n\nProtocol: {}\nEndpoint: {}").format(
+                    res.display_name, endpoint_str
+                )
+            )
+            self.apply_btn.setEnabled(True)
+            self.apply_btn.setText(self.tr("Apply Selected"))
+
+        def on_error(e):
+            QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to apply settings: {}").format(e))
+            self.apply_btn.setEnabled(True)
+            self.apply_btn.setText(self.tr("Apply Selected"))
+
+        run_in_worker(task, parent=self, on_done=on_done, on_error=on_error)
 
 
 class DownloadWorker(GenericWorker):
@@ -4355,20 +4384,25 @@ class MainWindow(QMainWindow):
             self._run_auto_protocol_selection()
 
     def _run_auto_protocol_selection(self):
-        # Temporarily show a loading state
+        # Temporarily show a loading state with 0%
         self.protocol_label.setText(
-            self.tr("Protocol: <span style='color: orange; font-weight: bold;'>Testing...</span>"))
+            self.tr("Protocol: <span style='color: orange; font-weight: bold;'>Testing (0%)...</span>")
+        )
+        self._auto_worker = DiagnosticWorker(self)
 
-        def worker_task():
-            results = run_warp_connection_tests()
+        def on_progress(val):
+            self.protocol_label.setText(
+                self.tr("Protocol: <span style='color: orange; font-weight: bold;'>Testing ({}%)...</span>").format(val)
+            )
+
+        def on_success(results):
             if not results:
-                raise Exception("No protocols could connect. Your network might be heavily restricted.")
-            return results[0]
+                on_fail("No working protocols found. Your network might be heavily restricting Cloudflare IPs.")
+                return
 
-        def on_success(best_result):
+            best_result = results[0]
             protocol_to_set = best_result.protocol
             masque_opt = best_result.masque_option
-
             self.set_warp_protocol(protocol_to_set)
 
             if protocol_to_set == "MASQUE" and masque_opt:
@@ -4387,7 +4421,11 @@ class MainWindow(QMainWindow):
             self.protocol_label.setText(self.tr("Protocol: <span style='color: red; font-weight: bold;'>Error</span>"))
             QMessageBox.warning(self, self.tr("Auto Select Failed"), str(exc))
 
-        run_in_worker(worker_task, parent=self, on_done=on_success, on_error=on_fail)
+        self._auto_worker.progress_signal.connect(on_progress)
+        self._auto_worker.finished_signal.connect(on_success)
+        self._auto_worker.error_signal.connect(on_fail)
+        self._auto_worker.finished.connect(self._auto_worker.deleteLater)
+        self._auto_worker.start()
 
     def set_warp_protocol(self, protocol):
         try:
