@@ -1,57 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="fa">
+<TS version="2.1" language="ru">
 <context>
     <name>AdvancedSettings</name>
     <message>
         <location filename="main.py" line="2713"/>
         <source>Advanced Settings</source>
-        <translation>تنظیمات پیشرفته</translation>
+        <translation>Дополнительные настройки</translation>
     </message>
     <message>
         <location filename="main.py" line="2720"/>
         <source>Exclude IP / Domain</source>
-        <translation>مستثنی کردن آیپی یا دامنه</translation>
+        <translation>Исключить IP / Домен</translation>
     </message>
     <message>
         <location filename="main.py" line="2724"/>
         <source>Type</source>
-        <translation>نوع</translation>
+        <translation>Тип</translation>
     </message>
     <message>
         <location filename="main.py" line="2724"/>
         <source>Value</source>
-        <translation>مقدار</translation>
+        <translation>Значение</translation>
     </message>
     <message>
         <location filename="main.py" line="2733"/>
         <source>Add</source>
-        <translation>اضافه کردن</translation>
+        <translation>Добавить</translation>
     </message>
     <message>
         <location filename="main.py" line="2734"/>
         <source>Remove</source>
-        <translation>حذف</translation>
+        <translation>Удалить</translation>
     </message>
     <message>
         <location filename="main.py" line="2735"/>
         <source>Reset List</source>
-        <translation>بازنشانی لیست</translation>
+        <translation>Сбросить список</translation>
     </message>
     <message>
         <location filename="main.py" line="2752"/>
         <source>Custom Endpoint</source>
-        <translation>نقطه پایانی سفارشی</translation>
+        <translation>Пользовательская конечная точка</translation>
     </message>
     <message>
         <location filename="main.py" line="2759"/>
         <source>Set Custom Endpoint</source>
-        <translation>تنظیم نقطه پایانی سفارشی</translation>
+        <translation>Указать конечную точку</translation>
     </message>
     <message>
         <location filename="main.py" line="2761"/>
         <source>Save</source>
-        <translation>ذخیره</translation>
+        <translation>Сохранить</translation>
     </message>
     <message>
         <location filename="main.py" line="2762"/>
@@ -59,37 +59,37 @@
         <location filename="main.py" line="2904"/>
         <location filename="main.py" line="2959"/>
         <source>Reset</source>
-        <translation>تنظیم مجدد</translation>
+        <translation>Сбросить</translation>
     </message>
     <message>
         <location filename="main.py" line="2770"/>
         <source>MASQUE Options</source>
-        <translation>گزینه‌های MASQUE</translation>
+        <translation>Параметры MASQUE</translation>
     </message>
     <message>
         <location filename="main.py" line="2775"/>
         <source>detect the best MASQUE protocol on connect (recommended)</source>
-        <translation>تشخیص بهترین پروتکل MASQUE هنگام اتصال (توصیه می‌شود)</translation>
+        <translation>Определять лучший протокол MASQUE при подключении (рекомендуется)</translation>
     </message>
     <message>
         <location filename="main.py" line="2776"/>
         <source>Use only HTTP/3 (fastest, best for modern networks)</source>
-        <translation>فقط از HTTP/3 استفاده کنید (سریع‌ترین، بهترین برای شبکه‌های مدرن)</translation>
+        <translation>Использовать только HTTP/3 (самый быстрый, лучший для современных сетей)</translation>
     </message>
     <message>
         <location filename="main.py" line="2777"/>
         <source>Force HTTP/2 (may help in restrictive networks)</source>
-        <translation>HTTP/2 اجباری (ممکن است در شبکه‌های محدودکننده مفید باشد)</translation>
+        <translation>Принудительно HTTP/2 (может помочь в сетях с ограничениями)</translation>
     </message>
     <message>
         <location filename="main.py" line="2778"/>
         <source>Use HTTP/3, fallback to HTTP/2 if needed</source>
-        <translation>استفاده از HTTP/3، در صورت نیاز، استفاده مجدد از HTTP/2</translation>
+        <translation>Использовать HTTP/3, при необходимости переключаться на HTTP/2</translation>
     </message>
     <message>
         <location filename="main.py" line="2794"/>
         <source>Set</source>
-        <translation>تنظیم</translation>
+        <translation>Установить</translation>
     </message>
     <message>
         <location filename="main.py" line="2852"/>
@@ -102,65 +102,65 @@
         <location filename="main.py" line="2954"/>
         <location filename="main.py" line="2962"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="2852"/>
         <source>No row selected.</source>
-        <translation>هیچ ردیفی انتخاب نشده است.</translation>
+        <translation>Строка не выбрана.</translation>
     </message>
     <message>
         <location filename="main.py" line="2862"/>
         <source>Unknown error</source>
-        <translation>خطای ناشناخته</translation>
+        <translation>Неизвестная ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="2868"/>
         <source>Bypass Reset</source>
-        <translation>تنظیم مجدد بای پس</translation>
+        <translation>Сброс обхода</translation>
     </message>
     <message>
         <location filename="main.py" line="2868"/>
         <source>All manual split-tunnel rules cleared successfully.</source>
-        <translation>تمام قوانین تونل تقسیم دستی با موفقیت پاک شدند.</translation>
+        <translation>Все правила раздельного туннелирования успешно удалены.</translation>
     </message>
     <message>
         <location filename="main.py" line="2895"/>
         <location filename="main.py" line="2943"/>
         <source>Saved</source>
-        <translation>ذخیره شده</translation>
+        <translation>Сохранено</translation>
     </message>
     <message>
         <location filename="main.py" line="2895"/>
         <source>Endpoint saved successfully.</source>
-        <translation>نقطه پایانی با موفقیت ذخیره شد.</translation>
+        <translation>Конечная точка успешно сохранена.</translation>
     </message>
     <message>
         <location filename="main.py" line="2904"/>
         <source>Endpoint reset successfully.</source>
-        <translation>بازنشانی نقطه پایانی با موفقیت انجام شد.</translation>
+        <translation>Конечная точка успешно сброшена.</translation>
     </message>
     <message>
         <location filename="main.py" line="2918"/>
         <source>Incompatible MASQUE Option</source>
-        <translation>گزینه MASQUE ناسازگار</translation>
+        <translation>Несовместимый параметр MASQUE</translation>
     </message>
     <message>
         <location filename="main.py" line="2923"/>
         <source>MASQUE option &apos;HTTP/2 (h2-only)&apos; cannot be used while in Proxy mode.
 Switch the mode to something other than Proxy, or choose another MASQUE option.</source>
-        <translation>گزینه MASQUE &apos;HTTP/2 (فقط h2)&apos; در حالت Proxy قابل استفاده نیست.
-حالت را به چیزی غیر از Proxy تغییر دهید، یا گزینه MASQUE دیگری را انتخاب کنید.</translation>
+        <translation>Параметр MASQUE &apos;HTTP/2 (только h2)&apos; нельзя использовать в режиме прокси.
+Измените режим на любой другой или выберите другой параметр MASQUE.</translation>
     </message>
     <message>
         <location filename="main.py" line="2944"/>
         <source>MASQUE option set to {}.</source>
-        <translation>گزینه MASQUE روی {} تنظیم شده است.</translation>
+        <translation>Для параметра MASQUE установлено значение {}.</translation>
     </message>
     <message>
         <location filename="main.py" line="2960"/>
         <source>MASQUE option reset successfully (now Auto).</source>
-        <translation>گزینه MASQUE با موفقیت بازنشانی شد (حالا خودکار).</translation>
+        <translation>Параметр MASQUE успешно сброшен (теперь Авто).</translation>
     </message>
 </context>
 <context>
@@ -168,17 +168,17 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
     <message>
         <location filename="main.py" line="3280"/>
         <source>Live DNS Logs</source>
-        <translation>گزارش‌های زنده DNS</translation>
+        <translation>Живые логи DNS</translation>
     </message>
     <message>
         <location filename="main.py" line="3329"/>
         <source>Filter domains...</source>
-        <translation>فیلتر کردن دامنه‌ها...</translation>
+        <translation>Фильтр доменов...</translation>
     </message>
     <message>
         <location filename="main.py" line="3454"/>
         <source>Copy Domain</source>
-        <translation>کپی دامنه</translation>
+        <translation>Копировать домен</translation>
     </message>
 </context>
 <context>
@@ -186,73 +186,73 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
     <message>
         <location filename="main.py" line="2240"/>
         <source>Add Exclusions</source>
-        <translation>اضافه کردن استثنائات</translation>
+        <translation>Добавить исключения</translation>
     </message>
     <message>
         <location filename="main.py" line="2248"/>
         <source>New Exclusion</source>
-        <translation>دامنه یا آیپی جدید</translation>
+        <translation>Новое исключение</translation>
     </message>
     <message>
         <location filename="main.py" line="2253"/>
         <source>e.g., google.com or 192.168.1.5</source>
-        <translation>مثلا google.com یا 192.168.1.1</translation>
+        <translation>например, google.com или 192.168.1.5</translation>
     </message>
     <message>
         <location filename="main.py" line="2257"/>
         <source>Add</source>
-        <translation>اضافه کردن</translation>
+        <translation>Добавить</translation>
     </message>
     <message>
         <location filename="main.py" line="2277"/>
         <source>Pending Items (Not saved yet)</source>
-        <translation>موارد در انتظار (هنوز ذخیره نشده‌اند)</translation>
+        <translation>Ожидающие элементы (еще не сохранены)</translation>
     </message>
     <message>
         <location filename="main.py" line="2296"/>
         <source>Clear All</source>
-        <translation>پاک کردن همه</translation>
+        <translation>Очистить всё</translation>
     </message>
     <message>
         <location filename="main.py" line="2299"/>
         <source>Apply Changes</source>
-        <translation>اعمال تغییرات</translation>
+        <translation>Применить изменения</translation>
     </message>
     <message>
         <location filename="main.py" line="2405"/>
         <source>Remove from list</source>
-        <translation>حذف از لیست</translation>
+        <translation>Удалить из списка</translation>
     </message>
     <message>
         <location filename="main.py" line="2452"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="2452"/>
         <source>Default IP cannot be excluded</source>
-        <translation>آی‌پی پیش‌فرض قابل حذف نیست</translation>
+        <translation>IP-адрес по умолчанию нельзя исключить</translation>
     </message>
     <message>
         <location filename="main.py" line="2470"/>
         <source>Invalid Input</source>
-        <translation>ورودی نامعتبر</translation>
+        <translation>Неверный ввод</translation>
     </message>
     <message>
         <location filename="main.py" line="2471"/>
         <source>Input is not a valid IP address or Domain name.</source>
-        <translation>ورودی یک آدرس آیپی یا نام دامنه معتبر نیست.</translation>
+        <translation>Введенное значение не является корректным IP-адресом или доменным именем.</translation>
     </message>
     <message>
         <location filename="main.py" line="2506"/>
         <source>Warning</source>
-        <translation>هشدار</translation>
+        <translation>Предупреждение</translation>
     </message>
     <message>
         <location filename="main.py" line="2507"/>
         <source>Failed to add the following:
 </source>
-        <translation>موارد زیر اضافه نشد:
+        <translation>Не удалось добавить следующее:
 </translation>
     </message>
 </context>
@@ -261,37 +261,37 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
     <message>
         <location filename="main.py" line="2011"/>
         <source>Cloudflare Warp GUI</source>
-        <translation>رابط کاربری گرافیکی کلودفلر وارپ</translation>
+        <translation>Интерфейс Cloudflare Warp</translation>
     </message>
     <message>
         <location filename="main.py" line="2021"/>
         <source>Checking Warp service...</source>
-        <translation>بررسی سرویس وارپ...</translation>
+        <translation>Проверка службы Warp...</translation>
     </message>
     <message>
         <location filename="main.py" line="2022"/>
         <source>Making sure Warp is ready...</source>
-        <translation>مطمئن شدن از آماده بودن وارپ...</translation>
+        <translation>Проверка готовности Warp...</translation>
     </message>
     <message>
         <location filename="main.py" line="2023"/>
         <source>Preparing UI...</source>
-        <translation>آماده سازی رابط کاربری ...</translation>
+        <translation>Подготовка интерфейса...</translation>
     </message>
     <message>
         <location filename="main.py" line="2024"/>
         <source>Syncing settings...</source>
-        <translation>همگام سازی تنظیمات...</translation>
+        <translation>Синхронизация настроек...</translation>
     </message>
     <message>
         <location filename="main.py" line="2025"/>
         <source>Starting engines...</source>
-        <translation>روشن کردن موتورها...</translation>
+        <translation>Запуск модулей...</translation>
     </message>
     <message>
         <location filename="main.py" line="2028"/>
         <source>Almost ready...</source>
-        <translation>تقریباً آماده...</translation>
+        <translation>Почти готово...</translation>
     </message>
 </context>
 <context>
@@ -299,61 +299,61 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
     <message>
         <location filename="main.py" line="927"/>
         <source>Application Logs</source>
-        <translation>گزارش‌های برنامه</translation>
+        <translation>Логи приложения</translation>
     </message>
     <message>
         <location filename="main.py" line="940"/>
         <source>Refresh</source>
-        <translation>تازه کردن</translation>
+        <translation>Обновить</translation>
     </message>
     <message>
         <location filename="main.py" line="941"/>
         <source>Clear Logs</source>
-        <translation>پاک کردن گزارش‌ها</translation>
+        <translation>Очистить логи</translation>
     </message>
     <message>
         <location filename="main.py" line="953"/>
         <source>No logs found.</source>
-        <translation>هیچ گزارشی یافت نشد.</translation>
+        <translation>Логи не найдены.</translation>
     </message>
     <message>
         <location filename="main.py" line="962"/>
         <source>Failed to read log file:
 {}</source>
-        <translation>خواندن فایل گزارش ناموفق بود:
+        <translation>Не удалось прочитать файл лога:
 {}</translation>
     </message>
     <message>
         <location filename="main.py" line="966"/>
         <location filename="main.py" line="990"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="966"/>
         <source>Log path not set.</source>
-        <translation>مسیر گزارش تنظیم نشده است.</translation>
+        <translation>Путь к логам не задан.</translation>
     </message>
     <message>
         <location filename="main.py" line="971"/>
         <source>Confirm</source>
-        <translation>تأیید</translation>
+        <translation>Подтвердить</translation>
     </message>
     <message>
         <location filename="main.py" line="972"/>
         <source>Clear the log file? This cannot be undone.</source>
-        <translation>فایل گزارشی را پاک کنید؟ این کار قابل بازگشت نیست.</translation>
+        <translation>Очистить файл логов? Это действие нельзя отменить.</translation>
     </message>
     <message>
         <location filename="main.py" line="988"/>
         <source>Logs cleared.</source>
-        <translation>گزارش ها پاک شدند.</translation>
+        <translation>Логи очищены.</translation>
     </message>
     <message>
         <location filename="main.py" line="990"/>
         <source>Failed to clear logs:
 {}</source>
-        <translation>پاک کردن گزارش‌ها ناموفق بود:
+        <translation>Не удалось очистить логи:
 {}</translation>
     </message>
 </context>
@@ -362,357 +362,357 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
     <message>
         <location filename="main.py" line="119"/>
         <source>Application Error</source>
-        <translation>خطای برنامه</translation>
+        <translation>Ошибка приложения</translation>
     </message>
     <message>
         <location filename="main.py" line="120"/>
         <source>An unexpected error occurred!</source>
-        <translation>یک خطای غیرمنتظره رخ داد!</translation>
+        <translation>Произошла непредвиденная ошибка!</translation>
     </message>
     <message>
         <location filename="main.py" line="3476"/>
         <source>PyWarp {}</source>
-        <translation>پای‌وارپ {}</translation>
+        <translation>PyWarp {}</translation>
     </message>
     <message>
         <location filename="main.py" line="3529"/>
         <source>Status: Disconnected</source>
-        <translation>وضعیت: متصل نیست</translation>
+        <translation>Статус: Отключено</translation>
     </message>
     <message>
         <location filename="main.py" line="3534"/>
         <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Detecting...&lt;/span&gt;</source>
-        <translation>آیپی: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;در حال تشخیص...&lt;/span&gt;</translation>
+        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Определение...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3537"/>
         <source>This is your current public IP address.</source>
-        <translation>این آدرس آی پی عمومی فعلی شماست.</translation>
+        <translation>Это ваш текущий публичный IP-адрес.</translation>
     </message>
     <message>
         <location filename="main.py" line="3539"/>
         <source>Protocol: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Detecting...&lt;/span&gt;</source>
-        <translation>پروتکل: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;در حال تشخیص...&lt;/span&gt;</translation>
+        <translation>Протокол: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Определение...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3544"/>
         <source>Source: &lt;a href=&apos;https://github.com/saeedmasoudie/pywarp&apos; style=&apos;color: #0078D4; font-weight: bold; text-decoration: none;&apos;&gt;GitHub&lt;/a&gt;</source>
-        <translation>منبع: &lt;a href=&apos;https://github.com/saeedmasoudie/pywarp&apos; style=&apos;color: #0078D4; font-weight: bold; text-decoration: none;&apos;&gt;گیت‌هاب&lt;/a&gt;</translation>
+        <translation>Исходный код: &lt;a href=&apos;https://github.com/saeedmasoudie/pywarp&apos; style=&apos;color: #0078D4; font-weight: bold; text-decoration: none;&apos;&gt;GitHub&lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3548"/>
         <source>Click here to visit the app&apos;s source code on GitHub</source>
-        <translation>برای مشاهده کد منبع برنامه در گیت‌هاب اینجا کلیک کنید</translation>
+        <translation>Нажмите здесь, чтобы открыть исходный код приложения на GitHub</translation>
     </message>
     <message>
         <location filename="main.py" line="3589"/>
         <source>Metric</source>
-        <translation>اندازه ها</translation>
+        <translation>Метрика</translation>
     </message>
     <message>
         <location filename="main.py" line="3589"/>
         <source>Value</source>
-        <translation>مقدار</translation>
+        <translation>Значение</translation>
     </message>
     <message>
         <location filename="main.py" line="3603"/>
         <location filename="main.py" line="3620"/>
         <location filename="main.py" line="3624"/>
         <source>Protocol</source>
-        <translation>پروتکل</translation>
+        <translation>Протокол</translation>
     </message>
     <message>
         <location filename="main.py" line="3603"/>
         <source>IPv4 Endpoint</source>
-        <translation>نقطه پایانی IPv4</translation>
+        <translation>IPv4 точка подключения</translation>
     </message>
     <message>
         <location filename="main.py" line="3603"/>
         <source>IPv6 Endpoint</source>
-        <translation>نقطه پایانی IPv6</translation>
+        <translation>IPv6 точка подключения</translation>
     </message>
     <message>
         <location filename="main.py" line="3603"/>
         <source>Last Handshake</source>
-        <translation>آخرین اتصال</translation>
+        <translation>Последнее рукопожатие</translation>
     </message>
     <message>
         <location filename="main.py" line="3604"/>
         <source>Sent Data</source>
-        <translation>داده‌های ارسال شده</translation>
+        <translation>Отправлено данных</translation>
     </message>
     <message>
         <location filename="main.py" line="3604"/>
         <source>Received Data</source>
-        <translation>داده‌های دریافتی</translation>
+        <translation>Получено данных</translation>
     </message>
     <message>
         <location filename="main.py" line="3604"/>
         <source>Latency</source>
-        <translation>تأخیر/پینگ</translation>
+        <translation>Задержка (Пинг)</translation>
     </message>
     <message>
         <location filename="main.py" line="3606"/>
         <source>Loss</source>
-        <translation>درصد لاس</translation>
+        <translation>Потери пакетов</translation>
     </message>
     <message>
         <location filename="main.py" line="3619"/>
         <source>Network Stats</source>
-        <translation>آمار شبکه</translation>
+        <translation>Статистика сети</translation>
     </message>
     <message>
         <location filename="main.py" line="3619"/>
         <source>Settings</source>
-        <translation>تنظیمات</translation>
+        <translation>Настройки</translation>
     </message>
     <message>
         <location filename="main.py" line="3718"/>
         <source>Update Available</source>
-        <translation>به‌روزرسانی موجود است</translation>
+        <translation>Доступно обновление</translation>
     </message>
     <message>
         <location filename="main.py" line="3720"/>
         <source>A new version of Cloudflare WARP is available ({})
 Please update it via the official installer.</source>
-        <translation>نسخه جدیدی از Cloudflare WARP در دسترس است ({})
-لطفاً آن را از طریق نصب‌کننده رسمی به‌روزرسانی کنید.</translation>
+        <translation>Доступна новая версия Cloudflare WARP ({}).
+Пожалуйста, обновите её с помощью официального установщика.</translation>
     </message>
     <message>
         <location filename="main.py" line="3726"/>
         <source>Auto Update</source>
-        <translation>به‌روزرسانی خودکار</translation>
+        <translation>Автообновление</translation>
     </message>
     <message>
         <location filename="main.py" line="3728"/>
         <source>Do you want to download and install the new portable WARP assets automatically?</source>
-        <translation>نسخه جدید Cloudflare WARP در دسترس است ({})</translation>
+        <translation>Вы хотите автоматически скачать и установить новые переносимые (portable) компоненты WARP?</translation>
     </message>
     <message>
         <location filename="main.py" line="3750"/>
         <location filename="main.py" line="4437"/>
         <source>Protocol: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</source>
-        <translation>پروتکل: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
+        <translation>Протокол: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3767"/>
         <source>&lt;b&gt;Listening on: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</source>
-        <translation>&lt;b&gt;پراکسی در: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</translation>
+        <translation>&lt;b&gt;Прокси на: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3789"/>
         <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</source>
-        <translation>آیپی: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
+        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3794"/>
         <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Unavailable&lt;/span&gt;</source>
-        <translation>آیپی: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;در دسترس نیست&lt;/span&gt;</translation>
+        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Недоступно&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="3950"/>
         <source>Exit Confirmation</source>
-        <translation>تأیید خروج</translation>
+        <translation>Подтверждение выхода</translation>
     </message>
     <message>
         <location filename="main.py" line="3951"/>
         <source>Do you want to close the app or hide it?</source>
-        <translation>آیا می‌خواهید برنامه را ببندید یا آن را پنهان کنید؟</translation>
+        <translation>Вы хотите закрыть приложение или скрыть его?</translation>
     </message>
     <message>
         <location filename="main.py" line="3953"/>
         <location filename="main.py" line="3994"/>
         <source>Close</source>
-        <translation>بستن</translation>
+        <translation>Закрыть</translation>
     </message>
     <message>
         <location filename="main.py" line="3954"/>
         <source>Hide</source>
-        <translation>پنهان کردن</translation>
+        <translation>Скрыть</translation>
     </message>
     <message>
         <location filename="main.py" line="3955"/>
         <source>Remember my choice</source>
-        <translation>انتخاب من را به خاطر بسپار</translation>
+        <translation>Запомнить мой выбор</translation>
     </message>
     <message>
         <location filename="main.py" line="3985"/>
         <location filename="main.py" line="4146"/>
         <source>About Me</source>
-        <translation>درباره من</translation>
+        <translation>О программе</translation>
     </message>
     <message>
         <location filename="main.py" line="3989"/>
         <source>Hi, I&apos;m Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. You can explore my work on GitHub.</source>
-        <translation>سلام، من سعید هستم، یک توسعه‌دهنده پایتون که علاقه زیادی به ایجاد برنامه‌های کارآمد و یادگیری مداوم چیزهای جدید دارم. می‌توانید کارهای من را در گیت‌هاب ببینید.</translation>
+        <translation>Привет, я Саид/Эрик, Python-разработчик. Я люблю создавать эффективные приложения и постоянно учиться новому. Вы можете ознакомиться с моими работами на GitHub.</translation>
     </message>
     <message>
         <location filename="main.py" line="3990"/>
         <source>Visit GitHub</source>
-        <translation>مشاهده گیت هاب</translation>
+        <translation>Открыть GitHub</translation>
     </message>
     <message>
         <location filename="main.py" line="3999"/>
         <source>PyWarp Tutorials</source>
-        <translation>آموزش‌های پای‌وارپ</translation>
+        <translation>Руководства PyWarp</translation>
     </message>
     <message>
         <location filename="main.py" line="4086"/>
         <source>&lt;h2&gt;Welcome to PyWarp!&lt;/h2&gt;&lt;p&gt;PyWarp is a powerful GUI built around the official Cloudflare WARP service, allowing you to easily control and monitor your WARP connection.&lt;/p&gt;&lt;h3&gt;Getting Started&lt;/h3&gt;&lt;p&gt;You must have the official &lt;b&gt;Cloudflare WARP&lt;/b&gt; client installed, as PyWarp depends on its services to function. If you cannot install it, PyWarp also offers a bundled package that works without the official client.&lt;/p&gt;&lt;h3&gt;Main Interface&lt;/h3&gt;&lt;p&gt;On the main page, you’ll find:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Power Button:&lt;/b&gt; Turn WARP on or off.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Status Labels:&lt;/b&gt; Show connection status, IP address, protocol, and source link.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Network Stats:&lt;/b&gt; Opens the real-time connection statistics page.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Settings:&lt;/b&gt; Opens the configuration panel.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Protocol Switch:&lt;/b&gt; Instantly toggle between &lt;b&gt;WireGuard&lt;/b&gt; and &lt;b&gt;MASQUE&lt;/b&gt; protocols.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Network Stats&lt;/h3&gt;&lt;p&gt;View your live network data including traffic, latency, handshake time, and packet loss.&lt;/p&gt;&lt;h3&gt;Settings&lt;/h3&gt;&lt;p&gt;In the settings page, you can change the WARP operating mode:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; Full VPN tunnel via Cloudflare. Encrypts all traffic.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; DNS over HTTPS only (secure DNS, no VPN tunnel).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH for full encryption and secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; DNS over TLS only.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT for full encryption with secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; Creates a local WARP proxy on localhost (for manual app routing).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; Creates a tunnel but does not route traffic automatically.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS &amp; Language&lt;/h3&gt;&lt;p&gt;Choose your preferred DNS filtering level:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;No Filter:&lt;/b&gt; Standard DNS without filtering.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Adult Content Filter:&lt;/b&gt; Blocks adult websites.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Malware &amp; Ads Filter:&lt;/b&gt; Blocks malicious sites and ads.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;You can also change the application’s &lt;b&gt;language&lt;/b&gt; and &lt;b&gt;font&lt;/b&gt; here.&lt;/p&gt;&lt;h3&gt;Advanced Settings&lt;/h3&gt;&lt;p&gt;Under Advanced Settings, you’ll find several powerful tools:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Exclude IP/Domain:&lt;/b&gt; Exclude specific IP ranges or domains from WARP tunneling.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Exclude Apps:&lt;/b&gt; (Coming Soon) Choose which apps bypass WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Custom Endpoint:&lt;/b&gt; Connect through custom Cloudflare endpoints (last 5 are saved for reuse).&lt;/li&gt;&lt;li&gt;&lt;b&gt;MASQUE Options:&lt;/b&gt; Change MASQUE protocol behavior:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;h3-only:&lt;/b&gt; Use only HTTP/3 (fastest, best for modern networks).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h2-only:&lt;/b&gt; Force HTTP/2 (can help in restricted environments).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; Use HTTP/3 with automatic fallback to HTTP/2.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;Enjoy full control over Cloudflare WARP — simply, safely, and visually with PyWarp.&lt;/p&gt;</source>
-        <translation>&lt;h2&gt;به PyWarp خوش آمدید!&lt;/h2&gt;&lt;p&gt;PyWarp یک رابط کاربری گرافیکی قدرتمند است که بر اساس سرویس رسمی Cloudflare WARP ساخته شده است و به شما امکان می‌دهد اتصال WARP خود را به راحتی کنترل و نظارت کنید.&lt;/p&gt;&lt;h3&gt;شروع کار&lt;/h3&gt;&lt;p&gt;شما باید کلاینت رسمی &lt;b&gt;Cloudflare WARP&lt;/b&gt; را نصب کرده باشید، زیرا PyWarp برای عملکرد به سرویس‌های آن وابسته است. اگر نمی‌توانید آن را نصب کنید، PyWarp یک بسته‌ی همراه نیز ارائه می‌دهد که بدون کلاینت رسمی کار می‌کند.&lt;/p&gt;&lt;h3&gt;رابط اصلی&lt;/h3&gt;&lt;p&gt;در صفحه اصلی، موارد زیر را خواهید یافت:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;دکمه پاور:&lt;/b&gt; روشن یا خاموش کردن WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;برچسب‌های وضعیت:&lt;/b&gt; نمایش وضعیت اتصال، آدرس IP، پروتکل و لینک منبع.&lt;/li&gt;&lt;li&gt;&lt;b&gt;آمار شبکه:&lt;/b&gt; صفحه آمار اتصال در لحظه را باز می‌کند.&lt;/li&gt;&lt;li&gt;&lt;b&gt;تنظیمات:&lt;/b&gt; پنل پیکربندی را باز می‌کند.&lt;/li&gt;&lt;li&gt;&lt;b&gt;سوئیچ پروتکل:&lt;/b&gt; فوراً بین پروتکل‌های &lt;b&gt;WireGuard&lt;/b&gt; و &lt;b&gt;MASQUE&lt;/b&gt; جابجا شوید.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;آمار شبکه&lt;/h3&gt;&lt;p&gt;داده‌های شبکه‌ی زنده‌ی خود از جمله ترافیک، تأخیر، زمان دست‌دهی و از دست رفتن بسته‌ها را مشاهده کنید.&lt;/p&gt;&lt;h3&gt;تنظیمات&lt;/h3&gt;&lt;p&gt;در در صفحه تنظیمات، می‌توانید حالت عملیاتی WARP را تغییر دهید:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; تونل کامل VPN از طریق Cloudflare. تمام ترافیک را رمزگذاری می‌کند.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; فقط DNS روی HTTPS (DNS امن، بدون تونل VPN).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH برای رمزگذاری کامل و DNS امن.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; فقط DNS روی TLS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT برای رمزگذاری کامل با DNS امن.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; یک پروکسی WARP محلی روی میزبان محلی ایجاد می‌کند (برای مسیریابی دستی برنامه).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; یک تونل ایجاد می‌کند اما ترافیک را به طور خودکار مسیریابی نمی‌کند.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS و زبان&lt;/h3&gt;&lt;p&gt;سطح فیلتر DNS مورد نظر خود را انتخاب کنید:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;بدون فیلتر:&lt;/b&gt; DNS استاندارد بدون فیلتر.&lt;/li&gt;&lt;li&gt;&lt;b&gt;فیلتر محتوای بزرگسالان:&lt;/b&gt; وب‌سایت‌های بزرگسالان را مسدود می‌کند.&lt;/li&gt;&lt;li&gt;&lt;b&gt;بدافزار و تبلیغات فیلتر:&lt;/b&gt; سایت‌ها و تبلیغات مخرب را مسدود می‌کند.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;همچنین می‌توانید &lt;b&gt;زبان&lt;/b&gt; و &lt;b&gt;فونت&lt;/b&gt; برنامه را در اینجا تغییر دهید.&lt;/p&gt;&lt;h3&gt;تنظیمات پیشرفته&lt;/h3&gt;&lt;p&gt;در تنظیمات پیشرفته، چندین ابزار قدرتمند پیدا خواهید کرد:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;حذف IP/دامنه:&lt;/b&gt; محدوده‌های IP یا دامنه‌های خاص را از تونلینگ WARP حذف کنید.&lt;/li&gt;&lt;li&gt;&lt;b&gt;حذف برنامه‌ها:&lt;/b&gt; (به زودی) انتخاب کنید که کدام برنامه‌ها از WARP عبور می‌کنند.&lt;/li&gt;&lt;li&gt;&lt;b&gt;نقطه پایانی سفارشی:&lt;/b&gt; از طریق نقاط پایانی Cloudflare سفارشی متصل شوید (5 مورد آخر برای استفاده مجدد ذخیره می‌شوند).&lt;/li&gt;&lt;li&gt;&lt;b&gt;گزینه‌های MASQUE:&lt;/b&gt; تغییر رفتار پروتکل MASQUE:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;فقط h3:&lt;/b&gt; فقط از HTTP/3 استفاده کنید (سریعترین، بهترین برای شبکه‌های مدرن).&lt;/li&gt;&lt;li&gt;&lt;b&gt;فقط h2:&lt;/b&gt; HTTP/2 اجباری (می‌تواند در موارد محدود کمک کند) محیط‌ها).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; از HTTP/3 با قابلیت بازگشت خودکار به HTTP/2 استفاده کنید.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;از کنترل کامل بر Cloudflare WARP — به سادگی، ایمن و بصری با PyWarp لذت ببرید.&lt;/p&gt;</translation>
+        <translation>&lt;h2&gt;Добро пожаловать в PyWarp!&lt;/h2&gt;&lt;p&gt;PyWarp — это мощный графический интерфейс для официальной службы Cloudflare WARP, позволяющий легко управлять и отслеживать подключение WARP.&lt;/p&gt;&lt;h3&gt;Начало работы&lt;/h3&gt;&lt;p&gt;У вас должен быть установлен официальный клиент &lt;b&gt;Cloudflare WARP&lt;/b&gt;, так как PyWarp зависит от его служб. Если вы не можете установить его, PyWarp также предлагает портативный автономный пакет, работающий без официального клиента.&lt;/p&gt;&lt;h3&gt;Основной интерфейс&lt;/h3&gt;&lt;p&gt;На главной странице вы найдете:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Кнопка питания:&lt;/b&gt; Включение и выключение WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Метки статуса:&lt;/b&gt; Отображение состояния подключения, IP-адреса, протокола и ссылки на исходный код.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Статистика сети:&lt;/b&gt; Открывает страницу сетевой статистики в реальном времени.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Настройки:&lt;/b&gt; Открывает панель конфигурации.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Переключатель протокола:&lt;/b&gt; Мгновенное переключение между протоколами &lt;b&gt;WireGuard&lt;/b&gt; и &lt;b&gt;MASQUE&lt;/b&gt;.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Статистика сети&lt;/h3&gt;&lt;p&gt;Просматривайте текущие данные вашей сети, включая трафик, задержку, время рукопожатия и потерю пакетов.&lt;/p&gt;&lt;h3&gt;Настройки&lt;/h3&gt;&lt;p&gt;На странице настроек вы можете изменить режим работы WARP:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; Полный VPN-туннель через Cloudflare. Шифрует весь трафик.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; Только DNS поверх HTTPS (безопасный DNS, без VPN-туннеля).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH для полного шифрования и безопасного DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; Только DNS поверх TLS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT для полного шифрования с безопасным DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; Создает локальный прокси WARP на localhost (для ручной маршрутизации приложений).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; Создает туннель, но не направляет трафик автоматически.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS и Язык&lt;/h3&gt;&lt;p&gt;Выберите желаемый уровень фильтрации DNS:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Без фильтрации:&lt;/b&gt; Стандартный DNS без ограничений.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Фильтр контента для взрослых:&lt;/b&gt; Блокирует сайты для взрослых.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Фильтр вредоносных программ и рекламы:&lt;/b&gt; Блокирует опасные сайты и рекламу.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;Вы также можете изменить &lt;b&gt;язык&lt;/b&gt; и &lt;b&gt;шрифт&lt;/b&gt; приложения здесь.&lt;/p&gt;&lt;h3&gt;Дополнительные настройки&lt;/h3&gt;&lt;p&gt;В дополнительных настройках доступны следующие инструменты:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Исключить IP/Домен:&lt;/b&gt; Исключение определенных диапазонов IP или доменов из туннелирования WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Исключить приложения:&lt;/b&gt; (Скоро) Выбор приложений, которые будут работать в обход WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Пользовательская конечная точка:&lt;/b&gt; Подключение через сторонние конечные точки Cloudflare (последние 5 сохраняются).&lt;/li&gt;&lt;li&gt;&lt;b&gt;Параметры MASQUE:&lt;/b&gt; Изменение поведения протокола MASQUE:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;только h3:&lt;/b&gt; Использовать только HTTP/3 (самый быстрый, лучший для современных сетей).&lt;/li&gt;&lt;li&gt;&lt;b&gt;только h2:&lt;/b&gt; Принудительный HTTP/2 (может помочь в сетях с ограничениями).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; Использовать HTTP/3 с автоматическим откатом на HTTP/2.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;Наслаждайтесь полным контролем над Cloudflare WARP — просто, безопасно и наглядно с помощью PyWarp.&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4101"/>
         <source>PyWarp - CloudFlare Warp GUI</source>
-        <translation>پای وارپ - رابط گرافیکی وارپ کلادفلر</translation>
+        <translation>PyWarp - Интерфейс Cloudflare Warp</translation>
     </message>
     <message>
         <location filename="main.py" line="4103"/>
         <source>Show App</source>
-        <translation>نمایش برنامه</translation>
+        <translation>Показать приложение</translation>
     </message>
     <message>
         <location filename="main.py" line="4109"/>
         <location filename="main.py" line="4339"/>
         <source>Connect</source>
-        <translation>اتصال</translation>
+        <translation>Подключить</translation>
     </message>
     <message>
         <location filename="main.py" line="4114"/>
         <source>On Close</source>
-        <translation>برای خروج</translation>
+        <translation>При закрытии</translation>
     </message>
     <message>
         <location filename="main.py" line="4116"/>
         <source>Ask Every Time</source>
-        <translation>هر بار بپرس</translation>
+        <translation>Спрашивать каждый раз</translation>
     </message>
     <message>
         <location filename="main.py" line="4117"/>
         <source>Always Hide</source>
-        <translation>همیشه پنهان شو</translation>
+        <translation>Всегда скрывать</translation>
     </message>
     <message>
         <location filename="main.py" line="4118"/>
         <source>Always Close</source>
-        <translation>همیشه خارج شو</translation>
+        <translation>Всегда закрывать</translation>
     </message>
     <message>
         <location filename="main.py" line="4128"/>
         <source>Set Mode</source>
-        <translation>تنظیم حالت</translation>
+        <translation>Установить режим</translation>
     </message>
     <message>
         <location filename="main.py" line="4144"/>
         <source>Help</source>
-        <translation>کمک</translation>
+        <translation>Справка</translation>
     </message>
     <message>
         <location filename="main.py" line="4150"/>
         <source>Tutorials</source>
-        <translation>آموزش‌ها</translation>
+        <translation>Руководства</translation>
     </message>
     <message>
         <location filename="main.py" line="4154"/>
         <source>Exit</source>
-        <translation>خروج</translation>
+        <translation>Выход</translation>
     </message>
     <message>
         <location filename="main.py" line="4248"/>
         <location filename="main.py" line="4250"/>
         <source>Not Available</source>
-        <translation>موجود نیست</translation>
+        <translation>Недоступно</translation>
     </message>
     <message>
         <location filename="main.py" line="4335"/>
         <source>Disconnect</source>
-        <translation>قطع ارتباط</translation>
+        <translation>Отключить</translation>
     </message>
     <message>
         <location filename="main.py" line="4342"/>
         <source>Status: &lt;span style=&apos;color: green; font-weight: bold;&apos;&gt;Connected&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: green; font-weight: bold;&apos;&gt;متصل&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: green; font-weight: bold;&apos;&gt;Подключено&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4343"/>
         <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Disconnected&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;متصل نیست&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Отключено&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4344"/>
         <source>Status: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Connecting...&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;در حال اتصال...&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Подключение...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4345"/>
         <source>Status: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Disconnecting...&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;در حال قطع ارتباط...&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Отключение...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4348"/>
         <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;No Network&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;بدون شبکه&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Сеть отсутствует&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4352"/>
         <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Network Error&lt;/span&gt;</source>
-        <translation>وضعیت: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;خطای شبکه&lt;/span&gt;</translation>
+        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Ошибка сети&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4367"/>
         <source>Change The Protocol</source>
-        <translation>تغییر پروتکل</translation>
+        <translation>Сменить протокол</translation>
     </message>
     <message>
         <location filename="main.py" line="4369"/>
         <source>Which protocol do you want to use?
 
 &apos;Auto&apos; will test your network and pick the fastest option.</source>
-        <translation>از کدام پروتکل می‌خواهید استفاده کنید؟
+        <translation>Какой протокол вы хотите использовать?
 
-گزینه «خودکار» شبکه شما را آزمایش می‌کند و سریع‌ترین گزینه را انتخاب می‌کند.</translation>
+«Авто» протестирует вашу сеть и выберет самый быстрый вариант.</translation>
     </message>
     <message>
         <location filename="main.py" line="4390"/>
         <source>Protocol: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Testing (0%)...&lt;/span&gt;</source>
-        <translation>پروتکل: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;در حال آزمایش (0%)...&lt;/span&gt;</translation>
+        <translation>Протокол: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Тестирование (0%)...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4395"/>
         <source>Protocol: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Testing ({}%)...&lt;/span&gt;</source>
-        <translation>پروتکل: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;در حال آزمایش ({}%)...&lt;/span&gt;</translation>
+        <translation>Протокол: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Тестирование ({}%)...&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4414"/>
         <source>Auto Selection Complete</source>
-        <translation>انتخاب خودکار کامل شد</translation>
+        <translation>Автоподбор завершен</translation>
     </message>
     <message>
         <location filename="main.py" line="4415"/>
         <source>Auto-test selected: &lt;b&gt;{}&lt;/b&gt; with {} ms latency.</source>
-        <translation>تست خودکار انتخاب شد: &lt;b&gt;{}&lt;/b&gt; با {} میلی‌ثانیه تأخیر.</translation>
+        <translation>Автотестом выбрано: &lt;b&gt;{}&lt;/b&gt; с задержкой {} мс.</translation>
     </message>
     <message>
         <location filename="main.py" line="4421"/>
         <source>Protocol: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Error&lt;/span&gt;</source>
-        <translation>پروتکل: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;خطا&lt;/span&gt;</translation>
+        <translation>Протокол: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Ошибка&lt;/span&gt;</translation>
     </message>
     <message>
         <location filename="main.py" line="4422"/>
         <source>Auto Select Failed</source>
-        <translation>انتخاب خودکار ناموفق بود</translation>
+        <translation>Сбой автоматического выбора</translation>
     </message>
     <message>
         <location filename="main.py" line="4439"/>
         <location filename="main.py" line="4442"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="4440"/>
         <location filename="main.py" line="4442"/>
         <source>Failed to set protocol: {}</source>
-        <translation>تنظیم پروتکل ناموفق بود: {}</translation>
+        <translation>Не удалось установить протокол: {}</translation>
     </message>
 </context>
 <context>
@@ -720,13 +720,13 @@ Please update it via the official installer.</source>
     <message>
         <location filename="main.py" line="2214"/>
         <source>Unknown error</source>
-        <translation>خطای ناشناخته</translation>
+        <translation>Неизвестная ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="2214"/>
         <location filename="main.py" line="2217"/>
         <source>Command Error</source>
-        <translation>خطای فرمان</translation>
+        <translation>Ошибка выполнения команды</translation>
     </message>
 </context>
 <context>
@@ -734,126 +734,126 @@ Please update it via the official installer.</source>
     <message>
         <location filename="main.py" line="2517"/>
         <source>Registration &amp; Devices</source>
-        <translation>ثبت نام و دستگاه ها</translation>
+        <translation>Регистрация и устройства</translation>
     </message>
     <message>
         <location filename="main.py" line="2533"/>
         <source>Loading info...</source>
-        <translation>در حال بارگذاری اطلاعات...</translation>
+        <translation>Загрузка информации...</translation>
     </message>
     <message>
         <location filename="main.py" line="2544"/>
         <source>Model</source>
-        <translation>مدل</translation>
+        <translation>Модель</translation>
     </message>
     <message>
         <location filename="main.py" line="2544"/>
         <source>OS</source>
-        <translation>سیستم عامل</translation>
+        <translation>ОС</translation>
     </message>
     <message>
         <location filename="main.py" line="2544"/>
         <source>Active</source>
-        <translation>فعال</translation>
+        <translation>Активен</translation>
     </message>
     <message>
         <location filename="main.py" line="2558"/>
         <source>New Reg</source>
-        <translation>ثبت جدید</translation>
+        <translation>Новая рег.</translation>
     </message>
     <message>
         <location filename="main.py" line="2563"/>
         <source>Delete Reg</source>
-        <translation>حذف رجیستری</translation>
+        <translation>Удалить рег.</translation>
     </message>
     <message>
         <location filename="main.py" line="2573"/>
         <location filename="main.py" line="2644"/>
         <location filename="main.py" line="2649"/>
         <source>Refresh</source>
-        <translation>تازه کردن</translation>
+        <translation>Обновить</translation>
     </message>
     <message>
         <location filename="main.py" line="2587"/>
         <source>Loading...</source>
-        <translation>در حال بارگذاری...</translation>
+        <translation>Загрузка...</translation>
     </message>
     <message>
         <location filename="main.py" line="2611"/>
         <source>Failed to parse registration info.</source>
-        <translation>تجزیه اطلاعات ثبت نام ناموفق بود.</translation>
+        <translation>Не удалось разобрать информацию о регистрации.</translation>
     </message>
     <message>
         <location filename="main.py" line="2613"/>
         <source>No active registration found.</source>
-        <translation>هیچ ثبت نام فعالی یافت نشد.</translation>
+        <translation>Активная регистрация не найдена.</translation>
     </message>
     <message>
         <location filename="main.py" line="2631"/>
         <source>Yes</source>
-        <translation>بله</translation>
+        <translation>Да</translation>
     </message>
     <message>
         <location filename="main.py" line="2631"/>
         <source>No</source>
-        <translation>خیر</translation>
+        <translation>Нет</translation>
     </message>
     <message>
         <location filename="main.py" line="2647"/>
         <source>Error fetching data.</source>
-        <translation>خطا در واکشی داده‌ها.</translation>
+        <translation>Ошибка при получении данных.</translation>
     </message>
     <message>
         <location filename="main.py" line="2656"/>
         <source>Confirm New Registration</source>
-        <translation>تأیید ثبت نام جدید</translation>
+        <translation>Подтвердить новую регистрацию</translation>
     </message>
     <message>
         <location filename="main.py" line="2658"/>
         <source>Are you sure you want to create a new WARP registration? This will replace your current account and license.</source>
-        <translation>آیا مطمئن هستید که می‌خواهید یک ثبت نام جدید وارپ ایجاد کنید؟ این حساب جایگزین حساب و مجوز فعلی شما خواهد شد.</translation>
+        <translation>Вы уверены, что хотите создать новую регистрацию WARP? Это заменит вашу текущую учетную запись и лицензию.</translation>
     </message>
     <message>
         <location filename="main.py" line="2663"/>
         <source>New registration created successfully.</source>
-        <translation>ثبت نام جدید با موفقیت ایجاد شد.</translation>
+        <translation>Новая регистрация успешно создана.</translation>
     </message>
     <message>
         <location filename="main.py" line="2668"/>
         <source>Confirm Deletion</source>
-        <translation>تأیید حذف</translation>
+        <translation>Подтвердить удаление</translation>
     </message>
     <message>
         <location filename="main.py" line="2670"/>
         <source>Are you sure you want to completely delete your WARP registration? You will lose internet routing through WARP until you register again.</source>
-        <translation>آیا مطمئن هستید که می‌خواهید ثبت نام وارپ خود را به طور کامل حذف کنید؟ تا زمانی که دوباره ثبت نام نکنید، مسیریابی اینترنت از طریق وارپ را از دست خواهید داد.</translation>
+        <translation>Вы уверены, что хотите полностью удалить регистрацию WARP? Вы потеряете маршрутизацию интернета через WARP, пока не зарегистрируетесь заново.</translation>
     </message>
     <message>
         <location filename="main.py" line="2675"/>
         <source>Registration deleted successfully.</source>
-        <translation>ثبت نام با موفقیت حذف شد.</translation>
+        <translation>Регистрация успешно удалена.</translation>
     </message>
     <message>
         <location filename="main.py" line="2689"/>
         <source>Success</source>
-        <translation>موفق</translation>
+        <translation>Успешно</translation>
     </message>
     <message>
         <location filename="main.py" line="2692"/>
         <source>Command Error</source>
-        <translation>خطای فرمان</translation>
+        <translation>Ошибка команды</translation>
     </message>
     <message>
         <location filename="main.py" line="2693"/>
         <source>Failed to execute command:
 {}</source>
-        <translation>اجرای دستور ناموفق بود:
+        <translation>Не удалось выполнить команду:
 {}</translation>
     </message>
     <message>
         <location filename="main.py" line="2701"/>
         <source>Process Error</source>
-        <translation>خطای فرآیند</translation>
+        <translation>Ошибка процесса</translation>
     </message>
 </context>
 <context>
@@ -861,175 +861,174 @@ Please update it via the official installer.</source>
     <message>
         <location filename="main.py" line="2982"/>
         <source>Modes</source>
-        <translation>حالت‌ها</translation>
+        <translation>Режимы</translation>
     </message>
     <message>
         <location filename="main.py" line="2987"/>
         <source>Full VPN tunnel via Cloudflare. Encrypts all traffic.</source>
-        <translation>تونل کامل VPN از طریق Cloudflare. تمام ترافیک را رمزگذاری می‌کند.</translation>
+        <translation>Полный VPN-туннель через Cloudflare. Шифрует весь трафик.</translation>
     </message>
     <message>
         <location filename="main.py" line="2988"/>
         <source>Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted.</source>
-        <translation>فقط DNS روی HTTPS (DoH). DNS امن است؛ بقیه ترافیک رمزگذاری نشده است.</translation>
+        <translation>Только DNS поверх HTTPS (DoH). DNS защищен, остальной трафик не шифруется.</translation>
     </message>
     <message>
         <location filename="main.py" line="2989"/>
         <source>VPN tunnel + DNS over HTTPS. Full encryption + secure DNS.</source>
-        <translation>تونل VPN + DNS روی HTTPS. رمزگذاری کامل + DNS امن.</translation>
+        <translation>VPN-туннель + DNS поверх HTTPS. Полное шифрование + безопасный DNS.</translation>
     </message>
     <message>
         <location filename="main.py" line="2990"/>
         <source>Only DNS over TLS (DoT). Secure DNS, no VPN tunnel.</source>
-        <translation>فقط DNS روی TLS (DoT). DNS امن، بدون تونل VPN.</translation>
+        <translation>Только DNS поверх TLS (DoT). Безопасный DNS, без VPN-туннеля.</translation>
     </message>
     <message>
         <location filename="main.py" line="2991"/>
         <source>VPN tunnel + DNS over TLS. Full encryption + secure DNS.</source>
-        <translation>تونل VPN + DNS روی TLS. رمزگذاری کامل + DNS امن.</translation>
+        <translation>VPN-туннель + DNS поверх TLS. Полное шифрование + безопасный DNS.</translation>
     </message>
     <message>
         <location filename="main.py" line="2992"/>
         <source>Sets up a local WARP proxy (manual port needed). Apps can use it via localhost.</source>
-        <translation>یک پروکسی محلی وارپ تنظیم می‌کند (به پورت دستی نیاز است). برنامه‌ها می‌توانند از طریق localhost از آن استفاده کنند.</translation>
+        <translation>Настраивает локальный прокси-сервер WARP (требуется ручной порт). Приложения могут использовать его через localhost.</translation>
     </message>
     <message>
         <location filename="main.py" line="2996"/>
         <source>Tunnel is created but not used unless manually routed.</source>
-        <translation>تونل ایجاد می‌شود اما تا زمانی که به صورت دستی مسیریابی نشود، استفاده نمی‌شود.</translation>
+        <translation>Туннель создан, но не используется, пока не настроена ручная маршрутизация.</translation>
     </message>
     <message>
         <location filename="main.py" line="3007"/>
         <source>DNS Settings</source>
-        <translation>تنظیمات دی‌ان‌اس</translation>
+        <translation>Настройки DNS</translation>
     </message>
     <message>
         <location filename="main.py" line="3011"/>
         <location filename="main.py" line="3125"/>
         <source>Off (No DNS filtering)</source>
-        <translation>خاموش (بدون فیلتر DNS)</translation>
+        <translation>Выкл (Без фильтрации DNS)</translation>
     </message>
     <message>
         <location filename="main.py" line="3012"/>
         <location filename="main.py" line="3126"/>
         <source>Block Adult Content</source>
-        <translation>مسدود کردن محتوای بزرگسالان</translation>
+        <translation>Блокировать контент для взрослых</translation>
     </message>
     <message>
         <location filename="main.py" line="3014"/>
         <location filename="main.py" line="3127"/>
         <source>Block Malware</source>
-        <translation>مسدود کردن بدافزار</translation>
+        <translation>Блокировать вредоносное ПО</translation>
     </message>
     <message>
         <location filename="main.py" line="3021"/>
         <source>Language</source>
-        <translation>زبان</translation>
+        <translation>Язык</translation>
     </message>
     <message>
         <location filename="main.py" line="3036"/>
         <source>Fonts</source>
-        <translation>فونت‌ها</translation>
+        <translation>Шрифты</translation>
     </message>
     <message>
         <location filename="main.py" line="3052"/>
         <source>More Options</source>
-        <translation>گزینه‌های بیشتر</translation>
+        <translation>Другие параметры</translation>
     </message>
     <message>
         <location filename="main.py" line="3057"/>
         <source>View Logs</source>
-        <translation>مشاهده گزارش‌ها</translation>
+        <translation>Просмотр логов</translation>
     </message>
     <message>
         <location filename="main.py" line="3059"/>
         <source>Advanced Settings</source>
-        <translation>تنظیمات پیشرفته</translation>
+        <translation>Дополнительные настройки</translation>
     </message>
     <message>
         <location filename="main.py" line="3065"/>
         <source>Live DNS Logs</source>
-        <translation>گزارش‌های زنده DNS</translation>
+        <translation>Живые логи DNS</translation>
     </message>
     <message>
         <location filename="main.py" line="3067"/>
         <source>Connection Test</source>
-        <translation>تست اتصال</translation>
+        <translation>Тест соединения</translation>
     </message>
     <message>
         <location filename="main.py" line="3097"/>
         <source>Language Change</source>
-        <translation>تغییر زبان</translation>
+        <translation>Смена языка</translation>
     </message>
     <message>
         <location filename="main.py" line="3098"/>
         <source>Language will apply after restart. Restart now?</source>
-        <translation>زبان بعد از راه‌اندازی مجدد اعمال خواهد شد. الان راه‌اندازی مجدد شود؟</translation>
+        <translation>Языковые настройки вступят в силу после перезапуска. Перезагрузить сейчас?</translation>
     </message>
     <message>
         <location filename="main.py" line="3138"/>
         <source>DNS Mode Saved</source>
-        <translation>حالت DNS ذخیره شد</translation>
+        <translation>Режим DNS сохранен</translation>
     </message>
     <message>
         <location filename="main.py" line="3139"/>
         <source>DNS mode set to: {}</source>
-        <translation>حالت DNS روی {} تنظیم شده است</translation>
+        <translation>Режим DNS изменен на: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="3141"/>
         <location filename="main.py" line="3146"/>
         <location filename="main.py" line="3221"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="3142"/>
         <source>Failed to Set DNS Mode to {}: {}</source>
-        <translation>تنظیم حالت DNS روی {} ناموفق بود: {}</translation>
+        <translation>Не удалось установить режим DNS {}: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="3161"/>
         <source>Incompatible Mode</source>
-        <translation>حالت ناسازگار</translation>
+        <translation>Несовместимый режим</translation>
     </message>
     <message>
         <location filename="main.py" line="3166"/>
         <source>Proxy mode cannot be used with MASQUE option &apos;HTTP/2 (h2-only)&apos;.
 Please change MASQUE to &apos;auto&apos; or an HTTP/3 option before switching to Proxy mode.</source>
-        <translation>حالت پروکسی را نمی‌توان با گزینه MASQUE &apos;HTTP/2 (فقط h2)&apos; استفاده کرد.
-
-لطفاً قبل از تغییر به حالت پروکسی، MASQUE را به &apos;auto&apos; یا گزینه HTTP/3 تغییر دهید.</translation>
+        <translation>Режим прокси нельзя использовать с параметром MASQUE &apos;HTTP/2 (только h2)&apos;.
+Пожалуйста, измените параметр MASQUE на &apos;auto&apos; или вариант с HTTP/3 перед переключением в режим прокси.</translation>
     </message>
     <message>
         <location filename="main.py" line="3174"/>
         <source>Proxy Port Required</source>
-        <translation>پورت پروکسی مورد نیاز است</translation>
+        <translation>Требуется прокси-порт</translation>
     </message>
     <message>
         <location filename="main.py" line="3175"/>
         <source>Enter proxy port (1–65535):</source>
-        <translation>پورت پروکسی (۱–۶۵۵۳۵) را وارد کنید:</translation>
+        <translation>Введите порт прокси (1–65535):</translation>
     </message>
     <message>
         <location filename="main.py" line="3190"/>
         <source>Invalid Port</source>
-        <translation>پورت نامعتبر</translation>
+        <translation>Неверный порт</translation>
     </message>
     <message>
         <location filename="main.py" line="3192"/>
         <source>Please enter a valid port number between 1 and 65535.</source>
-        <translation>لطفاً یک شماره پورت معتبر بین ۱ تا ۶۵۵۳۵ وارد کنید.</translation>
+        <translation>Пожалуйста, введите корректный номер порта от 1 до 65535.</translation>
     </message>
     <message>
         <location filename="main.py" line="3215"/>
         <source>Mode Changed</source>
-        <translation>حالت تغییر کرد</translation>
+        <translation>Режим изменен</translation>
     </message>
     <message>
         <location filename="main.py" line="3216"/>
         <source>Mode set to: {}</source>
-        <translation>حالت روی: {} تنظیم شده است</translation>
+        <translation>Установлен режим: {}</translation>
     </message>
 </context>
 <context>
@@ -1037,17 +1036,17 @@ Please change MASQUE to &apos;auto&apos; or an HTTP/3 option before switching to
     <message>
         <location filename="main.py" line="192"/>
         <source>Update Available</source>
-        <translation>به‌روزرسانی موجود است</translation>
+        <translation>Доступно обновление</translation>
     </message>
     <message>
         <location filename="main.py" line="193"/>
         <source>Update</source>
-        <translation>به‌روزرسانی</translation>
+        <translation>Обновить</translation>
     </message>
     <message>
         <location filename="main.py" line="194"/>
         <source>Later</source>
-        <translation>بعداً</translation>
+        <translation>Позже</translation>
     </message>
     <message>
         <location filename="main.py" line="198"/>
@@ -1055,10 +1054,10 @@ Please change MASQUE to &apos;auto&apos; or an HTTP/3 option before switching to
 
 Latest: {}
 Current: {}</source>
-        <translation>نسخه جدید PyWarp منتشر شد!
+        <translation>Доступна новая версия PyWarp!
 
-آخرین نسخه: {}
-فعلی: {}</translation>
+Последняя: {}
+Текущая: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="203"/>
@@ -1066,10 +1065,10 @@ Current: {}</source>
 
 Latest: {}
 Current: {}</source>
-        <translation>نسخه جدید WARP در دسترس است!
+        <translation>Доступна новая версия WARP!
 
-آخرین نسخه: {}
-فعلی: {}</translation>
+Последняя: {}
+Текущая: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="209"/>
@@ -1077,25 +1076,25 @@ Current: {}</source>
 
 Latest: {}
 Current: {}</source>
-        <translation>نسخه جدیدی از WARP قابل حمل در دسترس است!
+        <translation>Доступна новая версия portable WARP!
 
-آخرین: {}
-فعلی: {}</translation>
+Последняя: {}
+Текущая: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="211"/>
         <source>Auto Update</source>
-        <translation>به‌روزرسانی خودکار</translation>
+        <translation>Автообновление</translation>
     </message>
     <message>
         <location filename="main.py" line="1297"/>
         <source>Portable WARP has been successfully updated!</source>
-        <translation>وارپ قابل حمل با موفقیت به‌روزرسانی شد!</translation>
+        <translation>Portable WARP был успешно обновлен!</translation>
     </message>
     <message>
         <location filename="main.py" line="1343"/>
         <source>Update failed: {}</source>
-        <translation>به‌روزرسانی ناموفق بود: {}</translation>
+        <translation>Ошибка обновления: {}</translation>
     </message>
 </context>
 <context>
@@ -1103,86 +1102,86 @@ Current: {}</source>
     <message>
         <location filename="main.py" line="998"/>
         <source>WARP Network Diagnostic Report</source>
-        <translation>گزارش تشخیصی شبکه وارپ</translation>
+        <translation>Диагностический отчет сети WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="1006"/>
         <source>This diagnostic tool checks which Cloudflare protocols (WireGuard vs MASQUE) are currently performing best on your network. Select a row and click &apos;Apply Selected&apos;.</source>
-        <translation>این ابزار تشخیصی بررسی می‌کند که کدام پروتکل‌های Cloudflare (WireGuard در مقابل MASQUE) در حال حاضر بهترین عملکرد را در شبکه شما دارند. یک ردیف را انتخاب کنید و روی «اعمال موارد انتخاب شده» کلیک کنید.</translation>
+        <translation>Этот диагностический инструмент проверяет, какие протоколы Cloudflare (WireGuard или MASQUE) в данный момент работают лучше всего в вашей сети. Выберите строку и нажмите «Применить выбранное».</translation>
     </message>
     <message>
         <location filename="main.py" line="1037"/>
         <source>Endpoint</source>
-        <translation>آیپی/پورت</translation>
+        <translation>Адрес / Порт</translation>
     </message>
     <message>
         <location filename="main.py" line="1037"/>
         <source>Protocol</source>
-        <translation>پروتکل</translation>
+        <translation>Протокол</translation>
     </message>
     <message>
         <location filename="main.py" line="1037"/>
         <source>Latency</source>
-        <translation>تأخیر/پینگ</translation>
+        <translation>Задержка (Пинг)</translation>
     </message>
     <message>
         <location filename="main.py" line="1038"/>
         <source>Jitter</source>
-        <translation>لرزش</translation>
+        <translation>Джиттер</translation>
     </message>
     <message>
         <location filename="main.py" line="1038"/>
         <source>Loss</source>
-        <translation>درصد لاس</translation>
+        <translation>Потери пакетов</translation>
     </message>
     <message>
         <location filename="main.py" line="1039"/>
         <source>Status</source>
-        <translation>وضعیت</translation>
+        <translation>Статус</translation>
     </message>
     <message>
         <location filename="main.py" line="1056"/>
         <location filename="main.py" line="1127"/>
         <location filename="main.py" line="1134"/>
         <source>Run Diagnostics</source>
-        <translation>اجرای تشخیص</translation>
+        <translation>Запустить диагностику</translation>
     </message>
     <message>
         <location filename="main.py" line="1060"/>
         <location filename="main.py" line="1170"/>
         <location filename="main.py" line="1175"/>
         <source>Apply Selected</source>
-        <translation>اعمال موارد انتخاب شده</translation>
+        <translation>Применить выбранное</translation>
     </message>
     <message>
         <location filename="main.py" line="1069"/>
         <source>Close</source>
-        <translation>بستن</translation>
+        <translation>Закрыть</translation>
     </message>
     <message>
         <location filename="main.py" line="1084"/>
         <source>Testing...</source>
-        <translation>در حال تست...</translation>
+        <translation>Тестирование...</translation>
     </message>
     <message>
         <location filename="main.py" line="1106"/>
         <source>⚠ No working endpoints found. Your network is heavily restricting Cloudflare IPs.</source>
-        <translation>⚠ هیچ ایپی/پورت یافت نشد. شبکه شما به شدت آیپی های کلودفلر را محدود کرده است.</translation>
+        <translation>⚠ Рабочие конечные точки не найдены. Ваша сеть сильно ограничивает IP-адреса Cloudflare.</translation>
     </message>
     <message>
         <location filename="main.py" line="1131"/>
         <source>❌ Diagnostic Error: {}</source>
-        <translation>❌ خطای تشخیصی: {}</translation>
+        <translation>❌ Ошибка диагностики: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="1145"/>
         <source>Applying...</source>
-        <translation>اعمال ...</translation>
+        <translation>Применение...</translation>
     </message>
     <message>
         <location filename="main.py" line="1164"/>
         <source>Settings Applied</source>
-        <translation>تنظیمات اعمال شده</translation>
+        <translation>Настройки применены</translation>
     </message>
     <message>
         <location filename="main.py" line="1165"/>
@@ -1190,20 +1189,20 @@ Current: {}</source>
 
 Protocol: {}
 Endpoint: {}</source>
-        <translation>پیکربندی موفقیت‌آمیز وارپ با:
+        <translation>WARP успешно настроен:
 
-پروتکل: {}
-نقطه پایانی: {}</translation>
+Протокол: {}
+Конечная точка: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="1173"/>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Ошибка</translation>
     </message>
     <message>
         <location filename="main.py" line="1173"/>
         <source>Failed to apply settings: {}</source>
-        <translation>اعمال تنظیمات ناموفق بود: {}</translation>
+        <translation>Не удалось применить настройки: {}</translation>
     </message>
 </context>
 <context>
@@ -1211,102 +1210,102 @@ Endpoint: {}</source>
     <message>
         <location filename="main.py" line="4485"/>
         <source>Warp Not Found</source>
-        <translation>وارپ پیدا نشد</translation>
+        <translation>WARP не найден</translation>
     </message>
     <message>
         <location filename="main.py" line="4486"/>
         <source>Cloudflare WARP is not installed.
 
 Do you want to install it automatically?</source>
-        <translation>Cloudflare WARP نصب نشده است.
+        <translation>Cloudflare WARP не установлен.
 
-آیا می‌خواهید آن را به صورت خودکار نصب کنید؟</translation>
+Вы хотите установить его автоматически?</translation>
     </message>
     <message>
         <location filename="main.py" line="4490"/>
         <source>Portable Install</source>
-        <translation>نصب قابل حمل</translation>
+        <translation>Портативная установка</translation>
     </message>
     <message>
         <location filename="main.py" line="4492"/>
         <source>Auto Install</source>
-        <translation>نصب خودکار</translation>
+        <translation>Автоустановка</translation>
     </message>
     <message>
         <location filename="main.py" line="4493"/>
         <source>Manual Install</source>
-        <translation>نصب دستی</translation>
+        <translation>Ручная установка</translation>
     </message>
     <message>
         <location filename="main.py" line="4494"/>
         <source>Retry Check</source>
-        <translation>بررسی مجدد</translation>
+        <translation>Повторить проверку</translation>
     </message>
     <message>
         <location filename="main.py" line="4523"/>
         <source>Downloading WARP...</source>
-        <translation>در حال دانلود WARP...</translation>
+        <translation>Скачивание WARP...</translation>
     </message>
     <message>
         <location filename="main.py" line="4524"/>
         <location filename="main.py" line="4544"/>
         <location filename="main.py" line="4587"/>
         <source>Cancel</source>
-        <translation>لغو</translation>
+        <translation>Отмена</translation>
     </message>
     <message>
         <location filename="main.py" line="4528"/>
         <location filename="main.py" line="4591"/>
         <source>Downloading WARP</source>
-        <translation>درحال دانلود WARP</translation>
+        <translation>Скачивание WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="4543"/>
         <source>Downloading portable WARP...</source>
-        <translation>دانلود وارپ قابل حمل...</translation>
+        <translation>Скачивание portable WARP...</translation>
     </message>
     <message>
         <location filename="main.py" line="4546"/>
         <source>Downloading</source>
-        <translation>در حال دانلود</translation>
+        <translation>Скачивание</translation>
     </message>
     <message>
         <location filename="main.py" line="4577"/>
         <source>Warp Install Failed</source>
-        <translation>نصب Warp ناموفق بود</translation>
+        <translation>Ошибка установки WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="4578"/>
         <source>Could not setup portable WARP from ZIP:
 {}</source>
-        <translation>نتوانستم وارپ قابل حمل را از ZIP تنظیم کنم:
+        <translation>Не удалось настроить portable WARP из ZIP:
 {}</translation>
     </message>
     <message>
         <location filename="main.py" line="4586"/>
         <source>Downloading WARP (MSI fallback)...</source>
-        <translation>دانلود WARP (نسخه پشتیبان MSI)...</translation>
+        <translation>Скачивание WARP (резервный MSI)...</translation>
     </message>
     <message>
         <location filename="main.py" line="4630"/>
         <source>Download Failed</source>
-        <translation>دانلود ناموفق بود</translation>
+        <translation>Ошибка скачивания</translation>
     </message>
     <message>
         <location filename="main.py" line="4630"/>
         <source>Failed to download WARP installer.</source>
-        <translation>دانلود نصب‌کننده WARP ناموفق بود.</translation>
+        <translation>Не удалось скачать установщик WARP.</translation>
     </message>
     <message>
         <location filename="main.py" line="4642"/>
         <location filename="main.py" line="4683"/>
         <source>Unsupported</source>
-        <translation>پشتیبانی نشده</translation>
+        <translation>Не поддерживается</translation>
     </message>
     <message>
         <location filename="main.py" line="4643"/>
         <source>Automatic install not supported for this OS.</source>
-        <translation>نصب خودکار برای این سیستم عامل پشتیبانی نمی‌شود.</translation>
+        <translation>Автоматическая установка не поддерживается для этой ОС.</translation>
     </message>
     <message>
         <location filename="main.py" line="4647"/>
@@ -1314,23 +1313,23 @@ Do you want to install it automatically?</source>
         <location filename="main.py" line="4692"/>
         <location filename="main.py" line="4696"/>
         <source>Installation Failed</source>
-        <translation>نصب ناموفق بود</translation>
+        <translation>Установка не удалась</translation>
     </message>
     <message>
         <location filename="main.py" line="4648"/>
         <source>Failed to install WARP: {}</source>
-        <translation>نصب WARP ناموفق بود: {}</translation>
+        <translation>Не удалось установить WARP: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="4652"/>
         <location filename="main.py" line="4697"/>
         <source>Installation error: {}</source>
-        <translation>خطای نصب: {}</translation>
+        <translation>Ошибка установки: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="4657"/>
         <source>Linux Installation</source>
-        <translation>نصب لینوکس</translation>
+        <translation>Установка на Linux</translation>
     </message>
     <message>
         <location filename="main.py" line="4663"/>
@@ -1340,70 +1339,71 @@ For most reliable results, please follow the official Cloudflare guide:
 https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/
 
 Do you want PyWarp to try installing via your package manager?</source>
-        <translation>نصب خودکار فقط تا حدی در لینوکس پشتیبانی می‌شود.
+        <translation>Автоматическая установка в Linux поддерживается лишь частично.
 
-برای مطمئن‌ترین نتایج، لطفاً راهنمای رسمی Cloudflare را دنبال کنید:
+Для получения наиболее надежного результата следуйте официальному руководству Cloudflare:
 https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/
 
-آیا می‌خواهید PyWarp از طریق مدیریت بسته شما نصب شود؟</translation>
+Хотите, чтобы PyWarp попытался выполнить установку через ваш пакетный менеджер?</translation>
     </message>
     <message>
         <location filename="main.py" line="4664"/>
         <source>Try Auto Install</source>
-        <translation>نصب خودکار را امتحان کنید</translation>
+        <translation>Попробовать автоустановку</translation>
     </message>
     <message>
         <location filename="main.py" line="4665"/>
         <source>Open Manual Guide</source>
-        <translation>راهنمای دستی را باز کنید</translation>
+        <translation>Открыть инструкцию</translation>
     </message>
     <message>
         <location filename="main.py" line="4685"/>
         <source>Your package manager is not supported for auto-install.
 Please use the manual guide instead.</source>
-        <translation>مدیر بسته شما از نصب خودکار پشتیبانی نمی‌کند. لطفاً به جای آن از راهنمای دستی استفاده کنید.</translation>
+        <translation>Ваш пакетный менеджер не поддерживается для автоустановки. Пожалуйста, используйте официальное руководство.</translation>
     </message>
     <message>
         <location filename="main.py" line="4693"/>
         <source>An error occurred:
 {}</source>
-        <translation>خطایی رخ داده است: {}</translation>
+        <translation>Произошла ошибка:
+{}</translation>
     </message>
     <message>
         <location filename="main.py" line="4746"/>
         <source>Warp Found</source>
-        <translation>وارپ پیدا شد</translation>
+        <translation>WARP найден</translation>
     </message>
     <message>
         <location filename="main.py" line="4746"/>
         <source>WARP is now installed!</source>
-        <translation>WARP اکنون نصب شده است!</translation>
+        <translation>WARP успешно установлен!</translation>
     </message>
     <message>
         <location filename="main.py" line="4764"/>
         <source>Warp Ready</source>
-        <translation>وارپ آماده است</translation>
+        <translation>WARP готов</translation>
     </message>
     <message>
         <location filename="main.py" line="4765"/>
         <source>WARP has been registered and TOS accepted successfully!</source>
-        <translation>وارپ ثبت شده و شرایط استفاده با موفقیت پذیرفته شده است!</translation>
+        <translation>WARP успешно зарегистрирован, условия использования приняты!</translation>
     </message>
     <message>
         <location filename="main.py" line="4768"/>
         <location filename="main.py" line="4771"/>
         <source>Warp Activation Failed</source>
-        <translation>فعال‌سازی Warp ناموفق بود</translation>
+        <translation>Сбой активации WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="4769"/>
         <source>Failed to activate WARP: {}</source>
-        <translation>فعال‌سازی وارپ ناموفق بود: {}</translation>
+        <translation>Не удалось активировать WARP: {}</translation>
     </message>
     <message>
         <location filename="main.py" line="4772"/>
         <source>Activation error: {}</source>
-        <translation>خطای فعال‌سازی: {}</translation>
+        <translation>Ошибка активации: {}</translation>
     </message>
 </context>
 <context>
@@ -1411,107 +1411,107 @@ Please use the manual guide instead.</source>
     <message>
         <location filename="main.py" line="1581"/>
         <source>Trying to connect...</source>
-        <translation>تلاش برای اتصال...</translation>
+        <translation>Попытка подключения...</translation>
     </message>
     <message>
         <location filename="main.py" line="1583"/>
         <source>Connecting to {value}</source>
-        <translation>درحال اتصال به {value}</translation>
+        <translation>Подключение к {value}</translation>
     </message>
     <message>
         <location filename="main.py" line="1584"/>
         <source>Connecting to Cloudflare</source>
-        <translation>درحال اتصال به کلودفلر</translation>
+        <translation>Подключение к Cloudflare</translation>
     </message>
     <message>
         <location filename="main.py" line="1586"/>
         <source>Setting up secure connection</source>
-        <translation>راه‌اندازی اتصال امن</translation>
+        <translation>Настройка безопасного соединения</translation>
     </message>
     <message>
         <location filename="main.py" line="1588"/>
         <source>Preparing security settings</source>
-        <translation>آماده‌سازی تنظیمات امنیتی</translation>
+        <translation>Подготовка параметров безопасности</translation>
     </message>
     <message>
         <location filename="main.py" line="1589"/>
         <source>Setting up network access</source>
-        <translation>تنظیم دسترسی به شبکه</translation>
+        <translation>Настройка сетевого доступа</translation>
     </message>
     <message>
         <location filename="main.py" line="1590"/>
         <source>Applying security rules</source>
-        <translation>اعمال قوانین امنیتی</translation>
+        <translation>Применение правил безопасности</translation>
     </message>
     <message>
         <location filename="main.py" line="1592"/>
         <source>Checking internet connection</source>
-        <translation>بررسی اتصال اینترنت</translation>
+        <translation>Проверка интернет-соединения</translation>
     </message>
     <message>
         <location filename="main.py" line="1593"/>
         <source>Checking DNS settings</source>
-        <translation>بررسی تنظیمات دی ان اس</translation>
+        <translation>Проверка настроек DNS</translation>
     </message>
     <message>
         <location filename="main.py" line="1594"/>
         <source>Checking network status</source>
-        <translation>بررسی وضعیت شبکه</translation>
+        <translation>Проверка статуса сети</translation>
     </message>
     <message>
         <location filename="main.py" line="1595"/>
         <source>Loading settings</source>
-        <translation>درحال بارگیری تنظیمات</translation>
+        <translation>Загрузка настроек</translation>
     </message>
     <message>
         <location filename="main.py" line="1596"/>
         <source>Settings updated</source>
-        <translation>تنظیمات به‌روزرسانی شدند</translation>
+        <translation>Настройки обновлены</translation>
     </message>
     <message>
         <location filename="main.py" line="1597"/>
         <source>Disconnected manually</source>
-        <translation>به صورت دستی قطع شد</translation>
+        <translation>Отключено вручную</translation>
     </message>
     <message>
         <location filename="main.py" line="1598"/>
         <source>Connection is working normally</source>
-        <translation>اتصال به طور عادی کار می‌کند</translation>
+        <translation>Соединение работает нормально</translation>
     </message>
     <message>
         <location filename="main.py" line="1599"/>
         <source>No internet connection</source>
-        <translation>بدون اتصال به اینترنت</translation>
+        <translation>Нет интернет-соединения</translation>
     </message>
     <message>
         <location filename="main.py" line="1600"/>
         <source>Connection attempt failed</source>
-        <translation>تلاش برای اتصال ناموفق بود</translation>
+        <translation>Попытка подключения не удалась</translation>
     </message>
     <message>
         <location filename="main.py" line="1601"/>
         <source>Setting up proxy</source>
-        <translation>راه اندازی پراکسی</translation>
+        <translation>Настройка прокси</translation>
     </message>
     <message>
         <location filename="main.py" line="1602"/>
         <source>Checking proxy setup</source>
-        <translation>بررسی تنظیمات پراکسی</translation>
+        <translation>Проверка конфигурации прокси</translation>
     </message>
     <message>
         <location filename="main.py" line="1603"/>
         <source>Network performance degraded</source>
-        <translation>عملکرد شبکه کاهش یافته است</translation>
+        <translation>Производительность сети снижена</translation>
     </message>
     <message>
         <location filename="main.py" line="1604"/>
         <source>Connectivity test unsuccessful</source>
-        <translation>تست اتصال ناموفق بود</translation>
+        <translation>Тест доступности сети не удался</translation>
     </message>
     <message>
         <location filename="main.py" line="1605"/>
         <source>Checking DNS route availability</source>
-        <translation>بررسی در دسترس بودن مسیر DNS</translation>
+        <translation>Проверка доступности маршрутов DNS</translation>
     </message>
 </context>
 <context>
@@ -1519,25 +1519,25 @@ Please use the manual guide instead.</source>
     <message>
         <location filename="main.py" line="4801"/>
         <source>Warp Installation Failed</source>
-        <translation>نصب Warp ناموفق بود</translation>
+        <translation>Ошибка установки WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="4803"/>
         <source>Warp could not be installed.
 Exiting app.</source>
-        <translation>نصب Warp امکان‌پذیر نیست.
-در حال خروج از برنامه.</translation>
+        <translation>Не удалось установить WARP.
+Выход из приложения.</translation>
     </message>
     <message>
         <location filename="main.py" line="4812"/>
         <source>Warp Service Error</source>
-        <translation>خطای سرویس وارپ</translation>
+        <translation>Ошибка службы WARP</translation>
     </message>
     <message>
         <location filename="main.py" line="4813"/>
         <source>Portable Warp service failed to start:
 {}</source>
-        <translation>سرویس Portable Warp شروع نشد:
+        <translation>Не удалось запустить службу portable WARP:
 {}</translation>
     </message>
 </context>

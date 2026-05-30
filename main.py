@@ -3023,6 +3023,7 @@ class SettingsPage(QWidget):
         self.language_dropdown = QComboBox()
         self.language_dropdown.addItem("English", "en")
         self.language_dropdown.addItem("فارسی", "fa")
+        self.language_dropdown.addItem("Русский", "ru")
 
         index = self.language_dropdown.findData(self.current_lang)
         if index >= 0:
