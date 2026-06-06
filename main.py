@@ -6,7 +6,6 @@ import os
 import platform
 import re
 import shutil
-import ssl
 import subprocess
 import sys
 import threading
@@ -15,9 +14,7 @@ import traceback
 import webbrowser
 import zipfile
 import requests
-import socket
 import resources_rc  # noqa: F401
-import concurrent.futures
 from types import SimpleNamespace
 from pathlib import Path
 from dataclasses import dataclass
