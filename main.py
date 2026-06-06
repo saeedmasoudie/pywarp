@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
                                QGroupBox, QDialog, QProgressDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
-                               QScrollArea, QProgressBar)
+                               QScrollArea)
 
 if platform.system() == "Darwin":
     extra_paths = [
@@ -392,49 +392,6 @@ def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwarg
 
     worker.start()
     return worker
-
-def calculate_score(avg, jitter, loss):
-    if avg is None:
-        return 999999
-
-    return (
-        avg
-        + (jitter * 1.5)
-        + (loss * 12)
-    )
-
-def _status_from_metrics(avg, loss):
-    if avg is None:
-        return "Blocked"
-    if loss >= 50:
-        return "Unstable"
-    if avg > 300:
-        return "Slow"
-    return "OK"
-
-def _mark_recommended(results):
-    candidates = [
-        r for r in results
-        if r.protocol and r.status == "OK"
-    ]
-    if not candidates:
-        return
-
-    best = min(
-        candidates,
-        key=lambda r: r.avg_latency_ms or 9999
-    )
-    best.recommended = True
-
-def verify_live_connection(timeout=7):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        res = run_warp_command("warp-cli", "status")
-        if res.returncode == 0:
-            if "Connected" in res.stdout:
-                return True
-        time.sleep(1.0)
-    return False
 
 # -----------------------------------------------------
 
@@ -937,8 +894,7 @@ class ThoroughDiagnosticWorker(QThread):
             total_tasks = len(tasks)
             successful_profiles = []
 
-            self.log_signal.emit(
-                f"<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Initializing Hardware Network Diagnostics...")
+            self.log_signal.emit("<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Initializing Hardware Network Diagnostics...")
             self.log_signal.emit(
                 f"<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Queued {total_tasks} routing payload configurations.<br>")
             time.sleep(1.0)
