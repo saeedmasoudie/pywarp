@@ -1,182 +1,181 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE TS>
+<?xml version='1.0' encoding='utf-8'?>
 <TS version="2.1" language="ru">
 <context>
     <name>AdvancedSettings</name>
     <message>
-        <location filename="main.py" line="2713"/>
+        <location filename="main.py" line="2841" />
         <source>Advanced Settings</source>
-        <translation>Дополнительные настройки</translation>
+        <translation>Расширенные настройки</translation>
     </message>
     <message>
-        <location filename="main.py" line="2720"/>
+        <location filename="main.py" line="2848" />
         <source>Exclude IP / Domain</source>
-        <translation>Исключить IP / Домен</translation>
+        <translation>Исключить IP / домен</translation>
     </message>
     <message>
-        <location filename="main.py" line="2724"/>
+        <location filename="main.py" line="2852" />
         <source>Type</source>
         <translation>Тип</translation>
     </message>
     <message>
-        <location filename="main.py" line="2724"/>
+        <location filename="main.py" line="2852" />
         <source>Value</source>
         <translation>Значение</translation>
     </message>
     <message>
-        <location filename="main.py" line="2733"/>
+        <location filename="main.py" line="2861" />
         <source>Add</source>
         <translation>Добавить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2734"/>
+        <location filename="main.py" line="2862" />
         <source>Remove</source>
         <translation>Удалить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2735"/>
+        <location filename="main.py" line="2863" />
         <source>Reset List</source>
         <translation>Сбросить список</translation>
     </message>
     <message>
-        <location filename="main.py" line="2752"/>
+        <location filename="main.py" line="2880" />
         <source>Custom Endpoint</source>
         <translation>Пользовательская конечная точка</translation>
     </message>
     <message>
-        <location filename="main.py" line="2759"/>
+        <location filename="main.py" line="2887" />
         <source>Set Custom Endpoint</source>
-        <translation>Указать конечную точку</translation>
+        <translation>Установить пользовательскую конечную точку</translation>
     </message>
     <message>
-        <location filename="main.py" line="2761"/>
+        <location filename="main.py" line="2889" />
         <source>Save</source>
         <translation>Сохранить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2762"/>
-        <location filename="main.py" line="2795"/>
-        <location filename="main.py" line="2904"/>
-        <location filename="main.py" line="2959"/>
+        <location filename="main.py" line="2890" />
+        <location filename="main.py" line="2923" />
+        <location filename="main.py" line="3032" />
+        <location filename="main.py" line="3087" />
         <source>Reset</source>
-        <translation>Сбросить</translation>
+        <translation>Сброс</translation>
     </message>
     <message>
-        <location filename="main.py" line="2770"/>
+        <location filename="main.py" line="2898" />
         <source>MASQUE Options</source>
         <translation>Параметры MASQUE</translation>
     </message>
     <message>
-        <location filename="main.py" line="2775"/>
+        <location filename="main.py" line="2903" />
         <source>detect the best MASQUE protocol on connect (recommended)</source>
         <translation>Определять лучший протокол MASQUE при подключении (рекомендуется)</translation>
     </message>
     <message>
-        <location filename="main.py" line="2776"/>
+        <location filename="main.py" line="2904" />
         <source>Use only HTTP/3 (fastest, best for modern networks)</source>
         <translation>Использовать только HTTP/3 (самый быстрый, лучший для современных сетей)</translation>
     </message>
     <message>
-        <location filename="main.py" line="2777"/>
+        <location filename="main.py" line="2905" />
         <source>Force HTTP/2 (may help in restrictive networks)</source>
-        <translation>Принудительно HTTP/2 (может помочь в сетях с ограничениями)</translation>
+        <translation>Принудительно использовать HTTP/2 (может помочь в ограниченных сетях)</translation>
     </message>
     <message>
-        <location filename="main.py" line="2778"/>
+        <location filename="main.py" line="2906" />
         <source>Use HTTP/3, fallback to HTTP/2 if needed</source>
-        <translation>Использовать HTTP/3, при необходимости переключаться на HTTP/2</translation>
+        <translation>Использовать HTTP/3 с переходом на HTTP/2 при необходимости</translation>
     </message>
     <message>
-        <location filename="main.py" line="2794"/>
+        <location filename="main.py" line="2922" />
         <source>Set</source>
         <translation>Установить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2852"/>
-        <location filename="main.py" line="2861"/>
-        <location filename="main.py" line="2892"/>
-        <location filename="main.py" line="2897"/>
-        <location filename="main.py" line="2906"/>
-        <location filename="main.py" line="2937"/>
-        <location filename="main.py" line="2947"/>
-        <location filename="main.py" line="2954"/>
-        <location filename="main.py" line="2962"/>
+        <location filename="main.py" line="2980" />
+        <location filename="main.py" line="2989" />
+        <location filename="main.py" line="3020" />
+        <location filename="main.py" line="3025" />
+        <location filename="main.py" line="3034" />
+        <location filename="main.py" line="3065" />
+        <location filename="main.py" line="3075" />
+        <location filename="main.py" line="3082" />
+        <location filename="main.py" line="3090" />
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="2852"/>
+        <location filename="main.py" line="2980" />
         <source>No row selected.</source>
         <translation>Строка не выбрана.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2862"/>
+        <location filename="main.py" line="2990" />
         <source>Unknown error</source>
         <translation>Неизвестная ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="2868"/>
+        <location filename="main.py" line="2996" />
         <source>Bypass Reset</source>
         <translation>Сброс обхода</translation>
     </message>
     <message>
-        <location filename="main.py" line="2868"/>
+        <location filename="main.py" line="2996" />
         <source>All manual split-tunnel rules cleared successfully.</source>
-        <translation>Все правила раздельного туннелирования успешно удалены.</translation>
+        <translation>Все правила split-tunnel успешно очищены.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2895"/>
-        <location filename="main.py" line="2943"/>
+        <location filename="main.py" line="3023" />
+        <location filename="main.py" line="3071" />
         <source>Saved</source>
         <translation>Сохранено</translation>
     </message>
     <message>
-        <location filename="main.py" line="2895"/>
+        <location filename="main.py" line="3023" />
         <source>Endpoint saved successfully.</source>
         <translation>Конечная точка успешно сохранена.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2904"/>
+        <location filename="main.py" line="3032" />
         <source>Endpoint reset successfully.</source>
         <translation>Конечная точка успешно сброшена.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2918"/>
+        <location filename="main.py" line="3046" />
         <source>Incompatible MASQUE Option</source>
         <translation>Несовместимый параметр MASQUE</translation>
     </message>
     <message>
-        <location filename="main.py" line="2923"/>
-        <source>MASQUE option &apos;HTTP/2 (h2-only)&apos; cannot be used while in Proxy mode.
+        <location filename="main.py" line="3051" />
+        <source>MASQUE option 'HTTP/2 (h2-only)' cannot be used while in Proxy mode.
 Switch the mode to something other than Proxy, or choose another MASQUE option.</source>
-        <translation>Параметр MASQUE &apos;HTTP/2 (только h2)&apos; нельзя использовать в режиме прокси.
-Измените режим на любой другой или выберите другой параметр MASQUE.</translation>
+        <translation>MASQUE option 'HTTP/2 (h2-only)' cannot be used while in Proxy mode.
+Switch the mode to something other than Proxy, or choose another MASQUE option.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2944"/>
+        <location filename="main.py" line="3072" />
         <source>MASQUE option set to {}.</source>
-        <translation>Для параметра MASQUE установлено значение {}.</translation>
+        <translation>Параметр MASQUE установлен на {}.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2960"/>
+        <location filename="main.py" line="3088" />
         <source>MASQUE option reset successfully (now Auto).</source>
-        <translation>Параметр MASQUE успешно сброшен (теперь Авто).</translation>
+        <translation>Параметр MASQUE успешно сброшен (теперь Auto).</translation>
     </message>
 </context>
 <context>
     <name>DnsDrawer</name>
     <message>
-        <location filename="main.py" line="3280"/>
+        <location filename="main.py" line="3408" />
         <source>Live DNS Logs</source>
-        <translation>Живые логи DNS</translation>
+        <translation>DNS-журналы в реальном времени</translation>
     </message>
     <message>
-        <location filename="main.py" line="3329"/>
+        <location filename="main.py" line="3457" />
         <source>Filter domains...</source>
         <translation>Фильтр доменов...</translation>
     </message>
     <message>
-        <location filename="main.py" line="3454"/>
+        <location filename="main.py" line="3582" />
         <source>Copy Domain</source>
         <translation>Копировать домен</translation>
     </message>
@@ -184,1361 +183,1282 @@ Switch the mode to something other than Proxy, or choose another MASQUE option.<
 <context>
     <name>ExclusionManager</name>
     <message>
-        <location filename="main.py" line="2240"/>
+        <location filename="main.py" line="2358" />
         <source>Add Exclusions</source>
-        <translation>Добавить исключения</translation>
+        <translation>Add Exclusions</translation>
     </message>
     <message>
-        <location filename="main.py" line="2248"/>
+        <location filename="main.py" line="2366" />
         <source>New Exclusion</source>
-        <translation>Новое исключение</translation>
+        <translation>New Exclusion</translation>
     </message>
     <message>
-        <location filename="main.py" line="2253"/>
+        <location filename="main.py" line="2371" />
         <source>e.g., google.com or 192.168.1.5</source>
-        <translation>например, google.com или 192.168.1.5</translation>
+        <translation>e.g., google.com or 192.168.1.5</translation>
     </message>
     <message>
-        <location filename="main.py" line="2257"/>
+        <location filename="main.py" line="2375" />
         <source>Add</source>
         <translation>Добавить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2277"/>
+        <location filename="main.py" line="2395" />
         <source>Pending Items (Not saved yet)</source>
-        <translation>Ожидающие элементы (еще не сохранены)</translation>
+        <translation>Pending Items (Not saved yet)</translation>
     </message>
     <message>
-        <location filename="main.py" line="2296"/>
+        <location filename="main.py" line="2414" />
         <source>Clear All</source>
-        <translation>Очистить всё</translation>
+        <translation>Clear All</translation>
     </message>
     <message>
-        <location filename="main.py" line="2299"/>
+        <location filename="main.py" line="2417" />
         <source>Apply Changes</source>
-        <translation>Применить изменения</translation>
+        <translation>Apply Changes</translation>
     </message>
     <message>
-        <location filename="main.py" line="2405"/>
+        <location filename="main.py" line="2523" />
         <source>Remove from list</source>
-        <translation>Удалить из списка</translation>
+        <translation>Remove from list</translation>
     </message>
     <message>
-        <location filename="main.py" line="2452"/>
+        <location filename="main.py" line="2570" />
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="2452"/>
+        <location filename="main.py" line="2570" />
         <source>Default IP cannot be excluded</source>
-        <translation>IP-адрес по умолчанию нельзя исключить</translation>
+        <translation>Default IP cannot be excluded</translation>
     </message>
     <message>
-        <location filename="main.py" line="2470"/>
+        <location filename="main.py" line="2588" />
         <source>Invalid Input</source>
-        <translation>Неверный ввод</translation>
+        <translation>Invalid Input</translation>
     </message>
     <message>
-        <location filename="main.py" line="2471"/>
+        <location filename="main.py" line="2589" />
         <source>Input is not a valid IP address or Domain name.</source>
-        <translation>Введенное значение не является корректным IP-адресом или доменным именем.</translation>
+        <translation>Input is not a valid IP address or Domain name.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2506"/>
+        <location filename="main.py" line="2624" />
         <source>Warning</source>
         <translation>Предупреждение</translation>
     </message>
     <message>
-        <location filename="main.py" line="2507"/>
+        <location filename="main.py" line="2625" />
         <source>Failed to add the following:
 </source>
-        <translation>Не удалось добавить следующее:
+        <translation>Failed to add the following:
 </translation>
     </message>
 </context>
 <context>
     <name>LoadingOverlay</name>
     <message>
-        <location filename="main.py" line="2011"/>
+        <location filename="main.py" line="2129" />
         <source>Cloudflare Warp GUI</source>
-        <translation>Интерфейс Cloudflare Warp</translation>
+        <translation>Cloudflare Warp GUI</translation>
     </message>
     <message>
-        <location filename="main.py" line="2021"/>
+        <location filename="main.py" line="2139" />
         <source>Checking Warp service...</source>
-        <translation>Проверка службы Warp...</translation>
+        <translation>Checking Warp service...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2022"/>
+        <location filename="main.py" line="2140" />
         <source>Making sure Warp is ready...</source>
-        <translation>Проверка готовности Warp...</translation>
+        <translation>Making sure Warp is ready...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2023"/>
+        <location filename="main.py" line="2141" />
         <source>Preparing UI...</source>
-        <translation>Подготовка интерфейса...</translation>
+        <translation>Preparing UI...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2024"/>
+        <location filename="main.py" line="2142" />
         <source>Syncing settings...</source>
-        <translation>Синхронизация настроек...</translation>
+        <translation>Syncing settings...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2025"/>
+        <location filename="main.py" line="2143" />
         <source>Starting engines...</source>
-        <translation>Запуск модулей...</translation>
+        <translation>Starting engines...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2028"/>
+        <location filename="main.py" line="2146" />
         <source>Almost ready...</source>
-        <translation>Почти готово...</translation>
+        <translation>Almost ready...</translation>
     </message>
 </context>
 <context>
     <name>LogsWindow</name>
     <message>
-        <location filename="main.py" line="927"/>
+        <location filename="main.py" line="854" />
         <source>Application Logs</source>
-        <translation>Логи приложения</translation>
+        <translation>Журналы приложения</translation>
     </message>
     <message>
-        <location filename="main.py" line="940"/>
+        <location filename="main.py" line="867" />
         <source>Refresh</source>
         <translation>Обновить</translation>
     </message>
     <message>
-        <location filename="main.py" line="941"/>
+        <location filename="main.py" line="868" />
         <source>Clear Logs</source>
-        <translation>Очистить логи</translation>
+        <translation>Очистить журналы</translation>
     </message>
     <message>
-        <location filename="main.py" line="953"/>
+        <location filename="main.py" line="880" />
         <source>No logs found.</source>
-        <translation>Логи не найдены.</translation>
+        <translation>Журналы не найдены.</translation>
     </message>
     <message>
-        <location filename="main.py" line="962"/>
+        <location filename="main.py" line="889" />
         <source>Failed to read log file:
 {}</source>
-        <translation>Не удалось прочитать файл лога:
+        <translation>Failed to read log file:
 {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="966"/>
-        <location filename="main.py" line="990"/>
+        <location filename="main.py" line="893" />
+        <location filename="main.py" line="917" />
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="966"/>
+        <location filename="main.py" line="893" />
         <source>Log path not set.</source>
-        <translation>Путь к логам не задан.</translation>
+        <translation>Log path not set.</translation>
     </message>
     <message>
-        <location filename="main.py" line="971"/>
+        <location filename="main.py" line="898" />
         <source>Confirm</source>
         <translation>Подтвердить</translation>
     </message>
     <message>
-        <location filename="main.py" line="972"/>
+        <location filename="main.py" line="899" />
         <source>Clear the log file? This cannot be undone.</source>
-        <translation>Очистить файл логов? Это действие нельзя отменить.</translation>
+        <translation>Clear the log file? This cannot be undone.</translation>
     </message>
     <message>
-        <location filename="main.py" line="988"/>
+        <location filename="main.py" line="915" />
         <source>Logs cleared.</source>
-        <translation>Логи очищены.</translation>
+        <translation>Logs cleared.</translation>
     </message>
     <message>
-        <location filename="main.py" line="990"/>
+        <location filename="main.py" line="917" />
         <source>Failed to clear logs:
 {}</source>
-        <translation>Не удалось очистить логи:
+        <translation>Failed to clear logs:
 {}</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="main.py" line="119"/>
+        <location filename="main.py" line="120" />
         <source>Application Error</source>
-        <translation>Ошибка приложения</translation>
+        <translation>Application Error</translation>
     </message>
     <message>
-        <location filename="main.py" line="120"/>
+        <location filename="main.py" line="121" />
         <source>An unexpected error occurred!</source>
-        <translation>Произошла непредвиденная ошибка!</translation>
+        <translation>An unexpected error occurred!</translation>
     </message>
     <message>
-        <location filename="main.py" line="3476"/>
+        <location filename="main.py" line="3604" />
         <source>PyWarp {}</source>
         <translation>PyWarp {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="3529"/>
+        <location filename="main.py" line="3668" />
         <source>Status: Disconnected</source>
-        <translation>Статус: Отключено</translation>
+        <translation>Status: Disconnected</translation>
     </message>
     <message>
-        <location filename="main.py" line="3534"/>
-        <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Detecting...&lt;/span&gt;</source>
-        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Определение...&lt;/span&gt;</translation>
+        <location filename="main.py" line="3673" />
+        <source>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Detecting...&lt;/span&gt;</source>
+        <translation>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Detecting...&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3537"/>
+        <location filename="main.py" line="3676" />
         <source>This is your current public IP address.</source>
-        <translation>Это ваш текущий публичный IP-адрес.</translation>
+        <translation>This is your current public IP address.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3539"/>
-        <source>Protocol: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Detecting...&lt;/span&gt;</source>
-        <translation>Протокол: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Определение...&lt;/span&gt;</translation>
+        <location filename="main.py" line="3678" />
+        <source>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Detecting...&lt;/span&gt;</source>
+        <translation>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Detecting...&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3544"/>
-        <source>Source: &lt;a href=&apos;https://github.com/saeedmasoudie/pywarp&apos; style=&apos;color: #0078D4; font-weight: bold; text-decoration: none;&apos;&gt;GitHub&lt;/a&gt;</source>
-        <translation>Исходный код: &lt;a href=&apos;https://github.com/saeedmasoudie/pywarp&apos; style=&apos;color: #0078D4; font-weight: bold; text-decoration: none;&apos;&gt;GitHub&lt;/a&gt;</translation>
+        <location filename="main.py" line="3683" />
+        <source>Source: &lt;a href='https://github.com/saeedmasoudie/pywarp' style='color: #0078D4; font-weight: bold; text-decoration: none;'&gt;GitHub&lt;/a&gt;</source>
+        <translation>Source: &lt;a href='https://github.com/saeedmasoudie/pywarp' style='color: #0078D4; font-weight: bold; text-decoration: none;'&gt;GitHub&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3548"/>
-        <source>Click here to visit the app&apos;s source code on GitHub</source>
-        <translation>Нажмите здесь, чтобы открыть исходный код приложения на GitHub</translation>
+        <location filename="main.py" line="3687" />
+        <source>Click here to visit the app's source code on GitHub</source>
+        <translation>Click here to visit the app's source code on GitHub</translation>
     </message>
     <message>
-        <location filename="main.py" line="3589"/>
+        <location filename="main.py" line="3730" />
         <source>Metric</source>
-        <translation>Метрика</translation>
+        <translation>Metric</translation>
     </message>
     <message>
-        <location filename="main.py" line="3589"/>
+        <location filename="main.py" line="3730" />
         <source>Value</source>
         <translation>Значение</translation>
     </message>
     <message>
-        <location filename="main.py" line="3603"/>
-        <location filename="main.py" line="3620"/>
-        <location filename="main.py" line="3624"/>
+        <location filename="main.py" line="3744" />
+        <location filename="main.py" line="3761" />
+        <location filename="main.py" line="3765" />
         <source>Protocol</source>
-        <translation>Протокол</translation>
+        <translation>Protocol</translation>
     </message>
     <message>
-        <location filename="main.py" line="3603"/>
+        <location filename="main.py" line="3744" />
         <source>IPv4 Endpoint</source>
-        <translation>IPv4 точка подключения</translation>
+        <translation>IPv4 Endpoint</translation>
     </message>
     <message>
-        <location filename="main.py" line="3603"/>
+        <location filename="main.py" line="3744" />
         <source>IPv6 Endpoint</source>
-        <translation>IPv6 точка подключения</translation>
+        <translation>IPv6 Endpoint</translation>
     </message>
     <message>
-        <location filename="main.py" line="3603"/>
+        <location filename="main.py" line="3744" />
         <source>Last Handshake</source>
-        <translation>Последнее рукопожатие</translation>
+        <translation>Last Handshake</translation>
     </message>
     <message>
-        <location filename="main.py" line="3604"/>
+        <location filename="main.py" line="3745" />
         <source>Sent Data</source>
-        <translation>Отправлено данных</translation>
+        <translation>Sent Data</translation>
     </message>
     <message>
-        <location filename="main.py" line="3604"/>
+        <location filename="main.py" line="3745" />
         <source>Received Data</source>
-        <translation>Получено данных</translation>
+        <translation>Received Data</translation>
     </message>
     <message>
-        <location filename="main.py" line="3604"/>
+        <location filename="main.py" line="3745" />
         <source>Latency</source>
-        <translation>Задержка (Пинг)</translation>
+        <translation>Latency</translation>
     </message>
     <message>
-        <location filename="main.py" line="3606"/>
+        <location filename="main.py" line="3747" />
         <source>Loss</source>
-        <translation>Потери пакетов</translation>
+        <translation>Loss</translation>
     </message>
     <message>
-        <location filename="main.py" line="3619"/>
+        <location filename="main.py" line="3760" />
         <source>Network Stats</source>
-        <translation>Статистика сети</translation>
+        <translation>Network Stats</translation>
     </message>
     <message>
-        <location filename="main.py" line="3619"/>
+        <location filename="main.py" line="3760" />
         <source>Settings</source>
         <translation>Настройки</translation>
     </message>
     <message>
-        <location filename="main.py" line="3718"/>
+        <location filename="main.py" line="3859" />
         <source>Update Available</source>
-        <translation>Доступно обновление</translation>
+        <translation>Update Available</translation>
     </message>
     <message>
-        <location filename="main.py" line="3720"/>
+        <location filename="main.py" line="3861" />
         <source>A new version of Cloudflare WARP is available ({})
 Please update it via the official installer.</source>
-        <translation>Доступна новая версия Cloudflare WARP ({}).
-Пожалуйста, обновите её с помощью официального установщика.</translation>
+        <translation>A new version of Cloudflare WARP is available ({})
+Please update it via the official installer.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3726"/>
+        <location filename="main.py" line="3867" />
         <source>Auto Update</source>
         <translation>Автообновление</translation>
     </message>
     <message>
-        <location filename="main.py" line="3728"/>
+        <location filename="main.py" line="3869" />
         <source>Do you want to download and install the new portable WARP assets automatically?</source>
-        <translation>Вы хотите автоматически скачать и установить новые переносимые (portable) компоненты WARP?</translation>
+        <translation>Do you want to download and install the new portable WARP assets automatically?</translation>
     </message>
     <message>
-        <location filename="main.py" line="3750"/>
-        <location filename="main.py" line="4437"/>
-        <source>Protocol: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</source>
-        <translation>Протокол: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
+        <location filename="main.py" line="3891" />
+        <location filename="main.py" line="4537" />
+        <source>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</source>
+        <translation>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3767"/>
+        <location filename="main.py" line="3908" />
         <source>&lt;b&gt;Listening on: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</source>
-        <translation>&lt;b&gt;Прокси на: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</translation>
+        <translation>&lt;b&gt;Listening on: 127.0.0.1:{port} (HTTP + SOCKS5)&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3789"/>
-        <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</source>
-        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;{}&lt;/span&gt;</translation>
+        <location filename="main.py" line="3930" />
+        <source>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</source>
+        <translation>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3794"/>
-        <source>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Unavailable&lt;/span&gt;</source>
-        <translation>IPv4: &lt;span style=&apos;color: #0078D4; font-weight: bold;&apos;&gt;Недоступно&lt;/span&gt;</translation>
+        <location filename="main.py" line="3935" />
+        <source>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Unavailable&lt;/span&gt;</source>
+        <translation>IPv4: &lt;span style='color: #0078D4; font-weight: bold;'&gt;Unavailable&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="3950"/>
+        <location filename="main.py" line="4091" />
         <source>Exit Confirmation</source>
-        <translation>Подтверждение выхода</translation>
+        <translation>Exit Confirmation</translation>
     </message>
     <message>
-        <location filename="main.py" line="3951"/>
+        <location filename="main.py" line="4092" />
         <source>Do you want to close the app or hide it?</source>
-        <translation>Вы хотите закрыть приложение или скрыть его?</translation>
+        <translation>Do you want to close the app or hide it?</translation>
     </message>
     <message>
-        <location filename="main.py" line="3953"/>
-        <location filename="main.py" line="3994"/>
+        <location filename="main.py" line="4094" />
+        <location filename="main.py" line="4135" />
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
     <message>
-        <location filename="main.py" line="3954"/>
+        <location filename="main.py" line="4095" />
         <source>Hide</source>
-        <translation>Скрыть</translation>
+        <translation>Hide</translation>
     </message>
     <message>
-        <location filename="main.py" line="3955"/>
+        <location filename="main.py" line="4096" />
         <source>Remember my choice</source>
-        <translation>Запомнить мой выбор</translation>
+        <translation>Remember my choice</translation>
     </message>
     <message>
-        <location filename="main.py" line="3985"/>
-        <location filename="main.py" line="4146"/>
+        <location filename="main.py" line="4126" />
+        <location filename="main.py" line="4287" />
         <source>About Me</source>
-        <translation>О программе</translation>
+        <translation>Обо мне</translation>
     </message>
     <message>
-        <location filename="main.py" line="3989"/>
-        <source>Hi, I&apos;m Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. You can explore my work on GitHub.</source>
-        <translation>Привет, я Саид/Эрик, Python-разработчик. Я люблю создавать эффективные приложения и постоянно учиться новому. Вы можете ознакомиться с моими работами на GitHub.</translation>
+        <location filename="main.py" line="4130" />
+        <source>Hi, I'm Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. You can explore my work on GitHub.</source>
+        <translation>Hi, I'm Saeed/Eric, a Python developer passionate about creating efficient applications and constantly learning new things. You can explore my work on GitHub.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3990"/>
+        <location filename="main.py" line="4131" />
         <source>Visit GitHub</source>
-        <translation>Открыть GitHub</translation>
+        <translation>Visit GitHub</translation>
     </message>
     <message>
-        <location filename="main.py" line="3999"/>
+        <location filename="main.py" line="4140" />
         <source>PyWarp Tutorials</source>
-        <translation>Руководства PyWarp</translation>
+        <translation>PyWarp Tutorials</translation>
     </message>
     <message>
-        <location filename="main.py" line="4086"/>
+        <location filename="main.py" line="4227" />
         <source>&lt;h2&gt;Welcome to PyWarp!&lt;/h2&gt;&lt;p&gt;PyWarp is a powerful GUI built around the official Cloudflare WARP service, allowing you to easily control and monitor your WARP connection.&lt;/p&gt;&lt;h3&gt;Getting Started&lt;/h3&gt;&lt;p&gt;You must have the official &lt;b&gt;Cloudflare WARP&lt;/b&gt; client installed, as PyWarp depends on its services to function. If you cannot install it, PyWarp also offers a bundled package that works without the official client.&lt;/p&gt;&lt;h3&gt;Main Interface&lt;/h3&gt;&lt;p&gt;On the main page, you’ll find:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Power Button:&lt;/b&gt; Turn WARP on or off.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Status Labels:&lt;/b&gt; Show connection status, IP address, protocol, and source link.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Network Stats:&lt;/b&gt; Opens the real-time connection statistics page.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Settings:&lt;/b&gt; Opens the configuration panel.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Protocol Switch:&lt;/b&gt; Instantly toggle between &lt;b&gt;WireGuard&lt;/b&gt; and &lt;b&gt;MASQUE&lt;/b&gt; protocols.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Network Stats&lt;/h3&gt;&lt;p&gt;View your live network data including traffic, latency, handshake time, and packet loss.&lt;/p&gt;&lt;h3&gt;Settings&lt;/h3&gt;&lt;p&gt;In the settings page, you can change the WARP operating mode:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; Full VPN tunnel via Cloudflare. Encrypts all traffic.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; DNS over HTTPS only (secure DNS, no VPN tunnel).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH for full encryption and secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; DNS over TLS only.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT for full encryption with secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; Creates a local WARP proxy on localhost (for manual app routing).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; Creates a tunnel but does not route traffic automatically.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS &amp; Language&lt;/h3&gt;&lt;p&gt;Choose your preferred DNS filtering level:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;No Filter:&lt;/b&gt; Standard DNS without filtering.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Adult Content Filter:&lt;/b&gt; Blocks adult websites.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Malware &amp; Ads Filter:&lt;/b&gt; Blocks malicious sites and ads.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;You can also change the application’s &lt;b&gt;language&lt;/b&gt; and &lt;b&gt;font&lt;/b&gt; here.&lt;/p&gt;&lt;h3&gt;Advanced Settings&lt;/h3&gt;&lt;p&gt;Under Advanced Settings, you’ll find several powerful tools:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Exclude IP/Domain:&lt;/b&gt; Exclude specific IP ranges or domains from WARP tunneling.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Exclude Apps:&lt;/b&gt; (Coming Soon) Choose which apps bypass WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Custom Endpoint:&lt;/b&gt; Connect through custom Cloudflare endpoints (last 5 are saved for reuse).&lt;/li&gt;&lt;li&gt;&lt;b&gt;MASQUE Options:&lt;/b&gt; Change MASQUE protocol behavior:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;h3-only:&lt;/b&gt; Use only HTTP/3 (fastest, best for modern networks).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h2-only:&lt;/b&gt; Force HTTP/2 (can help in restricted environments).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; Use HTTP/3 with automatic fallback to HTTP/2.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;Enjoy full control over Cloudflare WARP — simply, safely, and visually with PyWarp.&lt;/p&gt;</source>
-        <translation>&lt;h2&gt;Добро пожаловать в PyWarp!&lt;/h2&gt;&lt;p&gt;PyWarp — это мощный графический интерфейс для официальной службы Cloudflare WARP, позволяющий легко управлять и отслеживать подключение WARP.&lt;/p&gt;&lt;h3&gt;Начало работы&lt;/h3&gt;&lt;p&gt;У вас должен быть установлен официальный клиент &lt;b&gt;Cloudflare WARP&lt;/b&gt;, так как PyWarp зависит от его служб. Если вы не можете установить его, PyWarp также предлагает портативный автономный пакет, работающий без официального клиента.&lt;/p&gt;&lt;h3&gt;Основной интерфейс&lt;/h3&gt;&lt;p&gt;На главной странице вы найдете:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Кнопка питания:&lt;/b&gt; Включение и выключение WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Метки статуса:&lt;/b&gt; Отображение состояния подключения, IP-адреса, протокола и ссылки на исходный код.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Статистика сети:&lt;/b&gt; Открывает страницу сетевой статистики в реальном времени.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Настройки:&lt;/b&gt; Открывает панель конфигурации.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Переключатель протокола:&lt;/b&gt; Мгновенное переключение между протоколами &lt;b&gt;WireGuard&lt;/b&gt; и &lt;b&gt;MASQUE&lt;/b&gt;.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Статистика сети&lt;/h3&gt;&lt;p&gt;Просматривайте текущие данные вашей сети, включая трафик, задержку, время рукопожатия и потерю пакетов.&lt;/p&gt;&lt;h3&gt;Настройки&lt;/h3&gt;&lt;p&gt;На странице настроек вы можете изменить режим работы WARP:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; Полный VPN-туннель через Cloudflare. Шифрует весь трафик.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; Только DNS поверх HTTPS (безопасный DNS, без VPN-туннеля).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH для полного шифрования и безопасного DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; Только DNS поверх TLS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT для полного шифрования с безопасным DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; Создает локальный прокси WARP на localhost (для ручной маршрутизации приложений).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; Создает туннель, но не направляет трафик автоматически.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS и Язык&lt;/h3&gt;&lt;p&gt;Выберите желаемый уровень фильтрации DNS:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Без фильтрации:&lt;/b&gt; Стандартный DNS без ограничений.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Фильтр контента для взрослых:&lt;/b&gt; Блокирует сайты для взрослых.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Фильтр вредоносных программ и рекламы:&lt;/b&gt; Блокирует опасные сайты и рекламу.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;Вы также можете изменить &lt;b&gt;язык&lt;/b&gt; и &lt;b&gt;шрифт&lt;/b&gt; приложения здесь.&lt;/p&gt;&lt;h3&gt;Дополнительные настройки&lt;/h3&gt;&lt;p&gt;В дополнительных настройках доступны следующие инструменты:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Исключить IP/Домен:&lt;/b&gt; Исключение определенных диапазонов IP или доменов из туннелирования WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Исключить приложения:&lt;/b&gt; (Скоро) Выбор приложений, которые будут работать в обход WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Пользовательская конечная точка:&lt;/b&gt; Подключение через сторонние конечные точки Cloudflare (последние 5 сохраняются).&lt;/li&gt;&lt;li&gt;&lt;b&gt;Параметры MASQUE:&lt;/b&gt; Изменение поведения протокола MASQUE:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;только h3:&lt;/b&gt; Использовать только HTTP/3 (самый быстрый, лучший для современных сетей).&lt;/li&gt;&lt;li&gt;&lt;b&gt;только h2:&lt;/b&gt; Принудительный HTTP/2 (может помочь в сетях с ограничениями).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; Использовать HTTP/3 с автоматическим откатом на HTTP/2.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;Наслаждайтесь полным контролем над Cloudflare WARP — просто, безопасно и наглядно с помощью PyWarp.&lt;/p&gt;</translation>
+        <translation>&lt;h2&gt;Welcome to PyWarp!&lt;/h2&gt;&lt;p&gt;PyWarp is a powerful GUI built around the official Cloudflare WARP service, allowing you to easily control and monitor your WARP connection.&lt;/p&gt;&lt;h3&gt;Getting Started&lt;/h3&gt;&lt;p&gt;You must have the official &lt;b&gt;Cloudflare WARP&lt;/b&gt; client installed, as PyWarp depends on its services to function. If you cannot install it, PyWarp also offers a bundled package that works without the official client.&lt;/p&gt;&lt;h3&gt;Main Interface&lt;/h3&gt;&lt;p&gt;On the main page, you’ll find:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Power Button:&lt;/b&gt; Turn WARP on or off.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Status Labels:&lt;/b&gt; Show connection status, IP address, protocol, and source link.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Network Stats:&lt;/b&gt; Opens the real-time connection statistics page.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Settings:&lt;/b&gt; Opens the configuration panel.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Protocol Switch:&lt;/b&gt; Instantly toggle between &lt;b&gt;WireGuard&lt;/b&gt; and &lt;b&gt;MASQUE&lt;/b&gt; protocols.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Network Stats&lt;/h3&gt;&lt;p&gt;View your live network data including traffic, latency, handshake time, and packet loss.&lt;/p&gt;&lt;h3&gt;Settings&lt;/h3&gt;&lt;p&gt;In the settings page, you can change the WARP operating mode:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;warp:&lt;/b&gt; Full VPN tunnel via Cloudflare. Encrypts all traffic.&lt;/li&gt;&lt;li&gt;&lt;b&gt;doh:&lt;/b&gt; DNS over HTTPS only (secure DNS, no VPN tunnel).&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+doh:&lt;/b&gt; VPN + DoH for full encryption and secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;dot:&lt;/b&gt; DNS over TLS only.&lt;/li&gt;&lt;li&gt;&lt;b&gt;warp+dot:&lt;/b&gt; VPN + DoT for full encryption with secure DNS.&lt;/li&gt;&lt;li&gt;&lt;b&gt;proxy:&lt;/b&gt; Creates a local WARP proxy on localhost (for manual app routing).&lt;/li&gt;&lt;li&gt;&lt;b&gt;tunnel_only:&lt;/b&gt; Creates a tunnel but does not route traffic automatically.&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;DNS &amp; Language&lt;/h3&gt;&lt;p&gt;Choose your preferred DNS filtering level:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;No Filter:&lt;/b&gt; Standard DNS without filtering.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Adult Content Filter:&lt;/b&gt; Blocks adult websites.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Malware &amp; Ads Filter:&lt;/b&gt; Blocks malicious sites and ads.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;You can also change the application’s &lt;b&gt;language&lt;/b&gt; and &lt;b&gt;font&lt;/b&gt; here.&lt;/p&gt;&lt;h3&gt;Advanced Settings&lt;/h3&gt;&lt;p&gt;Under Advanced Settings, you’ll find several powerful tools:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Exclude IP/Domain:&lt;/b&gt; Exclude specific IP ranges or domains from WARP tunneling.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Exclude Apps:&lt;/b&gt; (Coming Soon) Choose which apps bypass WARP.&lt;/li&gt;&lt;li&gt;&lt;b&gt;Custom Endpoint:&lt;/b&gt; Connect through custom Cloudflare endpoints (last 5 are saved for reuse).&lt;/li&gt;&lt;li&gt;&lt;b&gt;MASQUE Options:&lt;/b&gt; Change MASQUE protocol behavior:&lt;/li&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;h3-only:&lt;/b&gt; Use only HTTP/3 (fastest, best for modern networks).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h2-only:&lt;/b&gt; Force HTTP/2 (can help in restricted environments).&lt;/li&gt;&lt;li&gt;&lt;b&gt;h3-with-h2-fallback:&lt;/b&gt; Use HTTP/3 with automatic fallback to HTTP/2.&lt;/li&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;p&gt;Enjoy full control over Cloudflare WARP — simply, safely, and visually with PyWarp.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4101"/>
+        <location filename="main.py" line="4242" />
         <source>PyWarp - CloudFlare Warp GUI</source>
-        <translation>PyWarp - Интерфейс Cloudflare Warp</translation>
+        <translation>PyWarp - CloudFlare Warp GUI</translation>
     </message>
     <message>
-        <location filename="main.py" line="4103"/>
+        <location filename="main.py" line="4244" />
         <source>Show App</source>
         <translation>Показать приложение</translation>
     </message>
     <message>
-        <location filename="main.py" line="4109"/>
-        <location filename="main.py" line="4339"/>
+        <location filename="main.py" line="4250" />
+        <location filename="main.py" line="4480" />
         <source>Connect</source>
         <translation>Подключить</translation>
     </message>
     <message>
-        <location filename="main.py" line="4114"/>
+        <location filename="main.py" line="4255" />
         <source>On Close</source>
-        <translation>При закрытии</translation>
+        <translation>On Close</translation>
     </message>
     <message>
-        <location filename="main.py" line="4116"/>
+        <location filename="main.py" line="4257" />
         <source>Ask Every Time</source>
-        <translation>Спрашивать каждый раз</translation>
+        <translation>Ask Every Time</translation>
     </message>
     <message>
-        <location filename="main.py" line="4117"/>
+        <location filename="main.py" line="4258" />
         <source>Always Hide</source>
-        <translation>Всегда скрывать</translation>
+        <translation>Always Hide</translation>
     </message>
     <message>
-        <location filename="main.py" line="4118"/>
+        <location filename="main.py" line="4259" />
         <source>Always Close</source>
-        <translation>Всегда закрывать</translation>
+        <translation>Always Close</translation>
     </message>
     <message>
-        <location filename="main.py" line="4128"/>
+        <location filename="main.py" line="4269" />
         <source>Set Mode</source>
-        <translation>Установить режим</translation>
+        <translation>Set Mode</translation>
     </message>
     <message>
-        <location filename="main.py" line="4144"/>
+        <location filename="main.py" line="4285" />
         <source>Help</source>
-        <translation>Справка</translation>
+        <translation>Помощь</translation>
     </message>
     <message>
-        <location filename="main.py" line="4150"/>
+        <location filename="main.py" line="4291" />
         <source>Tutorials</source>
         <translation>Руководства</translation>
     </message>
     <message>
-        <location filename="main.py" line="4154"/>
+        <location filename="main.py" line="4295" />
         <source>Exit</source>
         <translation>Выход</translation>
     </message>
     <message>
-        <location filename="main.py" line="4248"/>
-        <location filename="main.py" line="4250"/>
+        <location filename="main.py" line="4389" />
+        <location filename="main.py" line="4391" />
         <source>Not Available</source>
-        <translation>Недоступно</translation>
+        <translation>Not Available</translation>
     </message>
     <message>
-        <location filename="main.py" line="4335"/>
+        <location filename="main.py" line="4476" />
         <source>Disconnect</source>
         <translation>Отключить</translation>
     </message>
     <message>
-        <location filename="main.py" line="4342"/>
-        <source>Status: &lt;span style=&apos;color: green; font-weight: bold;&apos;&gt;Connected&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: green; font-weight: bold;&apos;&gt;Подключено&lt;/span&gt;</translation>
+        <location filename="main.py" line="4483" />
+        <source>Status: &lt;span style='color: green; font-weight: bold;'&gt;Connected&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: green; font-weight: bold;'&gt;Connected&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4343"/>
-        <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Disconnected&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Отключено&lt;/span&gt;</translation>
+        <location filename="main.py" line="4484" />
+        <source>Status: &lt;span style='color: red; font-weight: bold;'&gt;Disconnected&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: red; font-weight: bold;'&gt;Disconnected&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4344"/>
-        <source>Status: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Connecting...&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Подключение...&lt;/span&gt;</translation>
+        <location filename="main.py" line="4485" />
+        <source>Status: &lt;span style='color: orange; font-weight: bold;'&gt;Connecting...&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: orange; font-weight: bold;'&gt;Connecting...&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4345"/>
-        <source>Status: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Disconnecting...&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Отключение...&lt;/span&gt;</translation>
+        <location filename="main.py" line="4486" />
+        <source>Status: &lt;span style='color: orange; font-weight: bold;'&gt;Disconnecting...&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: orange; font-weight: bold;'&gt;Disconnecting...&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4348"/>
-        <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;No Network&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Сеть отсутствует&lt;/span&gt;</translation>
+        <location filename="main.py" line="4489" />
+        <source>Status: &lt;span style='color: red; font-weight: bold;'&gt;No Network&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: red; font-weight: bold;'&gt;No Network&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4352"/>
-        <source>Status: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Network Error&lt;/span&gt;</source>
-        <translation>Статус: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Ошибка сети&lt;/span&gt;</translation>
+        <location filename="main.py" line="4493" />
+        <source>Status: &lt;span style='color: red; font-weight: bold;'&gt;Network Error&lt;/span&gt;</source>
+        <translation>Status: &lt;span style='color: red; font-weight: bold;'&gt;Network Error&lt;/span&gt;</translation>
     </message>
     <message>
-        <location filename="main.py" line="4367"/>
+        <location filename="main.py" line="4508" />
         <source>Change The Protocol</source>
-        <translation>Сменить протокол</translation>
+        <translation>Change The Protocol</translation>
     </message>
     <message>
-        <location filename="main.py" line="4369"/>
+        <location filename="main.py" line="4510" />
         <source>Which protocol do you want to use?
 
-&apos;Auto&apos; will test your network and pick the fastest option.</source>
-        <translation>Какой протокол вы хотите использовать?
+'Auto' will test your network and pick the fastest option.</source>
+        <translation>Which protocol do you want to use?
 
-«Авто» протестирует вашу сеть и выберет самый быстрый вариант.</translation>
+'Auto' will test your network and pick the fastest option.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4390"/>
-        <source>Protocol: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Testing (0%)...&lt;/span&gt;</source>
-        <translation>Протокол: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Тестирование (0%)...&lt;/span&gt;</translation>
+        <location filename="main.py" line="4533" />
+        <source>Protocol Changed</source>
+        <translation>Protocol Changed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4395"/>
-        <source>Protocol: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Testing ({}%)...&lt;/span&gt;</source>
-        <translation>Протокол: &lt;span style=&apos;color: orange; font-weight: bold;&apos;&gt;Тестирование ({}%)...&lt;/span&gt;</translation>
+        <location filename="main.py" line="4534" />
+        <source>Protocol successfully changed to {}.</source>
+        <translation>Protocol successfully changed to {}.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4414"/>
-        <source>Auto Selection Complete</source>
-        <translation>Автоподбор завершен</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="4415"/>
-        <source>Auto-test selected: &lt;b&gt;{}&lt;/b&gt; with {} ms latency.</source>
-        <translation>Автотестом выбрано: &lt;b&gt;{}&lt;/b&gt; с задержкой {} мс.</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="4421"/>
-        <source>Protocol: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Error&lt;/span&gt;</source>
-        <translation>Протокол: &lt;span style=&apos;color: red; font-weight: bold;&apos;&gt;Ошибка&lt;/span&gt;</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="4422"/>
-        <source>Auto Select Failed</source>
-        <translation>Сбой автоматического выбора</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="4439"/>
-        <location filename="main.py" line="4442"/>
+        <location filename="main.py" line="4539" />
+        <location filename="main.py" line="4542" />
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="4440"/>
-        <location filename="main.py" line="4442"/>
+        <location filename="main.py" line="4540" />
+        <location filename="main.py" line="4542" />
         <source>Failed to set protocol: {}</source>
-        <translation>Не удалось установить протокол: {}</translation>
+        <translation>Failed to set protocol: {}</translation>
     </message>
 </context>
 <context>
     <name>PowerButton</name>
     <message>
-        <location filename="main.py" line="2214"/>
+        <location filename="main.py" line="2332" />
         <source>Unknown error</source>
         <translation>Неизвестная ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="2214"/>
-        <location filename="main.py" line="2217"/>
+        <location filename="main.py" line="2332" />
+        <location filename="main.py" line="2335" />
         <source>Command Error</source>
-        <translation>Ошибка выполнения команды</translation>
+        <translation>Command Error</translation>
     </message>
 </context>
 <context>
     <name>RegistrationInfoWidget</name>
     <message>
-        <location filename="main.py" line="2517"/>
+        <location filename="main.py" line="2635" />
         <source>Registration &amp; Devices</source>
-        <translation>Регистрация и устройства</translation>
+        <translation>Registration &amp; Devices</translation>
     </message>
     <message>
-        <location filename="main.py" line="2533"/>
+        <location filename="main.py" line="2651" />
         <source>Loading info...</source>
-        <translation>Загрузка информации...</translation>
+        <translation>Loading info...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2544"/>
+        <location filename="main.py" line="2662" />
         <source>Model</source>
-        <translation>Модель</translation>
+        <translation>Model</translation>
     </message>
     <message>
-        <location filename="main.py" line="2544"/>
+        <location filename="main.py" line="2662" />
         <source>OS</source>
-        <translation>ОС</translation>
+        <translation>OS</translation>
     </message>
     <message>
-        <location filename="main.py" line="2544"/>
+        <location filename="main.py" line="2662" />
         <source>Active</source>
-        <translation>Активен</translation>
+        <translation>Active</translation>
     </message>
     <message>
-        <location filename="main.py" line="2558"/>
+        <location filename="main.py" line="2676" />
         <source>New Reg</source>
-        <translation>Новая рег.</translation>
+        <translation>New Reg</translation>
     </message>
     <message>
-        <location filename="main.py" line="2563"/>
+        <location filename="main.py" line="2681" />
         <source>Delete Reg</source>
-        <translation>Удалить рег.</translation>
+        <translation>Delete Reg</translation>
     </message>
     <message>
-        <location filename="main.py" line="2573"/>
-        <location filename="main.py" line="2644"/>
-        <location filename="main.py" line="2649"/>
+        <location filename="main.py" line="2691" />
+        <location filename="main.py" line="2767" />
+        <location filename="main.py" line="2772" />
         <source>Refresh</source>
         <translation>Обновить</translation>
     </message>
     <message>
-        <location filename="main.py" line="2587"/>
+        <location filename="main.py" line="2705" />
         <source>Loading...</source>
         <translation>Загрузка...</translation>
     </message>
     <message>
-        <location filename="main.py" line="2611"/>
+        <location filename="main.py" line="2734" />
         <source>Failed to parse registration info.</source>
-        <translation>Не удалось разобрать информацию о регистрации.</translation>
+        <translation>Failed to parse registration info.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2613"/>
+        <location filename="main.py" line="2736" />
         <source>No active registration found.</source>
-        <translation>Активная регистрация не найдена.</translation>
+        <translation>No active registration found.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2631"/>
+        <location filename="main.py" line="2754" />
         <source>Yes</source>
         <translation>Да</translation>
     </message>
     <message>
-        <location filename="main.py" line="2631"/>
+        <location filename="main.py" line="2754" />
         <source>No</source>
         <translation>Нет</translation>
     </message>
     <message>
-        <location filename="main.py" line="2647"/>
+        <location filename="main.py" line="2770" />
         <source>Error fetching data.</source>
-        <translation>Ошибка при получении данных.</translation>
+        <translation>Error fetching data.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2656"/>
+        <location filename="main.py" line="2779" />
         <source>Confirm New Registration</source>
-        <translation>Подтвердить новую регистрацию</translation>
+        <translation>Confirm New Registration</translation>
     </message>
     <message>
-        <location filename="main.py" line="2658"/>
+        <location filename="main.py" line="2781" />
         <source>Are you sure you want to create a new WARP registration? This will replace your current account and license.</source>
-        <translation>Вы уверены, что хотите создать новую регистрацию WARP? Это заменит вашу текущую учетную запись и лицензию.</translation>
+        <translation>Are you sure you want to create a new WARP registration? This will replace your current account and license.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2663"/>
+        <location filename="main.py" line="2786" />
         <source>New registration created successfully.</source>
-        <translation>Новая регистрация успешно создана.</translation>
+        <translation>New registration created successfully.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2668"/>
+        <location filename="main.py" line="2791" />
         <source>Confirm Deletion</source>
-        <translation>Подтвердить удаление</translation>
+        <translation>Confirm Deletion</translation>
     </message>
     <message>
-        <location filename="main.py" line="2670"/>
+        <location filename="main.py" line="2793" />
         <source>Are you sure you want to completely delete your WARP registration? You will lose internet routing through WARP until you register again.</source>
-        <translation>Вы уверены, что хотите полностью удалить регистрацию WARP? Вы потеряете маршрутизацию интернета через WARP, пока не зарегистрируетесь заново.</translation>
+        <translation>Are you sure you want to completely delete your WARP registration? You will lose internet routing through WARP until you register again.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2675"/>
+        <location filename="main.py" line="2798" />
         <source>Registration deleted successfully.</source>
-        <translation>Регистрация успешно удалена.</translation>
+        <translation>Registration deleted successfully.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2689"/>
+        <location filename="main.py" line="2817" />
         <source>Success</source>
         <translation>Успешно</translation>
     </message>
     <message>
-        <location filename="main.py" line="2692"/>
+        <location filename="main.py" line="2820" />
         <source>Command Error</source>
-        <translation>Ошибка команды</translation>
+        <translation>Command Error</translation>
     </message>
     <message>
-        <location filename="main.py" line="2693"/>
+        <location filename="main.py" line="2821" />
         <source>Failed to execute command:
 {}</source>
-        <translation>Не удалось выполнить команду:
+        <translation>Failed to execute command:
 {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="2701"/>
+        <location filename="main.py" line="2829" />
         <source>Process Error</source>
-        <translation>Ошибка процесса</translation>
+        <translation>Process Error</translation>
     </message>
 </context>
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="main.py" line="2982"/>
+        <location filename="main.py" line="3110" />
         <source>Modes</source>
         <translation>Режимы</translation>
     </message>
     <message>
-        <location filename="main.py" line="2987"/>
+        <location filename="main.py" line="3115" />
         <source>Full VPN tunnel via Cloudflare. Encrypts all traffic.</source>
-        <translation>Полный VPN-туннель через Cloudflare. Шифрует весь трафик.</translation>
+        <translation>Full VPN tunnel via Cloudflare. Encrypts all traffic.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2988"/>
+        <location filename="main.py" line="3116" />
         <source>Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted.</source>
-        <translation>Только DNS поверх HTTPS (DoH). DNS защищен, остальной трафик не шифруется.</translation>
+        <translation>Only DNS over HTTPS (DoH). DNS is secure; rest of traffic is unencrypted.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2989"/>
+        <location filename="main.py" line="3117" />
         <source>VPN tunnel + DNS over HTTPS. Full encryption + secure DNS.</source>
-        <translation>VPN-туннель + DNS поверх HTTPS. Полное шифрование + безопасный DNS.</translation>
+        <translation>VPN tunnel + DNS over HTTPS. Full encryption + secure DNS.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2990"/>
+        <location filename="main.py" line="3118" />
         <source>Only DNS over TLS (DoT). Secure DNS, no VPN tunnel.</source>
-        <translation>Только DNS поверх TLS (DoT). Безопасный DNS, без VPN-туннеля.</translation>
+        <translation>Only DNS over TLS (DoT). Secure DNS, no VPN tunnel.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2991"/>
+        <location filename="main.py" line="3119" />
         <source>VPN tunnel + DNS over TLS. Full encryption + secure DNS.</source>
-        <translation>VPN-туннель + DNS поверх TLS. Полное шифрование + безопасный DNS.</translation>
+        <translation>VPN tunnel + DNS over TLS. Full encryption + secure DNS.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2992"/>
+        <location filename="main.py" line="3120" />
         <source>Sets up a local WARP proxy (manual port needed). Apps can use it via localhost.</source>
-        <translation>Настраивает локальный прокси-сервер WARP (требуется ручной порт). Приложения могут использовать его через localhost.</translation>
+        <translation>Sets up a local WARP proxy (manual port needed). Apps can use it via localhost.</translation>
     </message>
     <message>
-        <location filename="main.py" line="2996"/>
+        <location filename="main.py" line="3124" />
         <source>Tunnel is created but not used unless manually routed.</source>
-        <translation>Туннель создан, но не используется, пока не настроена ручная маршрутизация.</translation>
+        <translation>Tunnel is created but not used unless manually routed.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3007"/>
+        <location filename="main.py" line="3135" />
         <source>DNS Settings</source>
         <translation>Настройки DNS</translation>
     </message>
     <message>
-        <location filename="main.py" line="3011"/>
-        <location filename="main.py" line="3125"/>
+        <location filename="main.py" line="3139" />
+        <location filename="main.py" line="3253" />
         <source>Off (No DNS filtering)</source>
-        <translation>Выкл (Без фильтрации DNS)</translation>
+        <translation>Off (No DNS filtering)</translation>
     </message>
     <message>
-        <location filename="main.py" line="3012"/>
-        <location filename="main.py" line="3126"/>
+        <location filename="main.py" line="3140" />
+        <location filename="main.py" line="3254" />
         <source>Block Adult Content</source>
-        <translation>Блокировать контент для взрослых</translation>
+        <translation>Block Adult Content</translation>
     </message>
     <message>
-        <location filename="main.py" line="3014"/>
-        <location filename="main.py" line="3127"/>
+        <location filename="main.py" line="3142" />
+        <location filename="main.py" line="3255" />
         <source>Block Malware</source>
-        <translation>Блокировать вредоносное ПО</translation>
+        <translation>Block Malware</translation>
     </message>
     <message>
-        <location filename="main.py" line="3021"/>
+        <location filename="main.py" line="3149" />
         <source>Language</source>
         <translation>Язык</translation>
     </message>
     <message>
-        <location filename="main.py" line="3036"/>
+        <location filename="main.py" line="3165" />
         <source>Fonts</source>
         <translation>Шрифты</translation>
     </message>
     <message>
-        <location filename="main.py" line="3052"/>
+        <location filename="main.py" line="3181" />
         <source>More Options</source>
-        <translation>Другие параметры</translation>
+        <translation>Дополнительные параметры</translation>
     </message>
     <message>
-        <location filename="main.py" line="3057"/>
+        <location filename="main.py" line="3186" />
         <source>View Logs</source>
-        <translation>Просмотр логов</translation>
+        <translation>Просмотр журналов</translation>
     </message>
     <message>
-        <location filename="main.py" line="3059"/>
+        <location filename="main.py" line="3188" />
         <source>Advanced Settings</source>
-        <translation>Дополнительные настройки</translation>
+        <translation>Расширенные настройки</translation>
     </message>
     <message>
-        <location filename="main.py" line="3065"/>
+        <location filename="main.py" line="3194" />
         <source>Live DNS Logs</source>
-        <translation>Живые логи DNS</translation>
+        <translation>DNS-журналы в реальном времени</translation>
     </message>
     <message>
-        <location filename="main.py" line="3067"/>
+        <location filename="main.py" line="3196" />
         <source>Connection Test</source>
-        <translation>Тест соединения</translation>
+        <translation>Тест подключения</translation>
     </message>
     <message>
-        <location filename="main.py" line="3097"/>
+        <location filename="main.py" line="3225" />
         <source>Language Change</source>
-        <translation>Смена языка</translation>
+        <translation>Language Change</translation>
     </message>
     <message>
-        <location filename="main.py" line="3098"/>
+        <location filename="main.py" line="3226" />
         <source>Language will apply after restart. Restart now?</source>
-        <translation>Языковые настройки вступят в силу после перезапуска. Перезагрузить сейчас?</translation>
+        <translation>Language will apply after restart. Restart now?</translation>
     </message>
     <message>
-        <location filename="main.py" line="3138"/>
+        <location filename="main.py" line="3266" />
         <source>DNS Mode Saved</source>
-        <translation>Режим DNS сохранен</translation>
+        <translation>DNS Mode Saved</translation>
     </message>
     <message>
-        <location filename="main.py" line="3139"/>
+        <location filename="main.py" line="3267" />
         <source>DNS mode set to: {}</source>
-        <translation>Режим DNS изменен на: {}</translation>
+        <translation>DNS mode set to: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="3141"/>
-        <location filename="main.py" line="3146"/>
-        <location filename="main.py" line="3221"/>
+        <location filename="main.py" line="3269" />
+        <location filename="main.py" line="3274" />
+        <location filename="main.py" line="3349" />
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="main.py" line="3142"/>
+        <location filename="main.py" line="3270" />
         <source>Failed to Set DNS Mode to {}: {}</source>
-        <translation>Не удалось установить режим DNS {}: {}</translation>
+        <translation>Failed to Set DNS Mode to {}: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="3161"/>
+        <location filename="main.py" line="3289" />
         <source>Incompatible Mode</source>
-        <translation>Несовместимый режим</translation>
+        <translation>Incompatible Mode</translation>
     </message>
     <message>
-        <location filename="main.py" line="3166"/>
-        <source>Proxy mode cannot be used with MASQUE option &apos;HTTP/2 (h2-only)&apos;.
-Please change MASQUE to &apos;auto&apos; or an HTTP/3 option before switching to Proxy mode.</source>
-        <translation>Режим прокси нельзя использовать с параметром MASQUE &apos;HTTP/2 (только h2)&apos;.
-Пожалуйста, измените параметр MASQUE на &apos;auto&apos; или вариант с HTTP/3 перед переключением в режим прокси.</translation>
+        <location filename="main.py" line="3294" />
+        <source>Proxy mode cannot be used with MASQUE option 'HTTP/2 (h2-only)'.
+Please change MASQUE to 'auto' or an HTTP/3 option before switching to Proxy mode.</source>
+        <translation>Proxy mode cannot be used with MASQUE option 'HTTP/2 (h2-only)'.
+Please change MASQUE to 'auto' or an HTTP/3 option before switching to Proxy mode.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3174"/>
+        <location filename="main.py" line="3302" />
         <source>Proxy Port Required</source>
-        <translation>Требуется прокси-порт</translation>
+        <translation>Proxy Port Required</translation>
     </message>
     <message>
-        <location filename="main.py" line="3175"/>
+        <location filename="main.py" line="3303" />
         <source>Enter proxy port (1–65535):</source>
-        <translation>Введите порт прокси (1–65535):</translation>
+        <translation>Enter proxy port (1–65535):</translation>
     </message>
     <message>
-        <location filename="main.py" line="3190"/>
+        <location filename="main.py" line="3318" />
         <source>Invalid Port</source>
-        <translation>Неверный порт</translation>
+        <translation>Invalid Port</translation>
     </message>
     <message>
-        <location filename="main.py" line="3192"/>
+        <location filename="main.py" line="3320" />
         <source>Please enter a valid port number between 1 and 65535.</source>
-        <translation>Пожалуйста, введите корректный номер порта от 1 до 65535.</translation>
+        <translation>Please enter a valid port number between 1 and 65535.</translation>
     </message>
     <message>
-        <location filename="main.py" line="3215"/>
+        <location filename="main.py" line="3343" />
         <source>Mode Changed</source>
-        <translation>Режим изменен</translation>
+        <translation>Режим изменён</translation>
     </message>
     <message>
-        <location filename="main.py" line="3216"/>
+        <location filename="main.py" line="3344" />
         <source>Mode set to: {}</source>
-        <translation>Установлен режим: {}</translation>
+        <translation>Mode set to: {}</translation>
     </message>
 </context>
 <context>
     <name>UpdateChecker</name>
     <message>
-        <location filename="main.py" line="192"/>
+        <location filename="main.py" line="193" />
         <source>Update Available</source>
-        <translation>Доступно обновление</translation>
+        <translation>Update Available</translation>
     </message>
     <message>
-        <location filename="main.py" line="193"/>
+        <location filename="main.py" line="194" />
         <source>Update</source>
         <translation>Обновить</translation>
     </message>
     <message>
-        <location filename="main.py" line="194"/>
+        <location filename="main.py" line="195" />
         <source>Later</source>
         <translation>Позже</translation>
     </message>
     <message>
-        <location filename="main.py" line="198"/>
+        <location filename="main.py" line="199" />
         <source>A new version of PyWarp is available!
 
 Latest: {}
 Current: {}</source>
-        <translation>Доступна новая версия PyWarp!
+        <translation>A new version of PyWarp is available!
 
-Последняя: {}
-Текущая: {}</translation>
+Latest: {}
+Current: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="203"/>
+        <location filename="main.py" line="204" />
         <source>A new version of WARP is available!
 
 Latest: {}
 Current: {}</source>
-        <translation>Доступна новая версия WARP!
+        <translation>A new version of WARP is available!
 
-Последняя: {}
-Текущая: {}</translation>
+Latest: {}
+Current: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="209"/>
+        <location filename="main.py" line="210" />
         <source>A new version of portable WARP is available!
 
 Latest: {}
 Current: {}</source>
-        <translation>Доступна новая версия portable WARP!
+        <translation>A new version of portable WARP is available!
 
-Последняя: {}
-Текущая: {}</translation>
+Latest: {}
+Current: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="211"/>
+        <location filename="main.py" line="212" />
         <source>Auto Update</source>
         <translation>Автообновление</translation>
     </message>
     <message>
-        <location filename="main.py" line="1297"/>
+        <location filename="main.py" line="1411" />
         <source>Portable WARP has been successfully updated!</source>
-        <translation>Portable WARP был успешно обновлен!</translation>
+        <translation>Portable WARP has been successfully updated!</translation>
     </message>
     <message>
-        <location filename="main.py" line="1343"/>
+        <location filename="main.py" line="1457" />
         <source>Update failed: {}</source>
-        <translation>Ошибка обновления: {}</translation>
+        <translation>Update failed: {}</translation>
     </message>
 </context>
 <context>
-    <name>WarpConnectionTesterDialog</name>
+    <name>WarpDiagnosticsPanel</name>
     <message>
-        <location filename="main.py" line="998"/>
-        <source>WARP Network Diagnostic Report</source>
-        <translation>Диагностический отчет сети WARP</translation>
+        <location filename="main.py" line="1094" />
+        <source>Live Connection Optimizer</source>
+        <translation>Live Connection Optimizer</translation>
     </message>
     <message>
-        <location filename="main.py" line="1006"/>
-        <source>This diagnostic tool checks which Cloudflare protocols (WireGuard vs MASQUE) are currently performing best on your network. Select a row and click &apos;Apply Selected&apos;.</source>
-        <translation>Этот диагностический инструмент проверяет, какие протоколы Cloudflare (WireGuard или MASQUE) в данный момент работают лучше всего в вашей сети. Выберите строку и нажмите «Применить выбранное».</translation>
+        <location filename="main.py" line="1115" />
+        <source>Waiting for network analysis...</source>
+        <translation>Waiting for network analysis...</translation>
     </message>
     <message>
-        <location filename="main.py" line="1037"/>
-        <source>Endpoint</source>
-        <translation>Адрес / Порт</translation>
+        <location filename="main.py" line="1124" />
+        <location filename="main.py" line="1141" />
+        <source>Stop Connection Test</source>
+        <translation>Stop Connection Test</translation>
     </message>
     <message>
-        <location filename="main.py" line="1037"/>
-        <source>Protocol</source>
-        <translation>Протокол</translation>
+        <location filename="main.py" line="1143" />
+        <source>Running hardware &amp; endpoint diagnostics...</source>
+        <translation>Running hardware &amp; endpoint diagnostics...</translation>
     </message>
     <message>
-        <location filename="main.py" line="1037"/>
-        <source>Latency</source>
-        <translation>Задержка (Пинг)</translation>
+        <location filename="main.py" line="1268" />
+        <source>Connection Successful</source>
+        <translation>Connection Successful</translation>
     </message>
     <message>
-        <location filename="main.py" line="1038"/>
-        <source>Jitter</source>
-        <translation>Джиттер</translation>
+        <location filename="main.py" line="1279" />
+        <source>All native routes are blocked by your ISP/Network.</source>
+        <translation>All native routes are blocked by your ISP/Network.</translation>
     </message>
     <message>
-        <location filename="main.py" line="1038"/>
-        <source>Loss</source>
-        <translation>Потери пакетов</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1039"/>
-        <source>Status</source>
-        <translation>Статус</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1056"/>
-        <location filename="main.py" line="1127"/>
-        <location filename="main.py" line="1134"/>
-        <source>Run Diagnostics</source>
-        <translation>Запустить диагностику</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1060"/>
-        <location filename="main.py" line="1170"/>
-        <location filename="main.py" line="1175"/>
-        <source>Apply Selected</source>
-        <translation>Применить выбранное</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1069"/>
-        <source>Close</source>
-        <translation>Закрыть</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1084"/>
-        <source>Testing...</source>
-        <translation>Тестирование...</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1106"/>
-        <source>⚠ No working endpoints found. Your network is heavily restricting Cloudflare IPs.</source>
-        <translation>⚠ Рабочие конечные точки не найдены. Ваша сеть сильно ограничивает IP-адреса Cloudflare.</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1131"/>
-        <source>❌ Diagnostic Error: {}</source>
-        <translation>❌ Ошибка диагностики: {}</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1145"/>
-        <source>Applying...</source>
-        <translation>Применение...</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1164"/>
-        <source>Settings Applied</source>
-        <translation>Настройки применены</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1165"/>
-        <source>Successfully configured WARP with:
-
-Protocol: {}
-Endpoint: {}</source>
-        <translation>WARP успешно настроен:
-
-Протокол: {}
-Конечная точка: {}</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1173"/>
-        <source>Error</source>
-        <translation>Ошибка</translation>
-    </message>
-    <message>
-        <location filename="main.py" line="1173"/>
-        <source>Failed to apply settings: {}</source>
-        <translation>Не удалось применить настройки: {}</translation>
+        <location filename="main.py" line="1282" />
+        <location filename="main.py" line="1290" />
+        <source>Close Panel</source>
+        <translation>Close Panel</translation>
     </message>
 </context>
 <context>
     <name>WarpInstaller</name>
     <message>
-        <location filename="main.py" line="4485"/>
+        <location filename="main.py" line="4629" />
         <source>Warp Not Found</source>
-        <translation>WARP не найден</translation>
+        <translation>Warp Not Found</translation>
     </message>
     <message>
-        <location filename="main.py" line="4486"/>
+        <location filename="main.py" line="4630" />
         <source>Cloudflare WARP is not installed.
 
 Do you want to install it automatically?</source>
-        <translation>Cloudflare WARP не установлен.
+        <translation>Cloudflare WARP is not installed.
 
-Вы хотите установить его автоматически?</translation>
+Do you want to install it automatically?</translation>
     </message>
     <message>
-        <location filename="main.py" line="4490"/>
+        <location filename="main.py" line="4634" />
         <source>Portable Install</source>
-        <translation>Портативная установка</translation>
+        <translation>Portable Install</translation>
     </message>
     <message>
-        <location filename="main.py" line="4492"/>
+        <location filename="main.py" line="4636" />
         <source>Auto Install</source>
-        <translation>Автоустановка</translation>
+        <translation>Auto Install</translation>
     </message>
     <message>
-        <location filename="main.py" line="4493"/>
+        <location filename="main.py" line="4637" />
         <source>Manual Install</source>
-        <translation>Ручная установка</translation>
+        <translation>Manual Install</translation>
     </message>
     <message>
-        <location filename="main.py" line="4494"/>
+        <location filename="main.py" line="4638" />
         <source>Retry Check</source>
-        <translation>Повторить проверку</translation>
+        <translation>Retry Check</translation>
     </message>
     <message>
-        <location filename="main.py" line="4523"/>
+        <location filename="main.py" line="4667" />
         <source>Downloading WARP...</source>
-        <translation>Скачивание WARP...</translation>
+        <translation>Downloading WARP...</translation>
     </message>
     <message>
-        <location filename="main.py" line="4524"/>
-        <location filename="main.py" line="4544"/>
-        <location filename="main.py" line="4587"/>
+        <location filename="main.py" line="4668" />
+        <location filename="main.py" line="4688" />
+        <location filename="main.py" line="4731" />
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="main.py" line="4528"/>
-        <location filename="main.py" line="4591"/>
+        <location filename="main.py" line="4672" />
+        <location filename="main.py" line="4735" />
         <source>Downloading WARP</source>
-        <translation>Скачивание WARP</translation>
+        <translation>Downloading WARP</translation>
     </message>
     <message>
-        <location filename="main.py" line="4543"/>
+        <location filename="main.py" line="4687" />
         <source>Downloading portable WARP...</source>
-        <translation>Скачивание portable WARP...</translation>
+        <translation>Downloading portable WARP...</translation>
     </message>
     <message>
-        <location filename="main.py" line="4546"/>
+        <location filename="main.py" line="4690" />
         <source>Downloading</source>
-        <translation>Скачивание</translation>
+        <translation>Downloading</translation>
     </message>
     <message>
-        <location filename="main.py" line="4577"/>
+        <location filename="main.py" line="4721" />
         <source>Warp Install Failed</source>
-        <translation>Ошибка установки WARP</translation>
+        <translation>Warp Install Failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4578"/>
+        <location filename="main.py" line="4722" />
         <source>Could not setup portable WARP from ZIP:
 {}</source>
-        <translation>Не удалось настроить portable WARP из ZIP:
+        <translation>Could not setup portable WARP from ZIP:
 {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="4586"/>
+        <location filename="main.py" line="4730" />
         <source>Downloading WARP (MSI fallback)...</source>
-        <translation>Скачивание WARP (резервный MSI)...</translation>
+        <translation>Downloading WARP (MSI fallback)...</translation>
     </message>
     <message>
-        <location filename="main.py" line="4630"/>
+        <location filename="main.py" line="4774" />
         <source>Download Failed</source>
-        <translation>Ошибка скачивания</translation>
+        <translation>Download Failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4630"/>
+        <location filename="main.py" line="4774" />
         <source>Failed to download WARP installer.</source>
-        <translation>Не удалось скачать установщик WARP.</translation>
+        <translation>Failed to download WARP installer.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4642"/>
-        <location filename="main.py" line="4683"/>
+        <location filename="main.py" line="4786" />
+        <location filename="main.py" line="4827" />
         <source>Unsupported</source>
-        <translation>Не поддерживается</translation>
+        <translation>Unsupported</translation>
     </message>
     <message>
-        <location filename="main.py" line="4643"/>
+        <location filename="main.py" line="4787" />
         <source>Automatic install not supported for this OS.</source>
-        <translation>Автоматическая установка не поддерживается для этой ОС.</translation>
+        <translation>Automatic install not supported for this OS.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4647"/>
-        <location filename="main.py" line="4651"/>
-        <location filename="main.py" line="4692"/>
-        <location filename="main.py" line="4696"/>
+        <location filename="main.py" line="4791" />
+        <location filename="main.py" line="4795" />
+        <location filename="main.py" line="4836" />
+        <location filename="main.py" line="4840" />
         <source>Installation Failed</source>
-        <translation>Установка не удалась</translation>
+        <translation>Installation Failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4648"/>
+        <location filename="main.py" line="4792" />
         <source>Failed to install WARP: {}</source>
-        <translation>Не удалось установить WARP: {}</translation>
+        <translation>Failed to install WARP: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="4652"/>
-        <location filename="main.py" line="4697"/>
+        <location filename="main.py" line="4796" />
+        <location filename="main.py" line="4841" />
         <source>Installation error: {}</source>
-        <translation>Ошибка установки: {}</translation>
+        <translation>Installation error: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="4657"/>
+        <location filename="main.py" line="4801" />
         <source>Linux Installation</source>
-        <translation>Установка на Linux</translation>
+        <translation>Linux Installation</translation>
     </message>
     <message>
-        <location filename="main.py" line="4663"/>
+        <location filename="main.py" line="4807" />
         <source>Automatic installation is only partially supported on Linux.
 
 For most reliable results, please follow the official Cloudflare guide:
 https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/
 
 Do you want PyWarp to try installing via your package manager?</source>
-        <translation>Автоматическая установка в Linux поддерживается лишь частично.
+        <translation>Automatic installation is only partially supported on Linux.
 
-Для получения наиболее надежного результата следуйте официальному руководству Cloudflare:
+For most reliable results, please follow the official Cloudflare guide:
 https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/
 
-Хотите, чтобы PyWarp попытался выполнить установку через ваш пакетный менеджер?</translation>
+Do you want PyWarp to try installing via your package manager?</translation>
     </message>
     <message>
-        <location filename="main.py" line="4664"/>
+        <location filename="main.py" line="4808" />
         <source>Try Auto Install</source>
-        <translation>Попробовать автоустановку</translation>
+        <translation>Try Auto Install</translation>
     </message>
     <message>
-        <location filename="main.py" line="4665"/>
+        <location filename="main.py" line="4809" />
         <source>Open Manual Guide</source>
-        <translation>Открыть инструкцию</translation>
+        <translation>Open Manual Guide</translation>
     </message>
     <message>
-        <location filename="main.py" line="4685"/>
+        <location filename="main.py" line="4829" />
         <source>Your package manager is not supported for auto-install.
 Please use the manual guide instead.</source>
-        <translation>Ваш пакетный менеджер не поддерживается для автоустановки. Пожалуйста, используйте официальное руководство.</translation>
+        <translation>Your package manager is not supported for auto-install.
+Please use the manual guide instead.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4693"/>
+        <location filename="main.py" line="4837" />
         <source>An error occurred:
 {}</source>
-        <translation>Произошла ошибка:
+        <translation>An error occurred:
 {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="4746"/>
+        <location filename="main.py" line="4890" />
         <source>Warp Found</source>
-        <translation>WARP найден</translation>
+        <translation>Warp Found</translation>
     </message>
     <message>
-        <location filename="main.py" line="4746"/>
+        <location filename="main.py" line="4890" />
         <source>WARP is now installed!</source>
-        <translation>WARP успешно установлен!</translation>
+        <translation>WARP is now installed!</translation>
     </message>
     <message>
-        <location filename="main.py" line="4764"/>
+        <location filename="main.py" line="4908" />
         <source>Warp Ready</source>
-        <translation>WARP готов</translation>
+        <translation>Warp Ready</translation>
     </message>
     <message>
-        <location filename="main.py" line="4765"/>
+        <location filename="main.py" line="4909" />
         <source>WARP has been registered and TOS accepted successfully!</source>
-        <translation>WARP успешно зарегистрирован, условия использования приняты!</translation>
+        <translation>WARP has been registered and TOS accepted successfully!</translation>
     </message>
     <message>
-        <location filename="main.py" line="4768"/>
-        <location filename="main.py" line="4771"/>
+        <location filename="main.py" line="4912" />
+        <location filename="main.py" line="4915" />
         <source>Warp Activation Failed</source>
-        <translation>Сбой активации WARP</translation>
+        <translation>Warp Activation Failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4769"/>
+        <location filename="main.py" line="4913" />
         <source>Failed to activate WARP: {}</source>
-        <translation>Не удалось активировать WARP: {}</translation>
+        <translation>Failed to activate WARP: {}</translation>
     </message>
     <message>
-        <location filename="main.py" line="4772"/>
+        <location filename="main.py" line="4916" />
         <source>Activation error: {}</source>
-        <translation>Ошибка активации: {}</translation>
+        <translation>Activation error: {}</translation>
     </message>
 </context>
 <context>
     <name>WarpStatusHandler</name>
     <message>
-        <location filename="main.py" line="1581"/>
+        <location filename="main.py" line="1699" />
         <source>Trying to connect...</source>
-        <translation>Попытка подключения...</translation>
+        <translation>Trying to connect...</translation>
     </message>
     <message>
-        <location filename="main.py" line="1583"/>
+        <location filename="main.py" line="1701" />
         <source>Connecting to {value}</source>
-        <translation>Подключение к {value}</translation>
+        <translation>Connecting to {value}</translation>
     </message>
     <message>
-        <location filename="main.py" line="1584"/>
+        <location filename="main.py" line="1702" />
         <source>Connecting to Cloudflare</source>
-        <translation>Подключение к Cloudflare</translation>
+        <translation>Connecting to Cloudflare</translation>
     </message>
     <message>
-        <location filename="main.py" line="1586"/>
+        <location filename="main.py" line="1704" />
         <source>Setting up secure connection</source>
-        <translation>Настройка безопасного соединения</translation>
+        <translation>Setting up secure connection</translation>
     </message>
     <message>
-        <location filename="main.py" line="1588"/>
+        <location filename="main.py" line="1706" />
         <source>Preparing security settings</source>
-        <translation>Подготовка параметров безопасности</translation>
+        <translation>Preparing security settings</translation>
     </message>
     <message>
-        <location filename="main.py" line="1589"/>
+        <location filename="main.py" line="1707" />
         <source>Setting up network access</source>
-        <translation>Настройка сетевого доступа</translation>
+        <translation>Setting up network access</translation>
     </message>
     <message>
-        <location filename="main.py" line="1590"/>
+        <location filename="main.py" line="1708" />
         <source>Applying security rules</source>
-        <translation>Применение правил безопасности</translation>
+        <translation>Applying security rules</translation>
     </message>
     <message>
-        <location filename="main.py" line="1592"/>
+        <location filename="main.py" line="1710" />
         <source>Checking internet connection</source>
-        <translation>Проверка интернет-соединения</translation>
+        <translation>Checking internet connection</translation>
     </message>
     <message>
-        <location filename="main.py" line="1593"/>
+        <location filename="main.py" line="1711" />
         <source>Checking DNS settings</source>
-        <translation>Проверка настроек DNS</translation>
+        <translation>Checking DNS settings</translation>
     </message>
     <message>
-        <location filename="main.py" line="1594"/>
+        <location filename="main.py" line="1712" />
         <source>Checking network status</source>
-        <translation>Проверка статуса сети</translation>
+        <translation>Checking network status</translation>
     </message>
     <message>
-        <location filename="main.py" line="1595"/>
+        <location filename="main.py" line="1713" />
         <source>Loading settings</source>
-        <translation>Загрузка настроек</translation>
+        <translation>Loading settings</translation>
     </message>
     <message>
-        <location filename="main.py" line="1596"/>
+        <location filename="main.py" line="1714" />
         <source>Settings updated</source>
-        <translation>Настройки обновлены</translation>
+        <translation>Settings updated</translation>
     </message>
     <message>
-        <location filename="main.py" line="1597"/>
+        <location filename="main.py" line="1715" />
         <source>Disconnected manually</source>
-        <translation>Отключено вручную</translation>
+        <translation>Disconnected manually</translation>
     </message>
     <message>
-        <location filename="main.py" line="1598"/>
+        <location filename="main.py" line="1716" />
         <source>Connection is working normally</source>
-        <translation>Соединение работает нормально</translation>
+        <translation>Connection is working normally</translation>
     </message>
     <message>
-        <location filename="main.py" line="1599"/>
+        <location filename="main.py" line="1717" />
         <source>No internet connection</source>
-        <translation>Нет интернет-соединения</translation>
+        <translation>No internet connection</translation>
     </message>
     <message>
-        <location filename="main.py" line="1600"/>
+        <location filename="main.py" line="1718" />
         <source>Connection attempt failed</source>
-        <translation>Попытка подключения не удалась</translation>
+        <translation>Connection attempt failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="1601"/>
+        <location filename="main.py" line="1719" />
         <source>Setting up proxy</source>
-        <translation>Настройка прокси</translation>
+        <translation>Setting up proxy</translation>
     </message>
     <message>
-        <location filename="main.py" line="1602"/>
+        <location filename="main.py" line="1720" />
         <source>Checking proxy setup</source>
-        <translation>Проверка конфигурации прокси</translation>
+        <translation>Checking proxy setup</translation>
     </message>
     <message>
-        <location filename="main.py" line="1603"/>
+        <location filename="main.py" line="1721" />
         <source>Network performance degraded</source>
-        <translation>Производительность сети снижена</translation>
+        <translation>Network performance degraded</translation>
     </message>
     <message>
-        <location filename="main.py" line="1604"/>
+        <location filename="main.py" line="1722" />
         <source>Connectivity test unsuccessful</source>
-        <translation>Тест доступности сети не удался</translation>
+        <translation>Connectivity test unsuccessful</translation>
     </message>
     <message>
-        <location filename="main.py" line="1605"/>
+        <location filename="main.py" line="1723" />
         <source>Checking DNS route availability</source>
-        <translation>Проверка доступности маршрутов DNS</translation>
+        <translation>Checking DNS route availability</translation>
     </message>
 </context>
 <context>
     <name>__main__</name>
     <message>
-        <location filename="main.py" line="4801"/>
+        <location filename="main.py" line="4945" />
         <source>Warp Installation Failed</source>
-        <translation>Ошибка установки WARP</translation>
+        <translation>Warp Installation Failed</translation>
     </message>
     <message>
-        <location filename="main.py" line="4803"/>
+        <location filename="main.py" line="4947" />
         <source>Warp could not be installed.
 Exiting app.</source>
-        <translation>Не удалось установить WARP.
-Выход из приложения.</translation>
+        <translation>Warp could not be installed.
+Exiting app.</translation>
     </message>
     <message>
-        <location filename="main.py" line="4812"/>
+        <location filename="main.py" line="4956" />
         <source>Warp Service Error</source>
-        <translation>Ошибка службы WARP</translation>
+        <translation>Warp Service Error</translation>
     </message>
     <message>
-        <location filename="main.py" line="4813"/>
+        <location filename="main.py" line="4957" />
         <source>Portable Warp service failed to start:
 {}</source>
-        <translation>Не удалось запустить службу portable WARP:
+        <translation>Portable Warp service failed to start:
 {}</translation>
+    </message>
+</context>
+<context>
+    <name>self.parent_win</name>
+    <message>
+        <location filename="main.py" line="1246" />
+        <source>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</source>
+        <translation>Protocol: &lt;span style='color: #0078D4; font-weight: bold;'&gt;{}&lt;/span&gt;</translation>
     </message>
 </context>
 </TS>

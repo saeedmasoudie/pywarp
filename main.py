@@ -51,11 +51,12 @@ if platform.system() == "Darwin":
             current_path += os.pathsep + p
     os.environ["PATH"] = current_path
 
-CURRENT_VERSION = "1.3.4"
+CURRENT_VERSION = "1.3.5"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.json"
 WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
+_active_workers = set()
 WARP_ENDPOINTS = [
     "162.159.192.1",
     "162.159.193.1",
@@ -377,12 +378,21 @@ def fetch_public_ip(proxy: str | None = None) -> str | None:
 
     return None
 
+
 def run_in_worker(func, *args, parent=None, on_done=None, on_error=None, **kwargs):
-    worker = GenericWorker(func, *args, parent=parent, **kwargs)
+    worker = GenericWorker(func, *args, parent=None, **kwargs)
+    _active_workers.add(worker)
+
+    def cleanup():
+        _active_workers.discard(worker)
+
+    worker.finished.connect(cleanup)
+
     if on_done:
         worker.finished_signal.connect(on_done)
     if on_error:
         worker.error_signal.connect(on_error)
+
     worker.start()
     return worker
 
@@ -419,6 +429,15 @@ def _mark_recommended(results):
     )
     best.recommended = True
 
+def verify_live_connection(timeout=7):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        res = run_warp_command("warp-cli", "status")
+        if res.returncode == 0:
+            if "Connected" in res.stdout:
+                return True
+        time.sleep(1.0)
+    return False
 
 # -----------------------------------------------------
 
@@ -829,98 +848,6 @@ class AsyncProcess(QObject):
         self._timeout_timer.stop()
         self.error.emit(str(proc_error))
 
-
-class DiagnosticWorker(QThread):
-    progress_signal = Signal(int)
-    finished_signal = Signal(list)
-    error_signal = Signal(str)
-
-    def run(self):
-        try:
-            results = []
-            tasks = []
-
-            for protocol, masque_mode, warp_mode in AUTO_COMBINATIONS:
-                ports = WIREGUARD_PORTS if protocol == "WireGuard" else MASQUE_PORTS
-                for ip in WARP_ENDPOINTS:
-                    for port in ports:
-                        tasks.append((protocol, masque_mode, warp_mode, ip, port))
-
-            total_tasks = len(tasks)
-            completed_tasks = 0
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-                futures = {executor.submit(self.test_candidate, *task): task for task in tasks}
-
-                for future in concurrent.futures.as_completed(futures):
-                    res = future.result()
-                    if res:
-                        results.append(res)
-
-                    completed_tasks += 1
-                    progress = int((completed_tasks / total_tasks) * 100)
-                    self.progress_signal.emit(progress)
-
-            results.sort(key=lambda r: r.score)
-            self.finished_signal.emit(results[:20])
-
-        except Exception as e:
-            self.error_signal.emit(str(e))
-
-    def test_candidate(self, protocol, masque_mode, warp_mode, ip, port):
-        samples = []
-
-        for _ in range(3):
-            lat = self.measure_https_ping(ip, port=port)
-            if lat is not None:
-                samples.append(lat)
-            time.sleep(0.1)
-
-        if not samples:
-            return None
-
-        avg = sum(samples) / len(samples)
-        jitter = max(samples) - min(samples) if len(samples) > 1 else 0
-        loss = int(100 - ((len(samples) / 3) * 100))
-        score = calculate_score(avg, jitter, loss)
-
-        if avg < 120:
-            status = "Excellent"
-        elif avg < 200:
-            status = "Good"
-        elif avg < 300:
-            status = "Fair"
-        else:
-            status = "Poor"
-
-        transport = (
-            "HTTP/3" if masque_mode == "h3-only"
-            else "HTTP/2" if masque_mode == "h2-only"
-            else "HTTP/3→2" if masque_mode
-            else "UDP"
-        )
-        display = f"{protocol} | {transport} | {warp_mode}"
-
-        return WarpTestResult(
-            ip=ip, port=port, protocol=protocol, masque_option=masque_mode,
-            warp_mode=warp_mode, latency_ms=avg, jitter_ms=jitter,
-            packet_loss=loss, score=score, status=status, display_name=display
-        )
-
-    def measure_https_ping(self, ip, port, timeout=2.0):
-        start = time.monotonic()
-        try:
-            test_port = 443 if port in WIREGUARD_PORTS else port
-
-            context = ssl._create_unverified_context()
-            with socket.create_connection((ip, test_port), timeout=timeout) as sock:
-                with context.wrap_socket(sock, server_hostname="engage.cloudflareclient.com") as ssock:
-                    ssock.sendall(b"GET / HTTP/1.1\r\nHost: engage.cloudflareclient.com\r\nConnection: close\r\n\r\n")
-                    ssock.recv(1)
-            return (time.monotonic() - start) * 1000
-        except Exception:
-            return None
-
 class LogsWindow(QDialog):
     def __init__(self, parent=None, log_path=None):
         super().__init__(parent)
@@ -990,191 +917,360 @@ class LogsWindow(QDialog):
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to clear logs:\n{}").format(e))
 
 
-class WarpConnectionTesterDialog(QDialog):
-    def __init__(self, settings_handler=None, parent=None):
+class ThoroughDiagnosticWorker(QThread):
+    progress_signal = Signal(int)
+    log_signal = Signal(str)
+    status_update_signal = Signal(str, str, str)
+    finished_signal = Signal(list)
+    error_signal = Signal(str)
+
+    def __init__(self, parent=None):
         super().__init__(parent)
+        self._abort = False
+
+    def abort(self):
+        self._abort = True
+
+    def run(self):
+        try:
+            tasks = []
+            for protocol, masque_mode, warp_mode in AUTO_COMBINATIONS:
+                tasks.append((protocol, masque_mode, warp_mode))
+
+            total_tasks = len(tasks)
+            successful_profiles = []
+
+            self.log_signal.emit(
+                f"<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Initializing Hardware Network Diagnostics...")
+            self.log_signal.emit(
+                f"<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Queued {total_tasks} routing payload configurations.<br>")
+            time.sleep(1.0)
+
+            for idx, (protocol, masque_mode, warp_mode) in enumerate(tasks):
+                if self._abort:
+                    self.log_signal.emit(
+                        "<br><span style='color: #f85149; font-weight:bold;'>[WARN] Sequence aborted by user interrupt.</span>")
+                    return
+
+                self.progress_signal.emit(int(((idx + 1) / total_tasks) * 100))
+
+                transport = masque_mode if masque_mode else ("UDP" if protocol == "WireGuard" else "Standard")
+                display_name = f"{protocol} ({transport}) | {warp_mode.upper()}"
+
+                self.log_signal.emit(
+                    f"<span style='color: #d29922; font-weight:bold;'>[PROBE {idx + 1}/{total_tasks}]</span> Deploying: <b>{display_name}</b>")
+                self.status_update_signal.emit(protocol, warp_mode, "Testing Profile...")
+
+                # Apply Settings
+                run_warp_command("warp-cli", "disconnect")
+                time.sleep(0.5)
+
+                run_warp_command("warp-cli", "tunnel", "protocol", "set", protocol)
+                run_warp_command("warp-cli", "mode", warp_mode)
+
+                if protocol == "MASQUE" and masque_mode:
+                    run_warp_command("warp-cli", "tunnel", "masque-options", "set", masque_mode)
+
+                run_warp_command("warp-cli", "tunnel", "endpoint", "reset")
+                run_warp_command("warp-cli", "connect")
+
+                self.log_signal.emit(
+                    "<span style='color: #8b949e;'> ↳ Dispatching connection request... awaiting handshake.</span>")
+
+                connected = False
+                start_check = time.time()
+
+                while time.time() - start_check < 45.0:
+                    if self._abort: return
+
+                    status_res = run_warp_command("warp-cli", "status")
+                    out_lower = status_res.stdout.lower()
+
+                    if "connected" in out_lower:
+                        connected = True
+                        break
+                    elif "unable" in out_lower or "failed" in out_lower:
+                        self.log_signal.emit(
+                            "<span style='color: #f85149;'> ↳ [DROP] Connection refused by local network endpoint.</span><br>")
+                        break
+
+                    time.sleep(1.0)
+
+                if connected:
+                    self.log_signal.emit(
+                        "<span style='color: #3fb950; font-weight:bold;'> ↳ [OK] Secure Handshake Verified. Target Locked.</span><br>")
+                    self.status_update_signal.emit(protocol, warp_mode, "Connected & Verified")
+
+                    res_obj = WarpTestResult(
+                        ip="Default", port=0,
+                        protocol=protocol, masque_option=masque_mode, warp_mode=warp_mode,
+                        latency_ms=0.0, jitter_ms=0.0, packet_loss=0, score=100, status="Verified",
+                        display_name=display_name
+                    )
+                    successful_profiles.append(res_obj)
+                    break
+                else:
+                    self.status_update_signal.emit(protocol, warp_mode, "Route Blocked")
+
+            self.finished_signal.emit(successful_profiles)
+
+        except Exception as e:
+            if not self._abort:
+                self.error_signal.emit(str(e))
+
+
+class WarpDiagnosticsPanel(QWidget):
+    def __init__(self, parent=None, settings_handler=None):
+        super().__init__(parent)
+        self.parent_win = parent
         self.settings_handler = settings_handler
-        self.test_results = []
-        self.setWindowTitle(self.tr("WARP Network Diagnostic Report"))
-        self.resize(850, 550)
+        self.worker = None
 
-        layout = QVBoxLayout(self)
+        self.expanded_width = 380
+        self.setMinimumWidth(0)
+        self.setMaximumWidth(0)
 
-        info = QLabel(self.tr(
-            "This diagnostic tool checks which Cloudflare protocols (WireGuard vs MASQUE) "
-            "are currently performing best on your network. Select a row and click 'Apply Selected'."
-        ))
-        info.setWordWrap(True)
-        layout.addWidget(info)
+        is_dark = ThemeManager.is_dark_mode()
+        bg_color = "#0d1117" if is_dark else "#f6f8fa"
+        border_color = "#30363d" if is_dark else "#d0d7de"
+        term_bg = "#010409" if is_dark else "#1e1e1e"
+        text_color = "#e6edf3" if is_dark else "#24292f"
+        card_bg = "#161b22" if is_dark else "#ffffff"
 
-        self.summary_label = QLabel(self)
-        self.summary_label.setWordWrap(True)
-        self.summary_label.setStyleSheet("color: #ef4444; font-weight: bold; margin-top: 5px; margin-bottom: 5px;")
-        self.summary_label.hide()
-        layout.addWidget(self.summary_label)
-
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
+        self.setStyleSheet(f"""
+            QWidget#DiagnosticsPanel {{
+                background-color: {bg_color};
+                border-left: 1px solid {border_color};
+            }}
+            QLabel#PanelTitle {{
+                color: {text_color};
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QTextBrowser#LogConsole {{
+                background-color: {term_bg};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 11.5px;
+                color: #c9d1d9;
+                padding: 10px;
+                line-height: 1.5;
+            }}
+            QFrame#ResultCard {{
+                background-color: {card_bg};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QPushButton#ActionBtn {{
+                background-color: #21262d;
+                color: #c9d1d9;
                 border: 1px solid #30363d;
                 border-radius: 6px;
-                text-align: center;
-                height: 18px;
-            }
-            QProgressBar::chunk {
-                background-color: #2ea043;
-                border-radius: 4px;
-            }
+                font-weight: bold;
+                padding: 10px;
+            }}
+            QPushButton#ActionBtn:hover:enabled {{ background-color: #f85149; color: white; border-color: #f85149; }}
+            QPushButton#ActionBtn:disabled {{ background-color: #1f2328; color: #8b949e; border-color: #30363d; }}
         """)
-        self.progress_bar.hide()
-        layout.addWidget(self.progress_bar)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels([
-            self.tr("Endpoint"), self.tr("Protocol"), self.tr("Latency"),
-            self.tr("Jitter"), self.tr("Loss"), self.tr("Status")
-        ])
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.setObjectName("DiagnosticsPanel")
+        self._force_disconnect_on_close = True
+        self._auto_close_timer = QTimer(self)
+        self._auto_close_timer.setSingleShot(True)
+        self._auto_close_timer.timeout.connect(self.request_close)
 
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Endpoint
-        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Protocol
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Latency
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Jitter
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Loss
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Status
+        self.init_ui()
 
-        self.table.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self.table)
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        btns = QHBoxLayout()
-        self.run_btn = QPushButton(self.tr("Run Diagnostics"))
-        self.run_btn.setMinimumHeight(32)
-        self.run_btn.clicked.connect(self.start_test)
+        header_layout = QHBoxLayout()
+        self.title_label = QLabel(self.tr("Live Connection Optimizer"), self)
+        self.title_label.setObjectName("PanelTitle")
 
-        self.apply_btn = QPushButton(self.tr("Apply Selected"))
-        self.apply_btn.setMinimumHeight(32)
-        self.apply_btn.setEnabled(False)
-        self.apply_btn.setStyleSheet("""
-            QPushButton { background-color: #107c10; color: white; font-weight: bold; border-radius: 6px; }
-            QPushButton:disabled { background-color: #555555; color: #aaaaaa; }
-        """)
-        self.apply_btn.clicked.connect(self.apply_selected)
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
-        close_btn = QPushButton(self.tr("Close"))
-        close_btn.setMinimumHeight(32)
-        close_btn.clicked.connect(self.reject)
+        self.console = QTextBrowser(self)
+        self.console.setObjectName("LogConsole")
+        layout.addWidget(self.console, stretch=1)
 
-        btns.addWidget(self.run_btn)
-        btns.addStretch()
-        btns.addWidget(self.apply_btn)
-        btns.addWidget(close_btn)
-        layout.addLayout(btns)
+        self.result_card = QFrame(self)
+        self.result_card.setObjectName("ResultCard")
+        card_layout = QVBoxLayout(self.result_card)
+        card_layout.setContentsMargins(12, 12, 12, 12)
 
-    def _on_selection_changed(self):
-        self.apply_btn.setEnabled(len(self.table.selectedItems()) > 0)
+        self.result_title = QLabel("SYSTEM STATUS", self)
+        self.result_title.setStyleSheet("color: #d29922; font-size: 10px; font-weight: bold; letter-spacing: 1px;")
 
-    def start_test(self):
-        self.run_btn.setEnabled(False)
-        self.run_btn.setText(self.tr("Testing..."))
-        self.apply_btn.setEnabled(False)
-        self.table.setRowCount(0)
-        self.summary_label.hide()
-        self.test_results = []
+        self.result_details = QLabel(self.tr("Waiting for network analysis..."), self)
+        self.result_details.setStyleSheet("font-size: 12px;")
+        self.result_details.setWordWrap(True)
 
-        self.progress_bar.setValue(0)
-        self.progress_bar.show()
+        card_layout.addWidget(self.result_title)
+        card_layout.addWidget(self.result_details)
+        layout.addWidget(self.result_card)
 
-        self.worker = DiagnosticWorker(self)
-        self.worker.progress_signal.connect(self.progress_bar.setValue)
-        self.worker.finished_signal.connect(self.on_results_ready)
-        self.worker.error_signal.connect(self.on_test_error)
-        self.worker.start()
+        self.action_btn = QPushButton(self.tr("Stop Connection Test"), self)
+        self.action_btn.setObjectName("ActionBtn")
+        self.action_btn.setCursor(Qt.PointingHandCursor)
+        self.action_btn.clicked.connect(self.on_action_clicked)
+        layout.addWidget(self.action_btn)
 
-    def on_results_ready(self, results):
-        self.test_results = results
-        self.table.setRowCount(0)
-        self.progress_bar.hide()
+        self.verified_result = None
 
-        if not results:
-            self.summary_label.setText(
-                self.tr("⚠ No working endpoints found. Your network is heavily restricting Cloudflare IPs."))
-            self.summary_label.show()
-        else:
-            self.summary_label.hide()
-            for r in results:
-                row = self.table.rowCount()
-                self.table.insertRow(row)
+    def slide_open(self, worker_class):
+        if hasattr(self.parent_win, 'status_checker') and self.parent_win.status_checker:
+            self.parent_win.status_checker.suspend_auto_detect = True
 
-                self.table.setItem(row, 0, QTableWidgetItem(f"{r.ip}:{r.port}"))
-                self.table.setItem(row, 1, QTableWidgetItem(r.display_name))
+        self._auto_close_timer.stop()
+        self._force_disconnect_on_close = True
+        self.verified_result = None
 
-                latency_text = f"{int(r.latency_ms)} ms" if r.latency_ms is not None else "Unknown"
-                self.table.setItem(row, 2, QTableWidgetItem(latency_text))
+        self.console.clear()
+        self.action_btn.setText(self.tr("Stop Connection Test"))
+        self.action_btn.setEnabled(True)
+        self.result_details.setText(self.tr("Running hardware & endpoint diagnostics..."))
+        self.result_title.setStyleSheet("color: #d29922; font-size: 10px; font-weight: bold;")
 
-                jitter_text = f"{int(r.jitter_ms)} ms" if r.jitter_ms is not None else "-"
-                self.table.setItem(row, 3, QTableWidgetItem(jitter_text))
+        self.worker = worker_class()
+        self.worker.log_signal.connect(self.append_log)
+        self.worker.finished_signal.connect(self.on_scan_finished)
+        self.worker.error_signal.connect(self.on_scan_error)
 
-                self.table.setItem(row, 4, QTableWidgetItem(f"{r.packet_loss}%"))
-                self.table.setItem(row, 5, QTableWidgetItem(r.status))
+        # Animate Open
+        self.anim = QPropertyAnimation(self, b"maximumWidth")
+        self.anim.setDuration(350)
+        self.anim.setStartValue(self.width())
+        self.anim.setEndValue(self.expanded_width)
+        self.anim.setEasingCurve(QEasingCurve.OutCubic)
 
-        self.run_btn.setEnabled(True)
-        self.run_btn.setText(self.tr("Run Diagnostics"))
+        self.anim_min = QPropertyAnimation(self, b"minimumWidth")
+        self.anim_min.setDuration(350)
+        self.anim_min.setStartValue(self.width())
+        self.anim_min.setEndValue(self.expanded_width)
+        self.anim_min.setEasingCurve(QEasingCurve.OutCubic)
 
-    def on_test_error(self, exc):
-        self.progress_bar.hide()
-        self.summary_label.setText(self.tr("❌ Diagnostic Error: {}").format(str(exc)))
-        self.summary_label.show()
-        self.run_btn.setEnabled(True)
-        self.run_btn.setText(self.tr("Run Diagnostics"))
+        self.anim.start()
+        self.anim_min.start()
 
-    def apply_selected(self):
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self.test_results):
-            return
+        QTimer.singleShot(400, self.worker.start)
 
-        res = self.test_results[row]
-        endpoint_str = f"{res.ip}:{res.port}"
+    def on_action_clicked(self):
+        self.request_close()
 
-        self.apply_btn.setEnabled(False)
-        self.apply_btn.setText(self.tr("Applying..."))
+    def request_close(self):
+        if hasattr(self.parent_win, 'close_diagnostics_drawer'):
+            self.parent_win.close_diagnostics_drawer()
 
-        def task():
-            protocol_value = "MASQUE" if res.protocol == "MASQUE" else "WireGuard"
-            run_warp_command("warp-cli", "tunnel", "protocol", "set", protocol_value)
-            run_warp_command("warp-cli", "mode", res.warp_mode)
+    def slide_close_internal(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.abort()
+            self.worker.wait(500)
 
-            if res.protocol == "MASQUE" and res.masque_option:
-                run_warp_command("warp-cli", "tunnel", "masque-options", "set", res.masque_option)
+        if self._force_disconnect_on_close:
+            try:
+                creation_flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+                subprocess.run(["warp-cli", "disconnect"], creationflags=creation_flags, capture_output=True)
 
-            run_warp_command("warp-cli", "tunnel", "endpoint", "set", endpoint_str)
+                if self.settings_handler:
+                    orig_proto = self.settings_handler.get("protocol", "WireGuard")
+                    orig_mode = self.settings_handler.get("mode", "warp")
+                    orig_masque = self.settings_handler.get("masque_option", "")
 
-        def on_done(result):
-            self.settings_handler.save_settings("protocol", res.protocol)
-            if res.masque_option:
-                self.settings_handler.save_settings("masque_option", res.masque_option)
-            self.settings_handler.save_settings("custom_endpoint", endpoint_str)
+                    subprocess.run(["warp-cli", "tunnel", "protocol", "set", orig_proto], creationflags=creation_flags)
+                    subprocess.run(["warp-cli", "mode", orig_mode], creationflags=creation_flags)
+                    if orig_proto.lower() == "masque" and orig_masque:
+                        subprocess.run(["warp-cli", "tunnel", "masque-options", "set", orig_masque],
+                                       creationflags=creation_flags)
 
-            QMessageBox.information(
-                self, self.tr("Settings Applied"),
-                self.tr("Successfully configured WARP with:\n\nProtocol: {}\nEndpoint: {}").format(
-                    res.display_name, endpoint_str
+                logging.info("WARP disconnected and background CLI settings reverted to match UI memory state.")
+            except Exception as e:
+                logging.error(f"Failed to reset WARP state on drawer close: {e}")
+
+        if hasattr(self.parent_win, 'status_checker') and self.parent_win.status_checker:
+            self.parent_win.status_checker.suspend_auto_detect = False
+
+        self.anim = QPropertyAnimation(self, b"maximumWidth")
+        self.anim.setDuration(300)
+        self.anim.setStartValue(self.width())
+        self.anim.setEndValue(0)
+        self.anim.setEasingCurve(QEasingCurve.InCubic)
+
+        self.anim_min = QPropertyAnimation(self, b"minimumWidth")
+        self.anim_min.setDuration(300)
+        self.anim_min.setStartValue(self.width())
+        self.anim_min.setEndValue(0)
+        self.anim_min.setEasingCurve(QEasingCurve.InCubic)
+
+        self.anim.start()
+        self.anim_min.start()
+
+    def append_log(self, text):
+        time_str = time.strftime("%H:%M:%S")
+        self.console.append(f"<span style='color: #6e7681;'>[{time_str}]</span> {text}")
+        self.console.moveCursor(QTextCursor.End)
+
+    def on_scan_finished(self, results):
+        if results:
+            best_res = results[0]
+            self.verified_result = best_res
+            hnd = self.settings_handler
+            self._force_disconnect_on_close = False
+
+            hnd.save_settings("protocol", best_res.protocol)
+            hnd.save_settings("mode", best_res.warp_mode)
+            if best_res.masque_option:
+                hnd.save_settings("masque_option", best_res.masque_option)
+
+            if hasattr(self.parent_win, 'protocol_label'):
+                self.parent_win.protocol_label.setText(
+                    self.parent_win.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(
+                        best_res.protocol)
                 )
+
+            settings_page = self.parent_win.stacked_widget.widget(1)
+            if settings_page and hasattr(settings_page, 'modes_dropdown'):
+                settings_page.modes_dropdown.blockSignals(True)
+                settings_page.modes_dropdown.setCurrentText(best_res.warp_mode)
+                settings_page.current_mode = best_res.warp_mode
+                settings_page.modes_dropdown.blockSignals(False)
+
+            self.result_title.setStyleSheet("color: #3fb950; font-size: 10px; font-weight: bold;")
+            masque_info = f" ({best_res.masque_option})" if best_res.masque_option else ""
+            self.result_details.setText(
+                f"<b>Mode:</b> {best_res.warp_mode.upper()}<br>"
+                f"<b>Protocol:</b> {best_res.protocol}{masque_info}<br><br>"
+                "<span style='color:#8b949e;'>Automatically applied. Tunnel secured.</span>"
             )
-            self.apply_btn.setEnabled(True)
-            self.apply_btn.setText(self.tr("Apply Selected"))
 
-        def on_error(e):
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to apply settings: {}").format(e))
-            self.apply_btn.setEnabled(True)
-            self.apply_btn.setText(self.tr("Apply Selected"))
+            self.action_btn.setText(self.tr("Connection Successful"))
+            self.action_btn.setEnabled(False)
 
-        run_in_worker(task, parent=self, on_done=on_done, on_error=on_error)
+            self.append_log(
+                "<br><span style='color:#3fb950; font-weight:bold;'>▶ Optimization complete. Tunnel active. Closing panel...</span>")
+
+            self._auto_close_timer.start(3000)
+        else:
+            self._force_disconnect_on_close = True
+            self.result_title.setStyleSheet("color: #f85149; font-size: 10px; font-weight: bold;")
+            self.result_details.setText(self.tr("All native routes are blocked by your ISP/Network."))
+            self.append_log(
+                "<br><span style='color:#f85149; font-weight:bold;'>▶ [FAILED] Reverting configurations to previous safe state...</span>")
+            self.action_btn.setText(self.tr("Close Panel"))
+            self.action_btn.setEnabled(True)
+
+    def on_scan_error(self, err_msg):
+        self._force_disconnect_on_close = True
+        self.result_title.setStyleSheet("color: #f85149; font-size: 10px; font-weight: bold;")
+        self.result_details.setText(f"<span style='color:#f85149;'>{err_msg}</span>")
+        self.append_log(f"<span style='color:#f85149; font-weight:bold;'>[ERROR] {err_msg}</span>")
+        self.action_btn.setText(self.tr("Close Panel"))
+        self.action_btn.setEnabled(True)
 
 
 class DownloadWorker(GenericWorker):
@@ -1378,6 +1474,7 @@ class WarpStatusHandler(QObject):
         self._auto_timer.setSingleShot(True)
         self._auto_timer.timeout.connect(self._on_auto_timeout)
         self._observed_connected = False
+        self.suspend_auto_detect = False
 
         QTimer.singleShot(0, self.start_listener)
 
@@ -1450,6 +1547,9 @@ class WarpStatusHandler(QObject):
 
     def _start_masque_auto_detect(self):
         if not self._is_masque_protocol():
+            return
+
+        if getattr(self, "suspend_auto_detect", False):
             return
 
         try:
@@ -2592,6 +2692,11 @@ class RegistrationInfoWidget(QGroupBox):
             return show_res, dev_res
 
         def on_done(results):
+            try:
+                self.refresh_btn.setEnabled(True)
+            except RuntimeError:
+                return
+
             show_res, dev_res = results
 
             if show_res and show_res.returncode == 0:
@@ -2683,6 +2788,11 @@ class RegistrationInfoWidget(QGroupBox):
             return run_warp_command("warp-cli", *args)
 
         def on_done(result):
+            try:
+                self.new_reg_btn.setEnabled(True)
+            except RuntimeError:
+                return
+
             if result and result.returncode == 0:
                 if args[1] == "new":
                     run_warp_command("warp-cli", "accept-tos")
@@ -3082,11 +3192,9 @@ class SettingsPage(QWidget):
         self.request_dns_drawer.emit()
 
     def open_warp_connection_tester(self):
-        dialog = WarpConnectionTesterDialog(
-            settings_handler=self.settings_handler,
-            parent=self
-        )
-        dialog.exec()
+        main_win = self.window()
+        if hasattr(main_win, '_run_auto_protocol_selection'):
+            main_win._run_auto_protocol_selection()
 
     def change_language(self):
         lang_code = self.language_dropdown.currentData()
@@ -3501,7 +3609,12 @@ class MainWindow(QMainWindow):
         self.master_layout.setSpacing(0)
 
         self.app_container = QWidget()
+        self.app_container.setMinimumWidth(330)
+        self.app_container.setMaximumWidth(395)
         self.master_layout.addWidget(self.app_container)
+        self.diagnostics_drawer = WarpDiagnosticsPanel(self, self.settings_handler)
+        self.master_layout.addWidget(self.diagnostics_drawer)
+
         self.dns_drawer = DnsDrawer(self)
         self.master_layout.addWidget(self.dns_drawer)
 
@@ -3582,6 +3695,8 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.buttons = {}
 
+        main_layout.addLayout(button_layout)
+        main_layout.addWidget(self.stacked_widget, stretch=1)
         # Stats widget
         stats_widget = QWidget()
         stats_layout = QVBoxLayout(stats_widget)
@@ -4384,55 +4499,14 @@ class MainWindow(QMainWindow):
         elif clicked == btn_auto:
             self._run_auto_protocol_selection()
 
-    def _run_auto_protocol_selection(self):
-        # Temporarily show a loading state with 0%
-        self.protocol_label.setText(
-            self.tr("Protocol: <span style='color: orange; font-weight: bold;'>Testing (0%)...</span>")
-        )
-        self._auto_worker = DiagnosticWorker(self)
-
-        def on_progress(val):
-            self.protocol_label.setText(
-                self.tr("Protocol: <span style='color: orange; font-weight: bold;'>Testing ({}%)...</span>").format(val)
-            )
-
-        def on_success(results):
-            if not results:
-                on_fail("No working protocols found. Your network might be heavily restricting Cloudflare IPs.")
-                return
-
-            best_result = results[0]
-            protocol_to_set = best_result.protocol
-            masque_opt = best_result.masque_option
-            self.set_warp_protocol(protocol_to_set)
-
-            if protocol_to_set == "MASQUE" and masque_opt:
-                run_warp_command("warp-cli", "tunnel", "masque-options", "set", masque_opt)
-                self.settings_handler.save_settings("masque_option", masque_opt)
-
-            QMessageBox.information(
-                self,
-                self.tr("Auto Selection Complete"),
-                self.tr("Auto-test selected: <b>{}</b> with {} ms latency.").format(
-                    best_result.display_name, int(best_result.latency_ms)
-                )
-            )
-
-        def on_fail(exc):
-            self.protocol_label.setText(self.tr("Protocol: <span style='color: red; font-weight: bold;'>Error</span>"))
-            QMessageBox.warning(self, self.tr("Auto Select Failed"), str(exc))
-
-        self._auto_worker.progress_signal.connect(on_progress)
-        self._auto_worker.finished_signal.connect(on_success)
-        self._auto_worker.error_signal.connect(on_fail)
-        self._auto_worker.finished.connect(self._auto_worker.deleteLater)
-        self._auto_worker.start()
-
     def set_warp_protocol(self, protocol):
         try:
             result = run_warp_command('warp-cli', 'tunnel', 'protocol', 'set', protocol)
             if result.returncode == 0:
                 self.settings_handler.save_settings("protocol", protocol)
+                QMessageBox.information(
+                    self, self.tr("Protocol Changed"),
+                    self.tr("Protocol successfully changed to {}.").format(protocol))
                 logger.info(f"Protocol successfully changed to {protocol}")
                 self.protocol_label.setText(
                     self.tr("Protocol: <span style='color: #0078D4; font-weight: bold;'>{}</span>").format(protocol))
@@ -4441,6 +4515,43 @@ class MainWindow(QMainWindow):
                                      self.tr("Failed to set protocol: {}").format(result.stderr))
         except Exception as e:
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to set protocol: {}").format(str(e)))
+
+    def _run_auto_protocol_selection(self):
+        if not self.dns_drawer.isHidden():
+            self.toggle_dns_drawer()
+
+        drawer_w = self.diagnostics_drawer.expanded_width
+        current_w = self.width()
+
+        if self.diagnostics_drawer.width() == 0:
+            self.setMinimumWidth(330 + drawer_w)
+            self.setMaximumWidth(395 + drawer_w)
+
+            self.win_anim = QPropertyAnimation(self, b"size")
+            self.win_anim.setDuration(350)
+            self.win_anim.setEndValue(QSize(current_w + drawer_w, self.height()))
+            self.win_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self.win_anim.start()
+
+        self.diagnostics_drawer.slide_open(ThoroughDiagnosticWorker)
+
+    def close_diagnostics_drawer(self):
+        if self.diagnostics_drawer.width() == 0:
+            return
+
+        drawer_w = self.diagnostics_drawer.expanded_width
+        current_w = self.width()
+
+        self.diagnostics_drawer.slide_close_internal()
+
+        self.win_anim = QPropertyAnimation(self, b"size")
+        self.win_anim.setDuration(300)
+        self.win_anim.setEndValue(QSize(current_w - drawer_w, self.height()))
+        self.win_anim.setEasingCurve(QEasingCurve.InCubic)
+
+        self.setMinimumWidth(330)
+        self.win_anim.finished.connect(lambda: self.setMaximumWidth(395))
+        self.win_anim.start()
 
 
 class WarpInstaller:
