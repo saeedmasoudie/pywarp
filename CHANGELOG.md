@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.5 - 2026-06-06
+### Changes
+- fixed problems with ipv6 #44
+- Removed the “Exclude App” feature (low usage / not worth maintaining)
+- Replaced the Exclude App section with a Registry Information table
+- Improved connection testing for stronger and more reliable checks
+- Added automatic protocol selection/testing for a simpler user experience
+- Fixed minor issues related to app exit and process termination
+- Removed old Rusty functions
+- Combined tests into one worker class
+- Improved test accuracy and stability
+- Added progress bar and percentage for auto protocol tests
+- Introduced a more reliable and functional connection testing workflow
+- Removed the legacy connection test implementation
+- Unified the **Auto** protocol behavior with the connection test logic
+- Replaced the separate test popup window with an inline slide-out test panel
+- Added a **Cancel** button with support for stopping an active test
+- Application settings now update automatically after a successful test completes
+- Restored a function that was accidentally removed
+- Updated russian and persian language
+- Optimize the code
+
 ## v1.3.4 - 2026-02-13
 ### Changes
 - Fixed incorrect warning shown in WireGuard proxy mode
