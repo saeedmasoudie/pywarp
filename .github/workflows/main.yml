@@ -100,6 +100,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Create dist directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist" -Force
+
       - name: Create Windows Installer zip
         shell: pwsh
         run: |
@@ -112,7 +117,7 @@ jobs:
           name: pywarp-windows-installer
           path: dist/pywarp-windows-installer-v${{ github.event.inputs.version }}.zip
           retention-days: 5
-
+          
   # -------------------------
   # LINUX
   # -------------------------
