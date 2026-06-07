@@ -62,8 +62,8 @@ jobs:
         run: |
           pyinstaller `
             --name "PyWarp" `
-            --onefile `
-            --windowed `
+            -F `
+            -w `
             --icon=assets/logo.ico `
             --add-data "assets:assets" `
             --add-data "translations:translations" `
@@ -73,7 +73,7 @@ jobs:
             --collect-all=PySide6 `
             --distpath=dist `
             --specpath=build `
-            --buildpath=build `
+            --workpath=build/work `
             --noupx `
             main.py
 
@@ -113,7 +113,7 @@ jobs:
         run: |
           pyinstaller \
             --name "pywarp-linux-x64-v${{ github.event.inputs.version }}" \
-            --onefile \
+            -F \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
             --hidden-import=PySide6.QtCore \
@@ -122,7 +122,7 @@ jobs:
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
-            --buildpath=build \
+            --workpath=build/work \
             --noupx \
             main.py
 
@@ -159,8 +159,8 @@ jobs:
         run: |
           pyinstaller \
             --name "PyWarp" \
-            --onefile \
-            --windowed \
+            -F \
+            -w \
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
@@ -170,7 +170,7 @@ jobs:
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
-            --buildpath=build \
+            --workpath=build/work \
             --noupx \
             main.py
 
@@ -217,8 +217,8 @@ jobs:
         run: |
           pyinstaller \
             --name "PyWarp" \
-            --onefile \
-            --windowed \
+            -F \
+            -w \
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
@@ -228,7 +228,7 @@ jobs:
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
-            --buildpath=build \
+            --workpath=build/work \
             --noupx \
             main.py
 
