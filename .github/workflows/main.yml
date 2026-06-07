@@ -96,36 +96,15 @@ jobs:
   # -------------------------
   build-windows-installer:
     runs-on: windows-latest
-    needs: build-windows-x64
+    needs: validate
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download Windows x64 artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: pywarp-windows-x64
-          path: artifacts
-
-      - name: Extract executable
+      - name: Create Windows Installer zip
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
-          Expand-Archive -Path "artifacts/pywarp-windows-x64-v$version.zip" -DestinationPath "extracted"
-
-      - name: Copy installer files
-        shell: pwsh
-        run: |
-          $version = "${{ github.event.inputs.version }}"
-          
-          New-Item -ItemType Directory -Path "installer/bin" -Force
-          Copy-Item "extracted/pywarp-windows-x64-v$version.exe" "installer/bin/PyWarp.exe"
-          Copy-Item "installers/windows/*" "installer/" -Recurse -Force
-
-      - name: Create installer zip
-        shell: pwsh
-        run: |
-          $version = "${{ github.event.inputs.version }}"
-          Compress-Archive -Path "installer/*" `
+          Compress-Archive -Path "installers/windows" `
             -DestinationPath "dist/pywarp-windows-installer-v$version.zip"
 
       - uses: actions/upload-artifact@v5
