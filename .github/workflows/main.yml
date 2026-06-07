@@ -65,15 +65,15 @@ jobs:
             -F `
             -w `
             --icon=assets/logo.ico `
-            --add-data "assets:assets" `
-            --add-data "translations:translations" `
+            --add-data "assets;assets" `
+            --add-data "translations;translations" `
             --hidden-import=PySide6.QtCore `
             --hidden-import=PySide6.QtGui `
             --hidden-import=PySide6.QtWidgets `
             --collect-all=PySide6 `
             --distpath=dist `
-            --specpath=build `
-            --workpath=build/work `
+            --specpath=. `
+            --workpath=build `
             --noupx `
             main.py
 
@@ -121,8 +121,8 @@ jobs:
             --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
-            --specpath=build \
-            --workpath=build/work \
+            --specpath=. \
+            --workpath=build \
             --noupx \
             main.py
 
@@ -159,7 +159,7 @@ jobs:
         run: |
           pyinstaller \
             --name "PyWarp" \
-            -F \
+            -D \
             -w \
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
@@ -169,22 +169,16 @@ jobs:
             --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
-            --specpath=build \
-            --workpath=build/work \
+            --specpath=. \
+            --workpath=build \
             --noupx \
             main.py
 
       - name: Create DMG
         run: |
-          mkdir -p PyWarp.app/Contents/MacOS
-          mkdir -p PyWarp.app/Contents/Resources
-          
-          mv dist/PyWarp PyWarp.app/Contents/MacOS/
-          cp assets/logo.icns PyWarp.app/Contents/Resources/
-          
           hdiutil create \
             -volname "PyWarp ARM64 v${{ github.event.inputs.version }}" \
-            -srcfolder PyWarp.app \
+            -srcfolder "dist/PyWarp.app" \
             -format UDZO \
             -ov \
             -o "dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg"
@@ -217,7 +211,7 @@ jobs:
         run: |
           pyinstaller \
             --name "PyWarp" \
-            -F \
+            -D \
             -w \
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
@@ -227,22 +221,16 @@ jobs:
             --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
-            --specpath=build \
-            --workpath=build/work \
+            --specpath=. \
+            --workpath=build \
             --noupx \
             main.py
 
       - name: Create DMG
         run: |
-          mkdir -p PyWarp.app/Contents/MacOS
-          mkdir -p PyWarp.app/Contents/Resources
-          
-          mv dist/PyWarp PyWarp.app/Contents/MacOS/
-          cp assets/logo.icns PyWarp.app/Contents/Resources/
-          
           hdiutil create \
             -volname "PyWarp Intel v${{ github.event.inputs.version }}" \
-            -srcfolder PyWarp.app \
+            -srcfolder "dist/PyWarp.app" \
             -format UDZO \
             -ov \
             -o "dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg"
