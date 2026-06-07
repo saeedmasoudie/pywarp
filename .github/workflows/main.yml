@@ -6,7 +6,7 @@ on:
       version:
         description: "The version to build and release"
         required: true
-        default: "1.3.2"
+        default: "1.3.5"
 
 permissions:
   contents: write
@@ -19,14 +19,14 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -46,52 +46,47 @@ jobs:
     runs-on: windows-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - uses: ./.github/actions/setup-build
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Build Windows x64
         shell: pwsh
         run: |
-          & .\.venv\Scripts\activate
-          $version = "${{ github.event.inputs.version }}"
-          python -m nuitka main.py `
-            --standalone `
+          pyinstaller `
+            --name "PyWarp" `
             --onefile `
-            --disable-console `
-            --enable-plugin=pyside6 `
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning `
-            --include-data-dir=assets=assets `
-            --include-qt-plugins=platforms,imageformats,iconengines `
-            --windows-icon-from-ico=assets/logo.ico `
-            --windows-product-name="PyWarp" `
-            --windows-file-version="$version" `
-            --output-dir=dist `
-            --output-filename="pywarp-windows-x64-v$version.exe" `
-            --assume-yes-for-downloads
-      
-      - name: Zip Windows Installer
+            --windowed `
+            --icon=assets/logo.ico `
+            --add-data "assets:assets" `
+            --add-data "translations:translations" `
+            --hidden-import=PySide6 `
+            --collect-all=PySide6 `
+            --distpath=dist `
+            --specpath=build `
+            --buildpath=build `
+            --noupx `
+            main.py
+
+      - name: Rename and package executable
         shell: pwsh
         run: |
           $version = "${{ github.event.inputs.version }}"
-          Compress-Archive installers\windows\* `
-            dist\pywarp-windows-installer-v$version.zip
+          Move-Item -Path "dist/PyWarp.exe" -Destination "dist/pywarp-windows-x64-v$version.exe"
+          Compress-Archive -Path "dist/pywarp-windows-x64-v$version.exe" `
+            -DestinationPath "dist/pywarp-windows-x64-v$version.zip"
 
-
-      - name: Zip Output
-        shell: pwsh
-        run: |
-          Compress-Archive dist\pywarp-windows-x64-v${{ github.event.inputs.version }}.exe `
-            dist\pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
-
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows-x64
-          path: |
-            dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
-            dist/pywarp-windows-installer-v${{ github.event.inputs.version }}.zip
+          path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
 
   # -------------------------
   # LINUX
@@ -100,37 +95,38 @@ jobs:
     runs-on: ubuntu-22.04
     needs: validate
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      - uses: ./.github/actions/setup-build
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Build Linux x64
         run: |
-          source .venv/bin/activate
-          VERSION="${{ github.event.inputs.version }}"
-          python -m nuitka main.py \
-            --standalone \
+          pyinstaller \
+            --name "pywarp-linux-x64-v${{ github.event.inputs.version }}" \
             --onefile \
-            --remove-output \
-            --disable-console \
-            --enable-plugin=pyside6 \
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-            --include-data-dir=assets=assets \
-            --include-qt-plugins=platforms,imageformats,iconengines \
-            --linux-onefile-icon=assets/logo.xpm \
-            --output-filename="pywarp-linux-x64-v$VERSION" \
-            --output-dir=dist \
-            --assume-yes-for-downloads
+            --add-data "assets:assets" \
+            --add-data "translations:translations" \
+            --hidden-import=PySide6 \
+            --collect-all=PySide6 \
+            --distpath=dist \
+            --specpath=build \
+            --buildpath=build \
+            --noupx \
+            main.py
 
-      - name: TAR
+      - name: Create tarball
         run: |
-          tar -czvf pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz \
-            -C dist pywarp-linux-x64-v${{ github.event.inputs.version }}
+          cd dist
+          tar -czvf "../pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz" "pywarp-linux-x64-v${{ github.event.inputs.version }}"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-linux-x64
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
@@ -142,138 +138,108 @@ jobs:
     runs-on: macos-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - uses: ./.github/actions/setup-build
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Build macOS ARM64
         run: |
-          source .venv/bin/activate
-          export DYLD_LIBRARY_PATH=""
-          VERSION="${{ github.event.inputs.version }}"
-
-          python -m nuitka main.py \
-            --standalone \
-            --remove-output \
-            --macos-create-app-bundle \
-            --macos-sign-identity="-" \
-            --macos-app-name="PyWarp" \
-            --macos-app-icon=assets/logo.icns \
-            --macos-app-version="$VERSION" \
-            --enable-plugin=pyside6 \
-            --nofollow-import-to=OpenSSL \
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-            --include-data-dir=assets=assets \
-            --include-qt-plugins=platforms,imageformats,iconengines \
-            --assume-yes-for-downloads \
-            --output-dir=build-arm64
-
-      - name: Rename App
-        run: |
-          APP=$(find build-arm64 -maxdepth 2 -name "*.app" | head -n1)
-          echo "Found: $APP"
-          mv "$APP" "PyWarp-arm64-v${{ github.event.inputs.version }}.app"
+          pyinstaller \
+            --name "PyWarp" \
+            --onefile \
+            --windowed \
+            --icon=assets/logo.icns \
+            --add-data "assets:assets" \
+            --add-data "translations:translations" \
+            --hidden-import=PySide6 \
+            --collect-all=PySide6 \
+            --distpath=dist \
+            --specpath=build \
+            --buildpath=build \
+            --noupx \
+            main.py
 
       - name: Create DMG
         run: |
+          mkdir -p PyWarp.app/Contents/MacOS
+          mkdir -p PyWarp.app/Contents/Resources
+          
+          mv dist/PyWarp PyWarp.app/Contents/MacOS/
+          cp assets/logo.icns PyWarp.app/Contents/Resources/
+          
           hdiutil create \
-            -volname "PyWarp ARM64" \
-            -srcfolder "PyWarp-arm64-v${{ github.event.inputs.version }}.app" \
+            -volname "PyWarp ARM64 v${{ github.event.inputs.version }}" \
+            -srcfolder PyWarp.app \
             -format UDZO \
             -ov \
-            -o "pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg"
+            -o "dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg"
 
-      - name: Create PKG
-        run: |
-          mkdir -p pkg-root/Applications
-          cp -R "PyWarp-arm64-v${{ github.event.inputs.version }}.app" pkg-root/Applications/
-
-          pkgbuild \
-            --root pkg-root \
-            --identifier "com.pywarp.app" \
-            --version "${{ github.event.inputs.version }}" \
-            --install-location "/" \
-            "pywarp-macos-arm64-v${{ github.event.inputs.version }}.pkg"
-
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-arm64
-          path: |
-            pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg
-            pywarp-macos-arm64-v${{ github.event.inputs.version }}.pkg
+          path: dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg
 
   # -------------------------
   # MACOS INTEL
   # -------------------------
   build-macos-intel:
-    runs-on: macos-15-intel
+    runs-on: macos-13
     needs: validate
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - uses: ./.github/actions/setup-build
 
-      - name: Remove conflicting OpenSSL (Fix Nuitka fatal scan bug)
+      - name: Install dependencies
         run: |
-          sudo rm -f /usr/local/lib/libcrypto.dylib || true
-          sudo rm -f /usr/local/lib/libssl.dylib || true
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Build macOS Intel
         run: |
-          source .venv/bin/activate
-          export DYLD_LIBRARY_PATH=""
-          VERSION="${{ github.event.inputs.version }}"
-
-          python -m nuitka main.py \
-            --standalone \
-            --remove-output \
-            --macos-create-app-bundle \
-            --macos-sign-identity="-" \
-            --macos-app-name="PyWarp" \
-            --macos-app-icon=assets/logo.icns \
-            --macos-app-version="$VERSION" \
-            --enable-plugin=pyside6 \
-            --nofollow-import-to=OpenSSL \
-            --nofollow-import-to=PySide6.QtSql,PySide6.QtQml,PySide6.QtQuick,PySide6.QtMultimedia,PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick,PySide6.QtBluetooth,PySide6.QtPositioning \
-            --include-data-dir=assets=assets \
-            --include-qt-plugins=platforms,imageformats,iconengines \
-            --assume-yes-for-downloads \
-            --output-dir=build-intel
-
-      - name: Rename App
-        run: |
-          APP=$(find build-intel -maxdepth 2 -name "*.app" | head -n1)
-          echo "Found: $APP"
-          mv "$APP" "PyWarp-intel-v${{ github.event.inputs.version }}.app"
+          pyinstaller \
+            --name "PyWarp" \
+            --onefile \
+            --windowed \
+            --icon=assets/logo.icns \
+            --add-data "assets:assets" \
+            --add-data "translations:translations" \
+            --hidden-import=PySide6 \
+            --collect-all=PySide6 \
+            --distpath=dist \
+            --specpath=build \
+            --buildpath=build \
+            --noupx \
+            main.py
 
       - name: Create DMG
         run: |
+          mkdir -p PyWarp.app/Contents/MacOS
+          mkdir -p PyWarp.app/Contents/Resources
+          
+          mv dist/PyWarp PyWarp.app/Contents/MacOS/
+          cp assets/logo.icns PyWarp.app/Contents/Resources/
+          
           hdiutil create \
-            -volname "PyWarp Intel" \
-            -srcfolder "PyWarp-intel-v${{ github.event.inputs.version }}.app" \
+            -volname "PyWarp Intel v${{ github.event.inputs.version }}" \
+            -srcfolder PyWarp.app \
             -format UDZO \
             -ov \
-            -o "pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg"
+            -o "dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg"
 
-      - name: Create PKG
-        run: |
-          pkgbuild \
-            --root "PyWarp-intel-v${{ github.event.inputs.version }}.app" \
-            --identifier "com.pywarp.app" \
-            --version "${{ github.event.inputs.version }}" \
-            --install-location "/Applications" \
-            "pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg"
-
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-intel
-          path: |
-            pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg
-            pywarp-macos-intel-v${{ github.event.inputs.version }}.pkg
+          path: dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg
 
   # -------------------------
   # UNIX INSTALLER SCRIPT
@@ -282,15 +248,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Prepare Installer
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           cp installers/mac-linux/pywarp-installer.sh pywarp-installer.sh
           chmod +x pywarp-installer.sh
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: pywarp-unix-installer
           path: pywarp-installer.sh
@@ -309,11 +274,11 @@ jobs:
       - build-unix-installer
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -326,7 +291,7 @@ jobs:
             flag {print}
           ' CHANGELOG.md > RELEASE_NOTES.md
 
-      - name: Generate Checksums + Download Table
+      - name: Generate Checksums
         shell: bash
         run: |
           REPO="${{ github.repository }}"
@@ -334,48 +299,34 @@ jobs:
           TAG="v$VERSION"
 
           WIN_X64=$(find artifacts -name "*windows-x64*.zip" | head -n1 || true)
-          WIN_INSTALLER=$(find artifacts -name "*windows-installer*.zip" | head -n1 || true)
           LINUX_X64=$(find artifacts -name "*linux-x64*.tar.gz" | head -n1 || true)
           MAC_ARM_DMG=$(find artifacts -name "*macos-arm64*.dmg" | head -n1 || true)
-          MAC_ARM_PKG=$(find artifacts -name "*macos-arm64*.pkg" | head -n1 || true)
           MAC_INTEL_DMG=$(find artifacts -name "*macos-intel*.dmg" | head -n1 || true)
-          MAC_INTEL_PKG=$(find artifacts -name "*macos-intel*.pkg" | head -n1 || true)
           UNIX_INSTALLER=$(find artifacts -name "pywarp-installer.sh" | head -n1 || true)
 
           cat >> RELEASE_NOTES.md <<EOF
 
           ## 🧩 Downloads
 
-          | <div align="center">Downloads</div> | <div align="center">Compatibility</div> |
-          |---|---|
-          | [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows&logoColor=white&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) <br/> [![Windows Installer](https://img.shields.io/badge/Windows-Installer-0078D6?style=for-the-badge&logo=windows&logoColor=white&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-installer-v${VERSION}.zip) | Windows 10+ |
-          | [![macOS ARM64](https://img.shields.io/badge/macOS-ARM64-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) [![PKG ARM64](https://img.shields.io/badge/PKG-ARM64-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.pkg) <br/> [![macOS Intel](https://img.shields.io/badge/macOS-Intel-FFFFFF?style=for-the-badge&logo=apple&logoColor=FFFFFF&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) [![PKG Intel](https://img.shields.io/badge/PKG-Intel-AAAAAA?style=for-the-badge&logo=apple&logoColor=AAAAAA&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.pkg) | macOS 10.15+ |
-          | [![Linux x64](https://img.shields.io/badge/Linux-x64-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) | GNOME / KDE |
-
-          ---
+          | Platform | Link |
+          |----------|------|
+          | **Windows x64** | [pywarp-windows-x64-v${VERSION}.zip](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) |
+          | **macOS ARM64** | [pywarp-macos-arm64-v${VERSION}.dmg](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) |
+          | **macOS Intel** | [pywarp-macos-intel-v${VERSION}.dmg](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) |
+          | **Linux x64** | [pywarp-linux-x64-v${VERSION}.tar.gz](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) |
+          | **Unix Installer** | [pywarp-installer.sh](https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh) |
 
           ## ⚡ Quick Install (Linux & macOS)
 
-          [Download pywarp-installer.sh](https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh)
-
-          ### One-Line Install
-
           \`\`\`bash
-          curl -fsSL https://github.com/${REPO}/releases/latest/download/pywarp-installer.sh | bash
+          curl -fsSL https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh | bash
           \`\`\`
+
+          ## 🔐 Checksums
 
           EOF
 
-          echo "" >> RELEASE_NOTES.md
-          echo "## 🔐 Checksums" >> RELEASE_NOTES.md
-
-          for file in \
-              "$WIN_X64" \
-              "$WIN_INSTALLER" \
-              "$LINUX_X64" \
-              "$MAC_ARM_DMG" "$MAC_ARM_PKG" \
-              "$MAC_INTEL_DMG" "$MAC_INTEL_PKG" \
-              "$UNIX_INSTALLER"
+          for file in "$WIN_X64" "$LINUX_X64" "$MAC_ARM_DMG" "$MAC_INTEL_DMG" "$UNIX_INSTALLER"
           do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
@@ -391,13 +342,11 @@ jobs:
           name: PyWarp v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
           draft: false
-          prerelease: true
+          prerelease: false
           files: |
             artifacts/**/*windows*.zip
             artifacts/**/*linux*.tar.gz
             artifacts/**/*macos*.dmg
-            artifacts/**/*macos*.pkg
             artifacts/**/pywarp-installer.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
