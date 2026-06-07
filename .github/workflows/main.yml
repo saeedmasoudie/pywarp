@@ -340,39 +340,19 @@ jobs:
 
           ## 🎯 Downloads
 
-          ### 🪟 Windows
-          | Version | Download |
-          |---------|----------|
-          | **x64 (Portable)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Portable-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-x64-vVERSION.zip) |
-          | **Installer** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Installer-107C10?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-installer-vVERSION.zip) |
-
-          ### 🍎 macOS
-          | Architecture | Download |
-          |--------------|----------|
-          | **ARM64 (Apple Silicon)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20ARM64-555555?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-macos-arm64-vVERSION.dmg) |
-          | **Intel (x64)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Intel-555555?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-macos-intel-vVERSION.dmg) |
-
-          ### 🐧 Linux
-          | Format | Download |
-          |--------|----------|
-          | **x64 (Portable)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Portable-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/REPO/releases/download/TAG/pywarp-linux-x64-vVERSION.tar.gz) |
-          | **Installer Script** | [![Download](https://img.shields.io/badge/Download-Install%20Script-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/REPO/releases/download/TAG/pywarp-installer.sh) |
+          | Platform | Type | Requirements | Download |
+          |----------|------|--------------|----------|
+          | **🪟 Windows** | Portable (ZIP) | Windows 10/11 (64-bit) | [![Download](https://img.shields.io/badge/Download-Portable-4A90E2?style=for-the-badge&logo=archive&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-x64-vVERSION.zip) |
+          | **🪟 Windows** | Installer (ZIP) | Windows 10/11 (64-bit) | [![Download](https://img.shields.io/badge/Download-Installer-107C10?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-installer-vVERSION.zip) |
+          | **🍎 macOS** | ARM64 (DMG) | macOS 11+ (Apple Silicon) | [![Download](https://img.shields.io/badge/Download-ARM64-FFFFFF?style=for-the-badge&logo=apple&logoColor=black)](https://github.com/REPO/releases/download/TAG/pywarp-macos-arm64-vVERSION.dmg) |
+          | **🍎 macOS** | Intel (DMG) | macOS 10.13+ (Intel) | [![Download](https://img.shields.io/badge/Download-Intel-FFFFFF?style=for-the-badge&logo=apple&logoColor=black)](https://github.com/REPO/releases/download/TAG/pywarp-macos-intel-vVERSION.dmg) |
+          | **🐧 Linux** | x64 (TAR.GZ) | Ubuntu 20.04+, Fedora 33+, Debian 11+ | [![Download](https://img.shields.io/badge/Download-Portable-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/REPO/releases/download/TAG/pywarp-linux-x64-vVERSION.tar.gz) |
+          | **🐧 Linux** | Installer Script | Ubuntu 20.04+, Fedora 33+, Debian 11+ | [![Download](https://img.shields.io/badge/Download-Script-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/REPO/releases/download/TAG/pywarp-installer.sh) |
 
           ---
 
-          ## ⚡ Quick Start
+          ## 🐧 Linux Installation
 
-          ### 🪟 Windows
-          1. Download the **Portable** or **Installer** version
-          2. Extract/Run the executable
-          3. Cloudflare WARP will be installed automatically if needed
-
-          ### 🍎 macOS
-          1. Download the `.dmg` file for your architecture
-          2. Open the DMG and drag PyWarp to Applications
-          3. Run PyWarp from Applications folder
-
-          ### 🐧 Linux
           **Automatic Installation (Recommended):**
           ```bash
           curl -fsSL https://github.com/REPO/releases/download/TAG/pywarp-installer.sh | bash
@@ -382,6 +362,15 @@ jobs:
           1. Download the tar.gz file
           2. Extract: `tar -xzvf pywarp-linux-x64-vVERSION.tar.gz`
           3. Run: `./pywarp-linux-x64-vVERSION/pywarp-linux-x64-vVERSION`
+
+          ---
+
+          ## 💡 Troubleshooting
+
+          **Windows Portable Not Working?**
+          - Try the Installer version instead - it handles dependencies better
+          - Make sure Cloudflare WARP is installed on your system
+          - Run as Administrator if you encounter permission issues
 
           ---
 
@@ -406,25 +395,6 @@ jobs:
               echo "" >> RELEASE_NOTES.md
             fi
           done
-
-          echo "" >> RELEASE_NOTES.md
-          echo "---" >> RELEASE_NOTES.md
-          echo "" >> RELEASE_NOTES.md
-          echo "### System Requirements" >> RELEASE_NOTES.md
-          echo "" >> RELEASE_NOTES.md
-          echo "- **Windows:** Windows 10/11 (64-bit)" >> RELEASE_NOTES.md
-          echo "- **macOS:** macOS 11+ (Big Sur or later)" >> RELEASE_NOTES.md
-          echo "- **Linux:** Ubuntu 20.04+, Fedora 33+, Debian 11+ (or compatible)" >> RELEASE_NOTES.md
-          echo "" >> RELEASE_NOTES.md
-          echo "### Features ✨" >> RELEASE_NOTES.md
-          echo "" >> RELEASE_NOTES.md
-          echo "- 🔒 Full VPN tunnel via Cloudflare WARP" >> RELEASE_NOTES.md
-          echo "- 🌐 DNS over HTTPS (DoH) & DNS over TLS (DoT)" >> RELEASE_NOTES.md
-          echo "- 🔄 Switch between WireGuard & MASQUE protocols" >> RELEASE_NOTES.md
-          echo "- ⚡ Real-time connection statistics" >> RELEASE_NOTES.md
-          echo "- 🛡️ Advanced DNS filtering options" >> RELEASE_NOTES.md
-          echo "- 🌍 Multi-language support" >> RELEASE_NOTES.md
-          echo "- 📊 Live DNS logs viewer" >> RELEASE_NOTES.md
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
