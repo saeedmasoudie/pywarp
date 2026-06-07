@@ -1544,7 +1544,10 @@ class WarpStatusHandler(QObject):
 
         candidate = self._auto_candidates[self._auto_index]
         self._current_candidate = candidate
-        logger.info(f"MASQUE auto-detect: applying '{candidate}' (attempt {self._auto_index+1}/{len(self._auto_candidates)})")
+        logger.info(
+            f"MASQUE auto-detect: applying '{candidate}' "
+            f"(attempt {self._auto_index + 1}/{len(self._auto_candidates)})"
+        )
 
         try:
             res = run_warp_command("warp-cli", "tunnel", "masque-options", "set", candidate)
