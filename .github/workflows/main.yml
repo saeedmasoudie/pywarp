@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Cache pip
         uses: actions/cache@v5
@@ -50,7 +50,7 @@ jobs:
       
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -67,7 +67,9 @@ jobs:
             --icon=assets/logo.ico `
             --add-data "assets:assets" `
             --add-data "translations:translations" `
-            --hidden-import=PySide6 `
+            --hidden-import=PySide6.QtCore `
+            --hidden-import=PySide6.QtGui `
+            --hidden-import=PySide6.QtWidgets `
             --collect-all=PySide6 `
             --distpath=dist `
             --specpath=build `
@@ -87,6 +89,7 @@ jobs:
         with:
           name: pywarp-windows-x64
           path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
+          retention-days: 5
 
   # -------------------------
   # LINUX
@@ -99,7 +102,7 @@ jobs:
       
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -113,7 +116,9 @@ jobs:
             --onefile \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
-            --hidden-import=PySide6 \
+            --hidden-import=PySide6.QtCore \
+            --hidden-import=PySide6.QtGui \
+            --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
@@ -130,6 +135,7 @@ jobs:
         with:
           name: pywarp-linux-x64
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
+          retention-days: 5
 
   # -------------------------
   # MACOS ARM64
@@ -142,7 +148,7 @@ jobs:
       
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -158,7 +164,9 @@ jobs:
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
-            --hidden-import=PySide6 \
+            --hidden-import=PySide6.QtCore \
+            --hidden-import=PySide6.QtGui \
+            --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
@@ -185,6 +193,7 @@ jobs:
         with:
           name: pywarp-macos-arm64
           path: dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg
+          retention-days: 5
 
   # -------------------------
   # MACOS INTEL
@@ -197,7 +206,7 @@ jobs:
       
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -213,7 +222,9 @@ jobs:
             --icon=assets/logo.icns \
             --add-data "assets:assets" \
             --add-data "translations:translations" \
-            --hidden-import=PySide6 \
+            --hidden-import=PySide6.QtCore \
+            --hidden-import=PySide6.QtGui \
+            --hidden-import=PySide6.QtWidgets \
             --collect-all=PySide6 \
             --distpath=dist \
             --specpath=build \
@@ -240,6 +251,7 @@ jobs:
         with:
           name: pywarp-macos-intel
           path: dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg
+          retention-days: 5
 
   # -------------------------
   # UNIX INSTALLER SCRIPT
@@ -259,6 +271,7 @@ jobs:
         with:
           name: pywarp-unix-installer
           path: pywarp-installer.sh
+          retention-days: 5
 
   # -------------------------
   # RELEASE
@@ -289,7 +302,7 @@ jobs:
             $0 ~ "^## " ver {flag=1; next}
             flag && /^## / {exit}
             flag {print}
-          ' CHANGELOG.md > RELEASE_NOTES.md
+          ' CHANGELOG.md > RELEASE_NOTES.md || echo "## Release Notes" > RELEASE_NOTES.md
 
       - name: Generate Checksums
         shell: bash
