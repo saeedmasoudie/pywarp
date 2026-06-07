@@ -193,7 +193,7 @@ jobs:
   # MACOS INTEL
   # -------------------------
   build-macos-intel:
-    runs-on: macos-13
+    runs-on: macos-14
     needs: validate
     steps:
       - uses: actions/checkout@v5
