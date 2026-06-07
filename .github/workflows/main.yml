@@ -19,14 +19,14 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -46,9 +46,9 @@ jobs:
     runs-on: windows-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -83,7 +83,7 @@ jobs:
           Compress-Archive -Path "dist/pywarp-windows-x64-v$version.exe" `
             -DestinationPath "dist/pywarp-windows-x64-v$version.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pywarp-windows-x64
           path: dist/pywarp-windows-x64-v${{ github.event.inputs.version }}.zip
@@ -95,9 +95,9 @@ jobs:
     runs-on: ubuntu-22.04
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -126,7 +126,7 @@ jobs:
           cd dist
           tar -czvf "../pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz" "pywarp-linux-x64-v${{ github.event.inputs.version }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pywarp-linux-x64
           path: pywarp-linux-x64-v${{ github.event.inputs.version }}.tar.gz
@@ -138,9 +138,9 @@ jobs:
     runs-on: macos-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -181,7 +181,7 @@ jobs:
             -ov \
             -o "dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pywarp-macos-arm64
           path: dist/pywarp-macos-arm64-v${{ github.event.inputs.version }}.dmg
@@ -193,9 +193,9 @@ jobs:
     runs-on: macos-13
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -236,7 +236,7 @@ jobs:
             -ov \
             -o "dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pywarp-macos-intel
           path: dist/pywarp-macos-intel-v${{ github.event.inputs.version }}.dmg
@@ -248,14 +248,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Prepare Installer
         run: |
           cp installers/mac-linux/pywarp-installer.sh pywarp-installer.sh
           chmod +x pywarp-installer.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pywarp-unix-installer
           path: pywarp-installer.sh
@@ -274,11 +274,11 @@ jobs:
       - build-unix-installer
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
 
