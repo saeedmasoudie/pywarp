@@ -92,6 +92,49 @@ jobs:
           retention-days: 5
 
   # -------------------------
+  # WINDOWS INSTALLER
+  # -------------------------
+  build-windows-installer:
+    runs-on: windows-latest
+    needs: build-windows-x64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download Windows x64 artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: pywarp-windows-x64
+          path: artifacts
+
+      - name: Extract executable
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          Expand-Archive -Path "artifacts/pywarp-windows-x64-v$version.zip" -DestinationPath "extracted"
+
+      - name: Copy installer files
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          
+          New-Item -ItemType Directory -Path "installer/bin" -Force
+          Copy-Item "extracted/pywarp-windows-x64-v$version.exe" "installer/bin/PyWarp.exe"
+          Copy-Item "installers/windows/*" "installer/" -Recurse -Force
+
+      - name: Create installer zip
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          Compress-Archive -Path "installer/*" `
+            -DestinationPath "dist/pywarp-windows-installer-v$version.zip"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pywarp-windows-installer
+          path: dist/pywarp-windows-installer-v${{ github.event.inputs.version }}.zip
+          retention-days: 5
+
+  # -------------------------
   # LINUX
   # -------------------------
   build-linux-x64:
@@ -269,6 +312,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - build-windows-x64
+      - build-windows-installer
       - build-linux-x64
       - build-macos-arm64
       - build-macos-intel
@@ -304,37 +348,99 @@ jobs:
           MAC_ARM_DMG=$(find artifacts -name "*macos-arm64*.dmg" | head -n1 || true)
           MAC_INTEL_DMG=$(find artifacts -name "*macos-intel*.dmg" | head -n1 || true)
           UNIX_INSTALLER=$(find artifacts -name "pywarp-installer.sh" | head -n1 || true)
+          WIN_INSTALLER=$(find artifacts -name "*windows-installer*.zip" | head -n1 || true)
 
-          cat >> RELEASE_NOTES.md <<EOF
+          cat >> RELEASE_NOTES.md <<'EOF'
 
-          ## 🧩 Downloads
+          ---
 
-          | Platform | Link |
-          |----------|------|
-          | **Windows x64** | [pywarp-windows-x64-v${VERSION}.zip](https://github.com/${REPO}/releases/download/${TAG}/pywarp-windows-x64-v${VERSION}.zip) |
-          | **macOS ARM64** | [pywarp-macos-arm64-v${VERSION}.dmg](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-arm64-v${VERSION}.dmg) |
-          | **macOS Intel** | [pywarp-macos-intel-v${VERSION}.dmg](https://github.com/${REPO}/releases/download/${TAG}/pywarp-macos-intel-v${VERSION}.dmg) |
-          | **Linux x64** | [pywarp-linux-x64-v${VERSION}.tar.gz](https://github.com/${REPO}/releases/download/${TAG}/pywarp-linux-x64-v${VERSION}.tar.gz) |
-          | **Unix Installer** | [pywarp-installer.sh](https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh) |
+          ## 🎯 Downloads
 
-          ## ⚡ Quick Install (Linux & macOS)
+          ### 🪟 Windows
+          | Version | Download |
+          |---------|----------|
+          | **x64 (Portable)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Portable-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-x64-vVERSION.zip) |
+          | **Installer** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Installer-107C10?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-windows-installer-vVERSION.zip) |
 
-          \`\`\`bash
-          curl -fsSL https://github.com/${REPO}/releases/download/${TAG}/pywarp-installer.sh | bash
-          \`\`\`
+          ### 🍎 macOS
+          | Architecture | Download |
+          |--------------|----------|
+          | **ARM64 (Apple Silicon)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20ARM64-555555?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-macos-arm64-vVERSION.dmg) |
+          | **Intel (x64)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Intel-555555?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/REPO/releases/download/TAG/pywarp-macos-intel-vVERSION.dmg) |
 
-          ## 🔐 Checksums
+          ### 🐧 Linux
+          | Format | Download |
+          |--------|----------|
+          | **x64 (Portable)** | [![Download](https://img.shields.io/badge/Download-PyWarp%20Portable-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/REPO/releases/download/TAG/pywarp-linux-x64-vVERSION.tar.gz) |
+          | **Installer Script** | [![Download](https://img.shields.io/badge/Download-Install%20Script-FCC624?style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=555555)](https://github.com/REPO/releases/download/TAG/pywarp-installer.sh) |
+
+          ---
+
+          ## ⚡ Quick Start
+
+          ### 🪟 Windows
+          1. Download the **Portable** or **Installer** version
+          2. Extract/Run the executable
+          3. Cloudflare WARP will be installed automatically if needed
+
+          ### 🍎 macOS
+          1. Download the `.dmg` file for your architecture
+          2. Open the DMG and drag PyWarp to Applications
+          3. Run PyWarp from Applications folder
+
+          ### 🐧 Linux
+          **Automatic Installation (Recommended):**
+          ```bash
+          curl -fsSL https://github.com/REPO/releases/download/TAG/pywarp-installer.sh | bash
+          ```
+
+          **Or manually:**
+          1. Download the tar.gz file
+          2. Extract: `tar -xzvf pywarp-linux-x64-vVERSION.tar.gz`
+          3. Run: `./pywarp-linux-x64-vVERSION/pywarp-linux-x64-vVERSION`
+
+          ---
+
+          ## 🔐 Checksums (SHA256)
 
           EOF
 
-          for file in "$WIN_X64" "$LINUX_X64" "$MAC_ARM_DMG" "$MAC_INTEL_DMG" "$UNIX_INSTALLER"
+          # Replace placeholders with actual values
+          sed -i "s|REPO|${REPO}|g" RELEASE_NOTES.md
+          sed -i "s|TAG|${TAG}|g" RELEASE_NOTES.md
+          sed -i "s|VERSION|${VERSION}|g" RELEASE_NOTES.md
+
+          # Add checksums
+          echo "" >> RELEASE_NOTES.md
+          for file in "$WIN_X64" "$WIN_INSTALLER" "$LINUX_X64" "$MAC_ARM_DMG" "$MAC_INTEL_DMG" "$UNIX_INSTALLER"
           do
             if [ -f "$file" ]; then
               sha=$(sha256sum "$file" | cut -d' ' -f1)
               name=$(basename "$file")
-              echo "- **$name:** \`$sha\`" >> RELEASE_NOTES.md
+              echo "- **$name**" >> RELEASE_NOTES.md
+              echo "  \`$sha\`" >> RELEASE_NOTES.md
+              echo "" >> RELEASE_NOTES.md
             fi
           done
+
+          echo "" >> RELEASE_NOTES.md
+          echo "---" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### System Requirements" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "- **Windows:** Windows 10/11 (64-bit)" >> RELEASE_NOTES.md
+          echo "- **macOS:** macOS 11+ (Big Sur or later)" >> RELEASE_NOTES.md
+          echo "- **Linux:** Ubuntu 20.04+, Fedora 33+, Debian 11+ (or compatible)" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### Features ✨" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "- 🔒 Full VPN tunnel via Cloudflare WARP" >> RELEASE_NOTES.md
+          echo "- 🌐 DNS over HTTPS (DoH) & DNS over TLS (DoT)" >> RELEASE_NOTES.md
+          echo "- 🔄 Switch between WireGuard & MASQUE protocols" >> RELEASE_NOTES.md
+          echo "- ⚡ Real-time connection statistics" >> RELEASE_NOTES.md
+          echo "- 🛡️ Advanced DNS filtering options" >> RELEASE_NOTES.md
+          echo "- 🌍 Multi-language support" >> RELEASE_NOTES.md
+          echo "- 📊 Live DNS logs viewer" >> RELEASE_NOTES.md
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
