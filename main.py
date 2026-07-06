@@ -50,7 +50,6 @@ if platform.system() == "Darwin":
 
 CURRENT_VERSION = "1.3.5"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/saeedmasoudie/pywarp/main/version.json"
-WARP_ASSETS = f"https://github.com/saeedmasoudie/pywarp/releases/download/v{CURRENT_VERSION}/warp_assets.zip"
 SERVER_NAME = "PyWarpInstance"
 server = QLocalServer()
 _active_workers = set()
@@ -127,40 +126,19 @@ def safe_subprocess_args():
 
 def get_warp_cli_executable() -> str | None:
     os_name = platform.system()
-
     if os_name == "Windows":
-        system_path = shutil.which("warp-cli.exe")
-        if system_path:
-            return system_path
-
-        portable = Path(os.getenv("APPDATA", "")) / "pywarp" / "warp" / "warp-cli.exe"
-        if portable.exists():
-            return str(portable)
-
-        return None
-
+        return shutil.which("warp-cli.exe")
     if os_name == "Linux":
-        system_path = shutil.which("warp-cli")
-        if system_path:
-            return system_path
-
-        portable = Path.home() / ".pywarp" / "warp" / "warp-cli"
-        if portable.exists():
-            return str(portable)
-
-        return None
-
+        return shutil.which("warp-cli")
     if os_name == "Darwin":
         mac_paths = [
             "/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli",
             "/opt/homebrew/bin/warp-cli",
             "/usr/local/bin/warp-cli",
             "/usr/local/sbin/warp-cli",
-            str(Path.home() / ".pywarp" / "warp" / "warp-cli"),
         ]
         for p in mac_paths:
-            if Path(p).exists():
-                return p
+            if Path(p).exists(): return p
         return shutil.which("warp-cli")
     return None
 
@@ -894,10 +872,10 @@ class ThoroughDiagnosticWorker(QThread):
             total_tasks = len(tasks)
             successful_profiles = []
 
-            self.log_signal.emit("<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Initializing Hardware Network Diagnostics...")
+            self.log_signal.emit(
+                "<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Initializing Hardware Network Diagnostics...")
             self.log_signal.emit(
                 f"<span style='color: #58a6ff; font-weight:bold;'>[SYS]</span> Queued {total_tasks} routing payload configurations.<br>")
-            time.sleep(1.0)
 
             for idx, (protocol, masque_mode, warp_mode) in enumerate(tasks):
                 if self._abort:
@@ -916,7 +894,7 @@ class ThoroughDiagnosticWorker(QThread):
 
                 # Apply Settings
                 run_warp_command("warp-cli", "disconnect")
-                time.sleep(0.5)
+                time.sleep(0.3)
 
                 run_warp_command("warp-cli", "tunnel", "protocol", "set", protocol)
                 run_warp_command("warp-cli", "mode", warp_mode)
@@ -933,21 +911,29 @@ class ThoroughDiagnosticWorker(QThread):
                 connected = False
                 start_check = time.time()
 
-                while time.time() - start_check < 45.0:
+                while time.time() - start_check < 20.0:
                     if self._abort: return
 
                     status_res = run_warp_command("warp-cli", "status")
                     out_lower = status_res.stdout.lower()
 
                     if "connected" in out_lower:
-                        connected = True
-                        break
-                    elif "unable" in out_lower or "failed" in out_lower:
                         self.log_signal.emit(
-                            "<span style='color: #f85149;'> ↳ [DROP] Connection refused by local network endpoint.</span><br>")
+                            "<span style='color: #8b949e;'> ↳ Handshake observed. Verifying internet routing...</span>")
+
+                        try:
+                            requests.get("https://1.1.1.1/cdn-cgi/trace", timeout=3)
+                            connected = True
+                            break
+                        except requests.RequestException:
+                            pass
+
+                    elif "unable" in out_lower or "failed" in out_lower or "missing" in out_lower:
+                        self.log_signal.emit(
+                            "<span style='color: #f85149;'> ↳ [DROP] Connection refused by local network.</span><br>")
                         break
 
-                    time.sleep(1.0)
+                    time.sleep(0.5)
 
                 if connected:
                     self.log_signal.emit(
@@ -964,6 +950,8 @@ class ThoroughDiagnosticWorker(QThread):
                     break
                 else:
                     self.status_update_signal.emit(protocol, warp_mode, "Route Blocked")
+                    if not connected and (time.time() - start_check) >= 20.0:
+                        self.log_signal.emit("<span style='color: #f85149;'> ↳ [DROP] Handshake timed out.</span><br>")
 
             self.finished_signal.emit(successful_profiles)
 
@@ -1226,56 +1214,6 @@ class WarpDiagnosticsPanel(QWidget):
         self.action_btn.setEnabled(True)
 
 
-class DownloadWorker(GenericWorker):
-    progress = Signal(int)
-    finished = Signal(bool, str)
-
-    def __init__(self, url, parent=None):
-        self.url = url
-        self._abort = False
-        super().__init__(self._download, parent=parent)
-
-        self.finished_signal.connect(self._on_generic_finished)
-        self.error_signal.connect(self._on_error)
-        self.finished.connect(self.deleteLater)
-
-    def abort(self):
-        self._abort = True
-
-    def _download(self):
-        try:
-            local_filename = self.url.split('/')[-1] or "downloaded.file"
-            with requests.get(self.url, stream=True, timeout=30) as r:
-                r.raise_for_status()
-                total_length = int(r.headers.get('content-length', 0) or 0)
-                downloaded = 0
-                with open(local_filename, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if self._abort:
-                            return False, ""
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total_length > 0:
-                                percent = int(downloaded * 100 / total_length)
-                                self.progress.emit(percent)
-            return True, local_filename
-        except Exception as e:
-            logger.exception(f"DownloadWorker error: {e}")
-            return False, ""
-
-    def _on_generic_finished(self, result):
-        try:
-            success, filename = result
-        except Exception:
-            success, filename = False, ""
-        self.finished.emit(bool(success), str(filename))
-
-    def _on_error(self, exc):
-        logger.exception("DownloadWorker caught error in GenericWorker: %s", exc)
-        self.finished.emit(False, "")
-
-
 class UpdateChecker(QObject):
     update_available = Signal(str, str, str)
     update_finished = Signal(str)
@@ -1309,50 +1247,18 @@ class UpdateChecker(QObject):
                 return
 
             remote_warp = data.get("warp", {}).get("version")
-            local_warp, _, is_portable = self.get_warp_info()
+            local_warp = self.get_warp_info()
 
             if remote_warp and local_warp and self._is_newer_version(remote_warp, local_warp):
-                update_type = "warp_portable" if is_portable else "warp_installed"
-                self.update_available.emit(update_type, remote_warp, local_warp)
+                self.update_available.emit("warp_installed", remote_warp, local_warp)
 
         except Exception as e:
             logger.warning(f"Update check failed: {e}")
 
-    def perform_portable_warp_update(self):
-        worker = run_in_worker(self._portable_update_task,
-                               parent=self,
-                               on_done=lambda _: self._on_worker_done(worker),
-                               on_error=lambda e: self._on_worker_error(e, worker))
-        self._workers.append(worker)
-
-    def _portable_update_task(self):
-        zip_path = self.installer.appdata_dir / "warp_assets.zip"
-        try:
-            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
-                r.raise_for_status()
-                downloaded = 0
-
-                with open(zip_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if not chunk: continue
-                        f.write(chunk)
-                        downloaded += len(chunk)
-
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(self.installer.appdata_dir)
-
-            zip_path.unlink(missing_ok=True)
-
-            self.update_finished.emit(self.tr("Portable WARP has been successfully updated!"))
-
-        except Exception as e:
-            zip_path.unlink(missing_ok=True)
-            self.update_finished.emit(f"Update failed: {e}")
-
     def get_warp_info(self):
         warp_cli_path_str = get_warp_cli_executable()
         if not warp_cli_path_str:
-            return None, None, False
+            return None
 
         try:
             output = subprocess.check_output(
@@ -1360,38 +1266,26 @@ class UpdateChecker(QObject):
                 text=True,
                 **safe_subprocess_args()
             )
-            version = output.strip().split()[-1]
-
-            warp_cli_path = Path(warp_cli_path_str)
-            is_portable = "pywarp" in warp_cli_path.parts
-
-            return version, warp_cli_path, is_portable
-
+            return output.strip().split()[-1]
         except Exception as e:
             logger.error(f"Failed to get warp version: {e}")
-            return None, None, False
+            return None
 
     def _is_newer_version(self, latest, current):
-        if not latest or not current:
-            return False
+        if not latest or not current: return False
         try:
-            def parse(v):
-                return [int(x) for x in re.findall(r"\d+", str(v))]
-
+            def parse(v): return [int(x) for x in re.findall(r"\d+", str(v))]
             return parse(latest) > parse(current)
         except Exception:
             return False
 
     def _on_worker_done(self, worker):
-        if worker in self._workers:
-            self._workers.remove(worker)
+        if worker in self._workers: self._workers.remove(worker)
         worker.deleteLater()
 
     def _on_worker_error(self, exc, worker):
         logger.error(f"Worker error: {exc}")
-        self.update_finished.emit(self.tr("Update failed: {}").format(exc))
-        if worker in self._workers:
-            self._workers.remove(worker)
+        if worker in self._workers: self._workers.remove(worker)
 
 class WarpStatusHandler(QObject):
     status_signal = Signal(str, str)
@@ -2050,80 +1944,118 @@ class LoadingOverlay(QWidget):
     def __init__(self, parent, icon_path=":/logo.png"):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
         self.setFocusPolicy(Qt.StrongFocus)
+
+        is_dark = ThemeManager.is_dark_mode()
+        bg_color = "#0B0E14" if is_dark else "#FFFFFF"
+        text_title = "#FFFFFF" if is_dark else "#111827"
+        text_status = "#8B949E" if is_dark else "#6B7280"
+        accent_color = "#0078D4" if is_dark else "#2563EB"
+
+        self.setStyleSheet(f"""
+            LoadingOverlay {{ background-color: {bg_color}; }}
+            QLabel#Title {{ color: {text_title}; font-size: 24px; font-weight: 700; font-family: 'Segoe UI', Arial, sans-serif; }}
+            QLabel#Status {{ color: {text_status}; font-size: 13px; font-weight: 500; font-family: 'Segoe UI', Arial, sans-serif; }}
+        """)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(10)
 
         self.logo_label = QLabel(self)
+        self.logo_label.setStyleSheet("background: transparent;")
         pixmap = QPixmap(icon_path)
         if not pixmap.isNull():
-            self.logo_label.setPixmap(pixmap.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.logo_label.setPixmap(pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         layout.addWidget(self.logo_label, alignment=Qt.AlignCenter)
+        layout.addSpacing(5)
 
         self.title_label = QLabel("PyWarp", self)
+        self.title_label.setObjectName("Title")
         layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
+        layout.addSpacing(25)
 
-        self.subtitle_label = QLabel(self.tr("Cloudflare Warp GUI"), self)
-        layout.addWidget(self.subtitle_label, alignment=Qt.AlignCenter)
+        track_width = 160
+        track_height = 3
+        runner_width = 40
 
-        self.spinner = SpinnerWidget(self)
-        layout.addWidget(self.spinner, alignment=Qt.AlignCenter)
+        self.progress_track = QFrame(self)
+        self.progress_track.setFixedSize(track_width, track_height)
+        self.progress_track.setStyleSheet(
+            f"background-color: {'#1F2937' if is_dark else '#E5E7EB'}; border-radius: 1px;")
 
-        self.loading_label = QLabel("", self)
-        layout.addWidget(self.loading_label, alignment=Qt.AlignCenter)
+        self.progress_runner = QFrame(self.progress_track)
+        self.progress_runner.setFixedSize(runner_width, track_height)
+        self.progress_runner.setStyleSheet(f"background-color: {accent_color}; border-radius: 1px;")
 
-        self.loading_texts = [
-            self.tr("Checking Warp service..."),
-            self.tr("Making sure Warp is ready..."),
-            self.tr("Preparing UI..."),
-            self.tr("Syncing settings..."),
-            self.tr("Starting engines..."),
-            self.tr("Almost ready...")
+        layout.addWidget(self.progress_track, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+
+        self.status_label = QLabel("Starting services...", self)
+        self.status_label.setObjectName("Status")
+        layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+
+        self.slide_anim = QPropertyAnimation(self.progress_runner, b"pos")
+        self.slide_anim.setDuration(800)
+        self.slide_anim.setStartValue(QPointF(0, 0))
+        self.slide_anim.setEndValue(QPointF(track_width - runner_width, 0))
+        self.slide_anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.slide_anim.finished.connect(self._reverse_slide)
+
+        self.loading_steps = [
+            "Verifying local daemon...",
+            "Loading network profiles...",
+            "Checking adapter status...",
+            "Ready."
         ]
-        self.current_index = 0
+        self.step_idx = 0
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._next_step)
 
-        self.text_timer = QTimer(self)
-        self.text_timer.timeout.connect(self._update_text)
-
-        self.setVisible(False)
         if parent:
             self.setGeometry(parent.rect())
             self.raise_()
 
-        self.apply_theme()
-
-    def apply_theme(self):
-        theme = ThemeManager.overlay_theme()
-        self.setStyleSheet(theme["background"])
-        self.title_label.setStyleSheet(theme["title"])
-        self.subtitle_label.setStyleSheet(theme["subtitle"])
-        self.loading_label.setStyleSheet(theme["loading"])
-        self.logo_label.setStyleSheet(theme['logo'])
-        self.spinner.setColor(theme["spinner"])
-
-    def _update_text(self):
-        if self.current_index < len(self.loading_texts):
-            self.loading_label.setText(self.loading_texts[self.current_index])
-            self.current_index += 1
-
-        if self.current_index >= len(self.loading_texts):
-            self.text_timer.stop()
+    def _reverse_slide(self):
+        if self.slide_anim.direction() == QPropertyAnimation.Forward:
+            self.slide_anim.setDirection(QPropertyAnimation.Backward)
+        else:
+            self.slide_anim.setDirection(QPropertyAnimation.Forward)
+        self.slide_anim.start()
 
     def show(self):
         if self.parent():
             self.setGeometry(self.parent().rect())
         super().show()
         self.raise_()
-        self.spinner.start()
-        self.current_index = 0
-        self.text_timer.start(1200)
-        self._update_text()
 
-    def hide(self):
-        self.spinner.stop()
-        self.text_timer.stop()
-        super().hide()
+        self.slide_anim.start()
+        self.step_idx = 0
+        self.timer.start(500)
+        self._next_step()
+
+    def _next_step(self):
+        if self.step_idx < len(self.loading_steps):
+            self.status_label.setText(self.loading_steps[self.step_idx])
+            self.step_idx += 1
+        else:
+            self.timer.stop()
+
+    def fade_out(self):
+        self.timer.stop()
+        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.opacity_effect)
+
+        self.anim_fade = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.anim_fade.setDuration(350)
+        self.anim_fade.setStartValue(1.0)
+        self.anim_fade.setEndValue(0.0)
+        self.anim_fade.setEasingCurve(QEasingCurve.OutQuad)
+        self.anim_fade.finished.connect(self.hide)
+
+        self.anim_fade.finished.connect(self.slide_anim.stop)
+        self.anim_fade.start()
 
 
 class PowerButton(QWidget):
@@ -2880,26 +2812,59 @@ class AdvancedSettings(QDialog):
 
     def update_exclude_table(self):
         self.exclude_table.setRowCount(0)
-        result_ip = run_warp_command("warp-cli", "-j", "tunnel", "ip", "list")
-        if result_ip and result_ip.returncode == 0 and result_ip.stdout.strip():
+        self.exclude_table.insertRow(0)
+        self.exclude_table.setItem(0, 0, QTableWidgetItem(self.tr("Loading...")))
+        self.exclude_table.setItem(0, 1, QTableWidgetItem(self.tr("Fetching network rules")))
+        self.exclude_table.setEnabled(False)
+
+        def fetch_exclusions():
+            ip_list = []
+            host_list = []
+            result_ip = run_warp_command("warp-cli", "-j", "tunnel", "ip", "list")
+            if result_ip and result_ip.returncode == 0 and result_ip.stdout.strip():
+                try:
+                    data = json.loads(result_ip.stdout)
+                    ips = [r.get("value", "") for r in data.get("routes", [])]
+                    for ip in ExclusionManager.filter_default_ips(ips):
+                        if ip.endswith("/32") or ip.endswith("/128"):
+                            ip = ip.split("/")[0]
+                        ip_list.append(ip)
+                except json.JSONDecodeError:
+                    pass
+
+            result_host = run_warp_command("warp-cli", "-j", "tunnel", "host", "list")
+            if result_host and result_host.returncode == 0 and result_host.stdout.strip():
+                try:
+                    data = json.loads(result_host.stdout)
+                    for host in data.get("hosts", []):
+                        host_list.append(host.get("value", ""))
+                except json.JSONDecodeError:
+                    pass
+
+            return ip_list, host_list
+
+        def on_done(results):
             try:
-                data = json.loads(result_ip.stdout)
-                ips = [r.get("value", "") for r in data.get("routes", [])]
-                for ip in ExclusionManager.filter_default_ips(ips):
-                    if ip.endswith("/32") or ip.endswith("/128"):
-                        ip = ip.split("/")[0]
+                self.exclude_table.setEnabled(True)
+                self.exclude_table.setRowCount(0)
+
+                ip_list, host_list = results
+                for ip in ip_list:
                     self._add_exclude_row("IP", ip)
-            except json.JSONDecodeError:
+                for host in host_list:
+                    self._add_exclude_row("Domain", host)
+            except RuntimeError:
                 pass
 
-        result_host = run_warp_command("warp-cli", "-j", "tunnel", "host", "list")
-        if result_host and result_host.returncode == 0 and result_host.stdout.strip():
+        def on_error(exc):
             try:
-                data = json.loads(result_host.stdout)
-                for host in data.get("hosts", []):
-                    self._add_exclude_row("Domain", host.get("value", ""))
-            except json.JSONDecodeError:
+                self.exclude_table.setEnabled(True)
+                self.exclude_table.setRowCount(0)
+                QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to load exclusions: {}").format(str(exc)))
+            except RuntimeError:
                 pass
+
+        run_in_worker(fetch_exclusions, parent=self, on_done=on_done, on_error=on_error)
 
     def _add_exclude_row(self, type_name, value):
         row = self.exclude_table.rowCount()
@@ -3748,14 +3713,11 @@ class MainWindow(QMainWindow):
         if saved_protocol in ("WireGuard", "MASQUE"):
             self._on_protocol_ready(saved_protocol)
         else:
-            QTimer.singleShot(
-                1000,
-                lambda: run_in_worker(
-                    fetch_protocol,
-                    parent=self,
-                    on_done=self._on_protocol_ready,
-                    on_error=lambda e: self._on_protocol_ready("Error")
-                )
+            run_in_worker(
+                fetch_protocol,
+                parent=self,
+                on_done=self._on_protocol_ready,
+                on_error=lambda e: self._on_protocol_ready("Error")
             )
 
         try:
@@ -3772,6 +3734,17 @@ class MainWindow(QMainWindow):
             self.stats_checker.stats_signal.connect(self.update_stats_display)
         except Exception:
             logger.exception("Stats checker failed")
+
+    def _check_ready(self):
+        if all(self._ready_checks.values()):
+            try:
+                if hasattr(self, "_loading_fallback_timer"):
+                    self._loading_fallback_timer.stop()
+            except Exception:
+                pass
+            if hasattr(self, "loading_overlay") and self.loading_overlay:
+                self.loading_overlay.fade_out()
+                self.loading_overlay = None
 
     def restart_app(self):
         logger.info("Restart requested by user.")
@@ -4513,234 +4486,50 @@ class MainWindow(QMainWindow):
 class WarpInstaller:
     def __init__(self, parent=None):
         self.parent = parent
-        self.download_url = self.get_os_download_link()
-        self.appdata_dir = Path(os.getenv("APPDATA") or Path.home() / ".pywarp") / "warp"
-        self.appdata_dir.mkdir(parents=True, exist_ok=True)
 
     def tr(self, text):
         return QCoreApplication.translate(self.__class__.__name__, text)
 
     def is_warp_installed(self):
-        os_name = platform.system()
-        if os_name == "Windows":
-            if shutil.which("warp-cli"):
-                return True
-            warp_cli, warp_svc = self._portable_paths()
-            if warp_cli.exists() and warp_svc.exists():
-                if not self._is_warp_svc_running_windows():
-                    self._ensure_warp_svc_running_windows()
-                return True
-            return False
-        if get_warp_cli_executable():
-            return True
-        return False
-
-    def get_os_download_link(self):
-        os_name = platform.system()
-        if os_name == "Windows":
-            return "https://package.cloudflareclient.com/latest/Cloudflare_WARP_Release-x64.msi"
-        elif os_name == "Darwin":
-            return "https://package.cloudflareclient.com/latest/Cloudflare_WARP.dmg"
-        else:
-            return None
+        return bool(get_warp_cli_executable())
 
     def get_manual_download_page(self):
         return "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/"
 
     def show_install_prompt(self):
+        os_name = platform.system()
         msg_box = QMessageBox(self.parent)
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.setWindowTitle(self.tr("Warp Not Found"))
-        msg_box.setText(self.tr("Cloudflare WARP is not installed.\n\nDo you want to install it automatically?"))
 
-        portable_button = None
-        if platform.system() == "Windows":
-            portable_button = msg_box.addButton(self.tr("Portable Install"), QMessageBox.ActionRole)
+        if os_name == "Linux":
+            msg_box.setText(self.tr(
+                "Cloudflare WARP is not installed.\n\nDo you want PyWarp to attempt auto-installing it via your package manager?"))
+            auto_btn = msg_box.addButton(self.tr("Auto Install"), QMessageBox.AcceptRole)
+            manual_btn = msg_box.addButton(self.tr("Manual Install"), QMessageBox.ActionRole)
+            msg_box.addButton(QMessageBox.Cancel)
+            msg_box.exec()
 
-        auto_install_button = msg_box.addButton(self.tr("Auto Install"), QMessageBox.AcceptRole)
-        manual_button = msg_box.addButton(self.tr("Manual Install"), QMessageBox.ActionRole)
-        retry_button = msg_box.addButton(self.tr("Retry Check"), QMessageBox.DestructiveRole)
-        msg_box.addButton(QMessageBox.Cancel)
-        msg_box.exec()
-
-        clicked = msg_box.clickedButton()
-        if clicked == portable_button:
-            self.install_windows_portable_zip()
-        elif clicked == auto_install_button:
-            self.start_auto_install()
-        elif clicked == manual_button:
-            webbrowser.open(self.get_manual_download_page())
-            sys.exit()
-        elif clicked == retry_button:
-            self.retry_install_check()
-        else:
-            sys.exit()
-
-    def start_auto_install(self):
-        os_name = platform.system()
-        if os_name == "Windows":
-            self.install_windows_portable_zip()
-            return
-
-        if self.download_url is None:
-            self.install_linux_package()
-            return
-
-        self.download_thread = DownloadWorker(self.download_url, parent=self)
-        self.progress_dialog = QProgressDialog(
-            self.tr("Downloading WARP..."),
-            self.tr("Cancel"),
-            0, 100,
-            self.parent
-        )
-        self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
-
-        self.download_thread.progress.connect(self.progress_dialog.setValue)
-        self.progress_dialog.canceled.connect(self.download_thread.abort)
-        self.download_thread.finished.connect(self.on_download_finished)
-
-        self.download_thread.start()
-        self.progress_dialog.exec()
-
-    def install_windows_portable_zip(self):
-        try:
-            zip_path = self.appdata_dir / "warp_assets.zip"
-
-            progress = QProgressDialog(
-                self.tr("Downloading portable WARP..."),
-                self.tr("Cancel"), 0, 100, self.parent
-            )
-            progress.setWindowTitle(self.tr("Downloading"))
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setValue(0)
-
-            with requests.get(WARP_ASSETS, stream=True, timeout=120) as r:
-                r.raise_for_status()
-                total = int(r.headers.get("content-length", 0))
-                downloaded = 0
-                with open(zip_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total:
-                                progress.setValue(int(downloaded * 100 / total))
-                            if progress.wasCanceled():
-                                r.close()
-                                zip_path.unlink(missing_ok=True)
-                                return
-
-            progress.setValue(100)
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(self.appdata_dir)
-
-            zip_path.unlink(missing_ok=True)
-
-            self._ensure_warp_svc_running_windows()
-            self.register_and_activate_warp()
-
-        except Exception as e:
-            QMessageBox.critical(
-                self.parent, self.tr("Warp Install Failed"),
-                self.tr("Could not setup portable WARP from ZIP:\n{}").format(e)
-            )
-            self._fallback_windows_prompt()
-
-    def _fallback_windows_prompt(self):
-        if self.download_url:
-            self.download_thread = DownloadWorker(self.download_url, parent=self)
-            self.progress_dialog = QProgressDialog(
-                self.tr("Downloading WARP (MSI fallback)..."),
-                self.tr("Cancel"),
-                0, 100,
-                self.parent
-            )
-            self.progress_dialog.setWindowTitle(self.tr("Downloading WARP"))
-            self.progress_dialog.setWindowModality(Qt.WindowModal)
-
-            self.download_thread.progress.connect(self.progress_dialog.setValue)
-            self.progress_dialog.canceled.connect(self.download_thread.abort)
-            self.download_thread.finished.connect(self.on_download_finished)
-
-            self.download_thread.start()
-            self.progress_dialog.exec()
-        else:
-            self.show_install_prompt()
-
-    def _portable_paths(self):
-        return (self.appdata_dir / "warp-cli.exe", self.appdata_dir / "warp-svc.exe")
-
-    def _is_warp_svc_running_windows(self):
-        try:
-            out = subprocess.check_output(["tasklist"], text=True, **safe_subprocess_args())
-            return "warp-svc.exe" in out
-        except Exception:
-            return False
-
-    def _ensure_warp_svc_running_windows(self):
-        if not self._is_warp_svc_running_windows():
-            _, warp_svc = self._portable_paths()
-            if warp_svc.exists():
-                subprocess.Popen([str(warp_svc)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 **safe_subprocess_args())
-                for _ in range(5):
-                    time.sleep(1)
-                    if self._is_warp_svc_running_windows():
-                        return
-                raise RuntimeError("warp-svc failed to start")
-
-    def on_download_finished(self, success, file_path):
-        self.progress_dialog.close()
-        if success:
-            self.install_downloaded_file(file_path)
-        else:
-            QMessageBox.critical(self.parent, self.tr("Download Failed"), self.tr("Failed to download WARP installer."))
-            self.show_install_prompt()
-
-    def install_downloaded_file(self, file_path):
-        try:
-            os_name = platform.system()
-            if os_name == "Windows":
-                subprocess.run(["msiexec", "/i", file_path, "/quiet", "/norestart"],
-                               check=True, timeout=600, **safe_subprocess_args())
-            elif os_name == "Darwin":
-                subprocess.run(["open", file_path], check=True, timeout=60)
-            else:
-                QMessageBox.critical(self.parent, self.tr("Unsupported"),
-                                     self.tr("Automatic install not supported for this OS."))
+            clicked = msg_box.clickedButton()
+            if clicked == auto_btn:
+                self.install_linux_package()
+            elif clicked == manual_btn:
+                webbrowser.open(self.get_manual_download_page())
                 sys.exit()
-            self.register_and_activate_warp()
-        except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self.parent, self.tr("Installation Failed"),
-                                 self.tr("Failed to install WARP: {}").format(e))
-            self.show_install_prompt()
-        except Exception as e:
-            QMessageBox.critical(self.parent, self.tr("Installation Failed"),
-                                 self.tr("Installation error: {}").format(e))
-            self.show_install_prompt()
+            else:
+                sys.exit()
+        else:
+            msg_box.setText(self.tr(
+                "Cloudflare WARP is not installed on this system.\n\nPlease download and install the official client to use PyWarp."))
+            dl_btn = msg_box.addButton(self.tr("Download WARP"), QMessageBox.AcceptRole)
+            msg_box.addButton(QMessageBox.Cancel)
+            msg_box.exec()
+
+            if msg_box.clickedButton() == dl_btn:
+                webbrowser.open(self.get_manual_download_page())
+            sys.exit()
 
     def install_linux_package(self):
-        msg_box = QMessageBox(self.parent)
-        msg_box.setWindowTitle(self.tr("Linux Installation"))
-        msg_box.setText(self.tr(
-            "Automatic installation is only partially supported on Linux.\n\n"
-            "For most reliable results, please follow the official Cloudflare guide:\n"
-            "https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/download-warp/\n\n"
-            "Do you want PyWarp to try installing via your package manager?"
-        ))
-        install_button = msg_box.addButton(self.tr("Try Auto Install"), QMessageBox.AcceptRole)
-        manual_button = msg_box.addButton(self.tr("Open Manual Guide"), QMessageBox.ActionRole)
-        msg_box.addButton(QMessageBox.Cancel)
-        msg_box.exec()
-
-        clicked = msg_box.clickedButton()
-        if clicked == manual_button:
-            webbrowser.open(self.get_manual_download_page())
-            return
-        if clicked != install_button:
-            sys.exit()
-
         try:
             pm = self.detect_linux_package_manager()
             if pm == "apt":
@@ -4749,21 +4538,18 @@ class WarpInstaller:
                 self.install_with_yum_dnf(pm)
             else:
                 QMessageBox.warning(self.parent, self.tr("Unsupported"),
-                                    self.tr("Your package manager is not supported for auto-install.\n"
-                                            "Please use the manual guide instead."))
+                                    self.tr(
+                                        "Your package manager is not supported for auto-install.\nPlease use the manual guide instead."))
                 webbrowser.open(self.get_manual_download_page())
                 return
-
             self.register_and_activate_warp()
 
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.parent, self.tr("Installation Failed"),
                                  self.tr("An error occurred:\n{}").format(e))
-            self.show_install_prompt()
         except Exception as e:
             QMessageBox.critical(self.parent, self.tr("Installation Failed"),
                                  self.tr("Installation error: {}").format(e))
-            self.show_install_prompt()
 
     def install_with_apt(self):
         commands = [
@@ -4771,27 +4557,21 @@ class WarpInstaller:
             ["sudo", "apt", "install", "-y", "curl", "gpg", "lsb-release", "apt-transport-https", "ca-certificates",
              "sudo"],
             ["bash", "-c",
-             'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'],
+             'curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg'],
         ]
-        for cmd in commands:
-            subprocess.run(cmd, check=True, timeout=300)
+        for cmd in commands: subprocess.run(cmd, check=True, timeout=300)
 
         distro = subprocess.check_output(["lsb_release", "-cs"], timeout=60, text=True,
                                          **safe_subprocess_args()).strip()
-        repo_cmd = [
-            "bash", "-c",
-            f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
-            f'https://pkg.cloudflareclient.com/ {distro} main" | '
-            f'sudo tee /etc/apt/sources.list.d/cloudflare-client.list'
-        ]
+        repo_cmd = ["bash", "-c",
+                    f'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ {distro} main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list']
         subprocess.run(repo_cmd, check=True, timeout=60)
         subprocess.run(["sudo", "apt", "update"], check=True, timeout=300)
         subprocess.run(["sudo", "apt", "install", "-y", "cloudflare-warp"], check=True, timeout=300)
 
     def install_with_yum_dnf(self, pm):
         repo_cmd = ["bash", "-c",
-                    'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | '
-                    'sudo tee /etc/yum.repos.d/cloudflare-warp.repo']
+                    'curl -fsSL https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo | sudo tee /etc/yum.repos.d/cloudflare-warp.repo']
         subprocess.run(repo_cmd, check=True, timeout=120)
         subprocess.run(["sudo", pm, "check-update"], check=False, timeout=300)
         subprocess.run(["sudo", pm, "install", "-y", "curl", "sudo", "coreutils"], check=True, timeout=300)
@@ -4799,45 +4579,21 @@ class WarpInstaller:
         subprocess.run(["sudo", pm, "install", "-y", "cloudflare-warp"], check=True, timeout=600)
 
     def detect_linux_package_manager(self):
-        if shutil.which("apt"):
-            return "apt"
-        if shutil.which("dnf"):
-            return "dnf"
-        if shutil.which("yum"):
-            return "yum"
-        if shutil.which("pacman"):
-            return "pacman"
+        if shutil.which("apt"): return "apt"
+        if shutil.which("dnf"): return "dnf"
+        if shutil.which("yum"): return "yum"
+        if shutil.which("pacman"): return "pacman"
         return None
-
-    def retry_install_check(self):
-        if self.is_warp_installed():
-            QMessageBox.information(self.parent, self.tr("Warp Found"), self.tr("WARP is now installed!"))
-        else:
-            self.show_install_prompt()
 
     def register_and_activate_warp(self):
         try:
-            os_name = platform.system()
-            if os_name == "Windows" and not shutil.which("warp-cli"):
-                warp_cli, _ = self._portable_paths()
-                cmd_register = [str(warp_cli), "register"]
-                cmd_tos = [str(warp_cli), "accept-tos"]
-            else:
-                cmd_register = ["warp-cli", "register"]
-                cmd_tos = ["warp-cli", "accept-tos"]
-
-            subprocess.run(cmd_register, check=True, timeout=60)
-            subprocess.run(cmd_tos, check=True, timeout=60)
-
+            subprocess.run(["warp-cli", "register"], check=True, timeout=60)
+            subprocess.run(["warp-cli", "accept-tos"], check=True, timeout=60)
             QMessageBox.information(self.parent, self.tr("Warp Ready"),
                                     self.tr("WARP has been registered and TOS accepted successfully!"))
-
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.parent, self.tr("Warp Activation Failed"),
                                  self.tr("Failed to activate WARP: {}").format(e))
-        except Exception as e:
-            QMessageBox.critical(self.parent, self.tr("Warp Activation Failed"),
-                                 self.tr("Activation error: {}").format(e))
 
 
 if __name__ == "__main__":
@@ -4870,17 +4626,6 @@ if __name__ == "__main__":
                 app.translate("__main__", "Warp could not be installed.\nExiting app.")
             )
             sys.exit()
-
-    if platform.system() == "Windows" and not shutil.which("warp-cli"):
-        try:
-            installer._ensure_warp_svc_running_windows()
-        except Exception as e:
-            QMessageBox.critical(
-                None,
-                app.translate("__main__", "Warp Service Error"),
-                app.translate("__main__", "Portable Warp service failed to start:\n{}").format(e)
-            )
-            sys.exit(1)
 
     window = MainWindow(settings_handler=settings_handler)
     window.show()
