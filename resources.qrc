@@ -5,5 +5,6 @@
         <file>logo_gray.png</file>
         <file>translations/fa.qm</file>
         <file>translations/ru.qm</file>
+        <file>translations/zh_CN.qm</file>
     </qresource>
 </RCC>
