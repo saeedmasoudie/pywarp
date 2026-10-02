@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.3.6 - 2026-10-02
+### Changes
+- removed portable warp on windows
+- update intro and make it faster
+- remove old download functions and classes for portable warp
+- small update on auto protocol
+- optimize exclude domain/ip function
+- adding Simplified Chinese translation #51
+
 ## v1.3.5 - 2026-06-06
 ### Changes
 - fixed problems with ipv6 #44
