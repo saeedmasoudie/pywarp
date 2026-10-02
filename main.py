@@ -3736,17 +3736,6 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("Stats checker failed")
 
-    def _check_ready(self):
-        if all(self._ready_checks.values()):
-            try:
-                if hasattr(self, "_loading_fallback_timer"):
-                    self._loading_fallback_timer.stop()
-            except Exception:
-                pass
-            if hasattr(self, "loading_overlay") and self.loading_overlay:
-                self.loading_overlay.fade_out()
-                self.loading_overlay = None
-
     def restart_app(self):
         logger.info("Restart requested by user.")
         self._is_restarting = True
