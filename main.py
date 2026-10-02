@@ -3055,6 +3055,7 @@ class SettingsPage(QWidget):
         self.language_dropdown.addItem("English", "en")
         self.language_dropdown.addItem("فارسی", "fa")
         self.language_dropdown.addItem("Русский", "ru")
+        self.language_dropdown.addItem("简体中文", "zh_CN")
 
         index = self.language_dropdown.findData(self.current_lang)
         if index >= 0:
