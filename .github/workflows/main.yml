@@ -70,7 +70,6 @@ jobs:
             --hidden-import=PySide6.QtCore `
             --hidden-import=PySide6.QtGui `
             --hidden-import=PySide6.QtWidgets `
-            --collect-all=PySide6 `
             --distpath=dist `
             --specpath=. `
             --workpath=build `
