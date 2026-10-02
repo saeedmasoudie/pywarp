@@ -12,7 +12,6 @@ import threading
 import time
 import traceback
 import webbrowser
-import zipfile
 import requests
 import resources_rc  # noqa: F401
 from types import SimpleNamespace
@@ -28,7 +27,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget,
                                QGraphicsDropShadowEffect, QMessageBox, QSizePolicy, QSystemTrayIcon, QMenu, QComboBox,
                                QLineEdit, QGridLayout, QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView,
-                               QGroupBox, QDialog, QProgressDialog, QInputDialog, QCheckBox,
+                               QGroupBox, QDialog, QInputDialog, QCheckBox,
                                QTextEdit, QFontComboBox, QGraphicsOpacityEffect, QTextBrowser, QDialogButtonBox,
                                QScrollArea)
 
