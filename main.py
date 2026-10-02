@@ -1271,10 +1271,13 @@ class UpdateChecker(QObject):
             return None
 
     def _is_newer_version(self, latest, current):
-        if not latest or not current: return False
+        if not latest or not current:
+            return False
+
         try:
-            def parse(v): return [int(x) for x in re.findall(r"\d+", str(v))]
-            return parse(latest) > parse(current)
+            latest_version = [int(x) for x in re.findall(r"\d+", str(latest))]
+            current_version = [int(x) for x in re.findall(r"\d+", str(current))]
+            return latest_version > current_version
         except Exception:
             return False
 
