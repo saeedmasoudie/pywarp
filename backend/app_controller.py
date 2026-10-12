@@ -134,6 +134,8 @@ class AppController(QObject):
         self._auto_original: tuple[str, str, str, str, bool] | None = None
         self._auto_restore_pending = False
         self._auto_verify_deadline = 0.0
+        self._auto_disconnect_deadline = 0.0
+        self._auto_disconnect_stable_since = 0.0
         self._auto_full_test = False
         self._auto_results: list[dict] = []
         saved_smart_results = self._load_json_setting(
@@ -480,6 +482,8 @@ class AppController(QObject):
                     "no network": "No Network",
                     "nonetwork": "No Network",
                     "failed": "Failed",
+                    "unable": "Failed",
+                    "unavailable": "Failed",
                 }
                 parsed_status = status_map.get(
                     raw_status.replace("_", " ").lower(), raw_status
@@ -490,6 +494,13 @@ class AppController(QObject):
                     if isinstance(raw_reason, dict)
                     else str(raw_reason or "")
                 )
+                if (
+                    parsed_status == "Failed"
+                    and self._status == "Connecting"
+                    and raw_status.replace("_", " ").lower()
+                    in ("unable", "unavailable")
+                ):
+                    parsed_status = "Connecting"
                 if (
                     parsed_status == "Disconnected"
                     and self._status == "Connecting"
@@ -1192,6 +1203,13 @@ class AppController(QObject):
         def success(_: CommandResult) -> None:
             if generation == self._connection_generation:
                 QTimer.singleShot(8_000, self._resync_transition_status)
+                if command == "connect":
+                    QTimer.singleShot(
+                        45_000,
+                        lambda: self._connection_attempt_timeout(
+                            generation
+                        ),
+                    )
 
         self._run(
             [command],
@@ -1199,6 +1217,34 @@ class AppController(QObject):
             error=rollback,
             busy=False,
             report_errors=False,
+        )
+
+    def _connection_attempt_timeout(self, generation: int) -> None:
+        if (
+            generation != self._connection_generation
+            or self._status != "Connecting"
+        ):
+            return
+        self._connection_generation += 1
+        self._cancel_requested = True
+        self._connect_intent_deadline = 0.0
+        self._status = "Failed"
+        self._reason_code = "ConnectionTimeout"
+        self._reason_title = "Connection attempt timed out"
+        self._reason = (
+            "WARP could not establish a secure route and was stopped."
+        )
+        self.stateChanged.emit()
+        self._append_event(
+            "network",
+            self._reason_title,
+            self._reason,
+            "ERROR",
+        )
+        self.toastRequested.emit("error", self._reason)
+        self._runner.run(
+            ["disconnect"],
+            on_error=lambda _: None,
         )
 
     @Slot(int)
@@ -1548,6 +1594,8 @@ class AppController(QObject):
             self.connected,
         )
         self._auto_restore_pending = False
+        self._connection_generation += 1
+        self._connect_intent_deadline = 0.0
         self._auto_index = 0
         self._auto_test_index = 0
         self._auto_test_total = len(self._auto_candidates)
@@ -1604,12 +1652,59 @@ class AppController(QObject):
         transport = masque or "UDP"
         self._auto_profile = f"{protocol} · {transport} · {mode.upper()}"
         self._auto_message = (
-            f"Testing {protocol} · {transport} · {mode.upper()}"
+            "Disconnecting the previous route before testing "
+            f"{protocol} · {transport} · {mode.upper()}"
         )
         self.autoSelectionChanged.emit()
-
-        commands = [
+        self._runner.run(
             ["disconnect"],
+            on_success=lambda _: self._begin_auto_disconnect_wait(),
+            on_error=self._smart_candidate_failed,
+        )
+
+    def _begin_auto_disconnect_wait(self) -> None:
+        if not self._auto_selecting:
+            return
+        self._auto_disconnect_deadline = time.monotonic() + 12.0
+        self._auto_disconnect_stable_since = 0.0
+        self._wait_for_auto_disconnect()
+
+    def _wait_for_auto_disconnect(self) -> None:
+        if not self._auto_selecting:
+            return
+        now = time.monotonic()
+        disconnected = self._status in (
+            "Disconnected",
+            "Failed",
+            "No Network",
+            "Unavailable",
+        )
+        if disconnected:
+            if not self._auto_disconnect_stable_since:
+                self._auto_disconnect_stable_since = now
+            elif now - self._auto_disconnect_stable_since >= 1.5:
+                self._configure_auto_candidate()
+                return
+        else:
+            self._auto_disconnect_stable_since = 0.0
+        if now >= self._auto_disconnect_deadline:
+            self._smart_candidate_failed(
+                "The previous route did not disconnect cleanly."
+            )
+            return
+        QTimer.singleShot(250, self._wait_for_auto_disconnect)
+
+    def _configure_auto_candidate(self) -> None:
+        if not self._auto_selecting:
+            return
+        self._cancel_requested = False
+        protocol, masque, mode = self._auto_candidates[self._auto_index]
+        transport = masque or "UDP"
+        self._auto_message = (
+            f"Connecting {protocol} · {transport} · {mode.upper()}"
+        )
+        self.autoSelectionChanged.emit()
+        commands = [
             ["tunnel", "protocol", "set", protocol],
             ["mode", mode],
         ]
@@ -1758,7 +1853,9 @@ class AppController(QObject):
         if not self._auto_selecting:
             return
         self._auto_index += 1
-        QTimer.singleShot(250, self._try_auto_candidate)
+        self._auto_message = "Waiting before the next route test…"
+        self.autoSelectionChanged.emit()
+        QTimer.singleShot(1_000, self._try_auto_candidate)
 
     def _finish_auto_selection_success(self) -> None:
         if not self._auto_selecting:
