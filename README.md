@@ -33,8 +33,7 @@ Choose the package that matches your operating system:
 
 ## Screenshots
 
-![PyWarp Dark Mode](screenshots/Screenshot-1.jpg)
-![PyWarp Normal](screenshots/Screenshot-2.jpg)
+![PyWarp Dark Mode](screenshots/Screenshot.jpg)
 
 
 ## Requirements
