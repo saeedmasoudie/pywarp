@@ -42,6 +42,7 @@ DNS_VALUES = ("off", "malware", "full")
 PROTOCOL_VALUES = ("WireGuard", "MASQUE")
 MASQUE_VALUES = ("auto", "h3-only", "h2-only", "h3-with-h2-fallback")
 CURRENT_VERSION = "2.0.0"
+CREATE_NO_WINDOW = 0x08000000
 
 
 class AppController(QObject):
@@ -265,6 +266,10 @@ class AppController(QObject):
 
         self._status_process = QProcess(self)
         self._status_process.setProcessChannelMode(QProcess.MergedChannels)
+        if platform.system() == "Windows":
+            self._status_process.setCreateProcessArgumentsModifier(
+                self._hide_qprocess_window
+            )
         self._status_process.readyReadStandardOutput.connect(
             self._read_status_stream
         )
@@ -293,6 +298,10 @@ class AppController(QObject):
         QTimer.singleShot(450, self._detect_cli_capabilities)
         QTimer.singleShot(550, self.refreshRegistration)
         QTimer.singleShot(2_500, self.checkForUpdates)
+
+    @staticmethod
+    def _hide_qprocess_window(arguments) -> None:
+        arguments.flags |= CREATE_NO_WINDOW
 
     @staticmethod
     def _as_bool(value) -> bool:
@@ -3034,6 +3043,11 @@ install -m 0644 "$1" /etc/yum.repos.d/cloudflare-warp.repo
                     text=True,
                     timeout=5,
                     check=False,
+                    creationflags=(
+                        subprocess.CREATE_NO_WINDOW
+                        if platform.system() == "Windows"
+                        else 0
+                    ),
                 )
                 installed_match = re.search(
                     r"\d+(?:\.\d+){2,}", result.stdout + result.stderr

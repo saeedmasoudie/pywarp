@@ -8,10 +8,6 @@ on:
         required: true
         default: "2.0.0"
         type: string
-      release_notes:
-        description: Optional notes appended above the generated commit list
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -183,10 +179,24 @@ jobs:
             --clean `
             --add-data "assets;assets" `
             --add-data "qml;qml" `
-            --collect-all PySide6 `
             --hidden-import PySide6.QtNetwork `
             --hidden-import PySide6.QtQml `
             --hidden-import PySide6.QtQuick `
+            --hidden-import PySide6.QtQuickControls2 `
+            --hidden-import PySide6.QtSvg `
+            --exclude-module PySide6.Qt3DCore `
+            --exclude-module PySide6.Qt3DRender `
+            --exclude-module PySide6.QtCharts `
+            --exclude-module PySide6.QtDataVisualization `
+            --exclude-module PySide6.QtDesigner `
+            --exclude-module PySide6.QtHelp `
+            --exclude-module PySide6.QtMultimedia `
+            --exclude-module PySide6.QtMultimediaWidgets `
+            --exclude-module PySide6.QtPdf `
+            --exclude-module PySide6.QtPdfWidgets `
+            --exclude-module PySide6.QtWebEngineCore `
+            --exclude-module PySide6.QtWebEngineQuick `
+            --exclude-module PySide6.QtWebEngineWidgets `
             @icon `
             main.py
 
@@ -237,10 +247,24 @@ jobs:
             --clean \
             --add-data "assets:assets" \
             --add-data "qml:qml" \
-            --collect-all PySide6 \
             --hidden-import PySide6.QtNetwork \
             --hidden-import PySide6.QtQml \
             --hidden-import PySide6.QtQuick \
+            --hidden-import PySide6.QtQuickControls2 \
+            --hidden-import PySide6.QtSvg \
+            --exclude-module PySide6.Qt3DCore \
+            --exclude-module PySide6.Qt3DRender \
+            --exclude-module PySide6.QtCharts \
+            --exclude-module PySide6.QtDataVisualization \
+            --exclude-module PySide6.QtDesigner \
+            --exclude-module PySide6.QtHelp \
+            --exclude-module PySide6.QtMultimedia \
+            --exclude-module PySide6.QtMultimediaWidgets \
+            --exclude-module PySide6.QtPdf \
+            --exclude-module PySide6.QtPdfWidgets \
+            --exclude-module PySide6.QtWebEngineCore \
+            --exclude-module PySide6.QtWebEngineQuick \
+            --exclude-module PySide6.QtWebEngineWidgets \
             main.py
 
       - name: Package artifact
@@ -296,10 +320,24 @@ jobs:
             --clean \
             --add-data "assets:assets" \
             --add-data "qml:qml" \
-            --collect-all PySide6 \
             --hidden-import PySide6.QtNetwork \
             --hidden-import PySide6.QtQml \
             --hidden-import PySide6.QtQuick \
+            --hidden-import PySide6.QtQuickControls2 \
+            --hidden-import PySide6.QtSvg \
+            --exclude-module PySide6.Qt3DCore \
+            --exclude-module PySide6.Qt3DRender \
+            --exclude-module PySide6.QtCharts \
+            --exclude-module PySide6.QtDataVisualization \
+            --exclude-module PySide6.QtDesigner \
+            --exclude-module PySide6.QtHelp \
+            --exclude-module PySide6.QtMultimedia \
+            --exclude-module PySide6.QtMultimediaWidgets \
+            --exclude-module PySide6.QtPdf \
+            --exclude-module PySide6.QtPdfWidgets \
+            --exclude-module PySide6.QtWebEngineCore \
+            --exclude-module PySide6.QtWebEngineQuick \
+            --exclude-module PySide6.QtWebEngineWidgets \
             "${ICON_ARGS[@]}" \
             main.py
 
@@ -336,61 +374,71 @@ jobs:
           path: artifacts
 
       - name: Generate release notes and checksums
-        env:
-          USER_NOTES: ${{ inputs.release_notes }}
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
           {
             echo "# PyWarp ${TAG}"
             echo
-            if [[ -n "${USER_NOTES}" ]]; then
-              printf '%s\n\n' "${USER_NOTES}"
-            fi
-
-            if [[ -f CHANGELOG.md ]]; then
-              CHANGELOG_NOTES="$(
-                awk -v heading="## ${TAG}" '
-                  index($0, heading) == 1 {found=1; next}
-                  found && /^## / {exit}
-                  found {print}
-                ' CHANGELOG.md
-              )"
-              if [[ -n "${CHANGELOG_NOTES}" ]]; then
-                echo "## Release notes"
-                echo
-                printf '%s\n\n' "${CHANGELOG_NOTES}"
-              fi
-            fi
-
-            PREVIOUS_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-            echo "## Changes"
+            echo "## Download"
             echo
-            if [[ -n "${PREVIOUS_TAG}" ]]; then
-              git log --pretty='- %s (%h)' "${PREVIOUS_TAG}..HEAD"
-            else
-              git log --pretty='- %s (%h)' -20
-            fi
-            echo
-            echo "## Downloads"
-            echo
-            echo "| Platform | Architecture | File |"
-            echo "| --- | --- | --- |"
+            echo "| Platform | Architecture | Package | Size |"
+            echo "| :--- | :---: | :--- | ---: |"
             find artifacts -type f | sort | while read -r file; do
               name="$(basename "$file")"
               case "$name" in
-                *windows*) platform="Windows"; arch="x64" ;;
-                *linux*) platform="Linux"; arch="x64" ;;
-                *macos-arm64*) platform="macOS"; arch="Apple Silicon" ;;
-                *macos-x64*) platform="macOS"; arch="Intel" ;;
+                *windows*)
+                  platform="🪟 **Windows**"
+                  arch="x64"
+                  label="Download ZIP"
+                  color="0078D4"
+                  logo="windows11"
+                  ;;
+                *linux*)
+                  platform="🐧 **Linux**"
+                  arch="x64"
+                  label="Download TAR.GZ"
+                  color="FCC624"
+                  logo="linux"
+                  ;;
+                *macos-arm64*)
+                  platform="🍎 **macOS**"
+                  arch="Apple Silicon"
+                  label="Download DMG"
+                  color="111111"
+                  logo="apple"
+                  ;;
+                *macos-x64*)
+                  platform="🍎 **macOS**"
+                  arch="Intel"
+                  label="Download DMG"
+                  color="111111"
+                  logo="apple"
+                  ;;
                 *) continue ;;
               esac
-              echo "| ${platform} | ${arch} | \`${name}\` |"
+              size="$(du -h "$file" | cut -f1)"
+              badge_label="${label// /_}"
+              asset_url="${RELEASE_URL}/${name}"
+              badge="https://img.shields.io/badge/${badge_label}-${color}?logo=${logo}&logoColor=white"
+              echo "| ${platform} | ${arch} | [![${label}](${badge})](${asset_url}) | ${size} |"
             done
             echo
             echo "Cloudflare WARP must be installed separately. On supported"
             echo "Linux systems, PyWarp can install it from Cloudflare's"
             echo "official repository after explicit administrator approval."
+            echo
+            echo "## What's changed"
+            echo
+            if [[ -n "${PREVIOUS_TAG}" ]]; then
+              git log --no-merges --pretty="- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))" "${PREVIOUS_TAG}..HEAD"
+              echo
+              echo "[View every change since ${PREVIOUS_TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS_TAG}...${TAG})"
+            else
+              git log --no-merges --pretty="- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))"
+            fi
             echo
             echo "## SHA-256 checksums"
             echo
