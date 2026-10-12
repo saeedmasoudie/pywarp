@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_DIR: pywarp-qml
+  APP_DIR: .
   VERSION: ${{ inputs.version }}
 
 jobs:
@@ -29,13 +29,13 @@ jobs:
     name: Validate source
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pywarp-qml/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: python -m pip install -r "$APP_DIR/requirements.txt"
@@ -44,10 +44,11 @@ jobs:
         run: |
           python - <<'PY'
           import ast
+          import json
           import os
           from pathlib import Path
 
-          source = Path("pywarp-qml/backend/app_controller.py").read_text()
+          source = Path("backend/app_controller.py").read_text()
           tree = ast.parse(source)
           current = next(
               node.value.value
@@ -64,11 +65,18 @@ jobs:
                   f"Workflow version {requested} does not match "
                   f"CURRENT_VERSION {current}."
               )
+          metadata = json.loads(Path("version.json").read_text())
+          published = str(metadata["pywarp"]["version"]).lstrip("v")
+          if published != requested:
+              raise SystemExit(
+                  f"Workflow version {requested} does not match "
+                  f"version.json {published}."
+              )
           print(f"Building PyWarp {current}")
           PY
 
       - name: Compile Python
-        run: python -m compileall -q "$APP_DIR"
+        run: python -m compileall -q backend main.py
 
       - name: Validate QML structure and translations
         run: |
@@ -76,7 +84,7 @@ jobs:
           import re
           from pathlib import Path
 
-          qml_files = list(Path("pywarp-qml/qml").rglob("*.qml"))
+          qml_files = list(Path("qml").rglob("*.qml"))
           pairs = {"{": "}", "[": "]", "(": ")"}
           for path in qml_files:
               text = path.read_text(encoding="utf-8")
@@ -112,7 +120,7 @@ jobs:
                   )
 
           catalog = Path(
-              "pywarp-qml/qml/theme/I18n.qml"
+              "qml/theme/I18n.qml"
           ).read_text(encoding="utf-8")
           keys = set()
           for path in qml_files:
@@ -147,13 +155,13 @@ jobs:
     needs: validate
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pywarp-qml/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: Install build dependencies
         working-directory: ${{ env.APP_DIR }}
@@ -192,7 +200,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-windows-x64
-          path: pywarp-qml/pywarp-windows-x64-v${{ inputs.version }}.zip
+          path: pywarp-windows-x64-v${{ inputs.version }}.zip
           retention-days: 14
 
   build-linux:
@@ -200,13 +208,13 @@ jobs:
     needs: validate
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pywarp-qml/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: Install runtime libraries
         run: |
@@ -245,7 +253,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-linux-x64
-          path: pywarp-qml/pywarp-linux-x64-v${{ inputs.version }}.tar.gz
+          path: pywarp-linux-x64-v${{ inputs.version }}.tar.gz
           retention-days: 14
 
   build-macos:
@@ -261,13 +269,13 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pywarp-qml/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: Install build dependencies
         working-directory: ${{ env.APP_DIR }}
@@ -308,7 +316,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pywarp-macos-${{ matrix.arch }}
-          path: pywarp-qml/pywarp-macos-${{ matrix.arch }}-v${{ inputs.version }}.dmg
+          path: pywarp-macos-${{ matrix.arch }}-v${{ inputs.version }}.dmg
           retention-days: 14
 
   release:
@@ -319,7 +327,7 @@ jobs:
       - build-macos
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -343,7 +351,7 @@ jobs:
             if [[ -f CHANGELOG.md ]]; then
               CHANGELOG_NOTES="$(
                 awk -v heading="## ${TAG}" '
-                  $0 == heading {found=1; next}
+                  index($0, heading) == 1 {found=1; next}
                   found && /^## / {exit}
                   found {print}
                 ' CHANGELOG.md
