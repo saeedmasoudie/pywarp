@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.0.0 - 2026-10-12
+### Changes
+- Rebuilt the interface with Qt Quick and QML.
+- Added Connection, Smart Route, Advanced, Activity, and Settings workspaces.
+- Added WireGuard and MASQUE controls with capability detection.
+- Added difficult-network compatibility options and NetBIOS controls.
+- Added personal and Zero Trust registration management.
+- Added an interactive localized product tour.
+- Added compact Tiny Mode and network-quality telemetry.
+- Added automatic update checks for PyWarp and Cloudflare WARP.
+- Added an explicitly confirmed Linux WARP installer for apt, dnf, and yum.
+- Added Persian, Russian, and Simplified Chinese localization.
+- Improved RTL layout, responsive sizing, and themed scroll behavior.
+
 ## v1.3.6 - 2026-10-02
 ### Changes
 - removed portable warp on windows

@@ -1,0 +1,404 @@
+name: Build and release PyWarp
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the v prefix
+        required: true
+        default: "1.3.6"
+        type: string
+      release_notes:
+        description: Optional notes appended above the generated commit list
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pywarp-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  APP_DIR: pywarp-qml
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  validate:
+    name: Validate source
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pywarp-qml/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r "$APP_DIR/requirements.txt"
+
+      - name: Verify release version
+        run: |
+          python - <<'PY'
+          import ast
+          import os
+          from pathlib import Path
+
+          source = Path("pywarp-qml/backend/app_controller.py").read_text()
+          tree = ast.parse(source)
+          current = next(
+              node.value.value
+              for node in tree.body
+              if isinstance(node, ast.Assign)
+              for target in node.targets
+              if isinstance(target, ast.Name)
+              and target.id == "CURRENT_VERSION"
+              and isinstance(node.value, ast.Constant)
+          )
+          requested = os.environ["VERSION"].lstrip("v")
+          if current != requested:
+              raise SystemExit(
+                  f"Workflow version {requested} does not match "
+                  f"CURRENT_VERSION {current}."
+              )
+          print(f"Building PyWarp {current}")
+          PY
+
+      - name: Compile Python
+        run: python -m compileall -q "$APP_DIR"
+
+      - name: Validate QML structure and translations
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          qml_files = list(Path("pywarp-qml/qml").rglob("*.qml"))
+          pairs = {"{": "}", "[": "]", "(": ")"}
+          for path in qml_files:
+              text = path.read_text(encoding="utf-8")
+              stack = []
+              quote = None
+              escaped = False
+              line = 1
+              for char in text:
+                  if char == "\n":
+                      line += 1
+                  if quote:
+                      if escaped:
+                          escaped = False
+                      elif char == "\\":
+                          escaped = True
+                      elif char == quote:
+                          quote = None
+                      continue
+                  if char in "\"'":
+                      quote = char
+                  elif char in pairs:
+                      stack.append((char, line))
+                  elif char in pairs.values():
+                      if not stack or pairs[stack[-1][0]] != char:
+                          raise SystemExit(
+                              f"{path}:{line}: unmatched {char}"
+                          )
+                      stack.pop()
+              if stack:
+                  char, source_line = stack[-1]
+                  raise SystemExit(
+                      f"{path}:{source_line}: unclosed {char}"
+                  )
+
+          catalog = Path(
+              "pywarp-qml/qml/theme/I18n.qml"
+          ).read_text(encoding="utf-8")
+          keys = set()
+          for path in qml_files:
+              keys.update(
+                  re.findall(
+                      r'I18n\.t\(\s*"([^"]+)"',
+                      path.read_text(encoding="utf-8"),
+                  )
+              )
+          missing = [
+              key for key in sorted(keys)
+              if len(
+                  re.findall(
+                      rf'^\s*"{re.escape(key)}"\s*:',
+                      catalog,
+                      re.MULTILINE,
+                  )
+              ) != 3
+          ]
+          if missing:
+              raise SystemExit(
+                  "Translation parity failed: " + ", ".join(missing)
+              )
+          print(
+              f"Validated {len(qml_files)} QML files and "
+              f"{len(keys)} localized keys."
+          )
+          PY
+
+  build-windows:
+    name: Build Windows x64
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pywarp-qml/requirements.txt
+
+      - name: Install build dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build application
+        working-directory: ${{ env.APP_DIR }}
+        shell: pwsh
+        run: |
+          $icon = @()
+          if (Test-Path "assets/logo.ico") {
+            $icon = @("--icon", "assets/logo.ico")
+          }
+          pyinstaller `
+            --name PyWarp `
+            --onefile `
+            --windowed `
+            --noupx `
+            --clean `
+            --add-data "assets;assets" `
+            --add-data "qml;qml" `
+            --collect-all PySide6 `
+            --hidden-import PySide6.QtNetwork `
+            --hidden-import PySide6.QtQml `
+            --hidden-import PySide6.QtQuick `
+            @icon `
+            main.py
+
+      - name: Package artifact
+        working-directory: ${{ env.APP_DIR }}
+        shell: pwsh
+        run: |
+          $archive = "pywarp-windows-x64-v$env:VERSION.zip"
+          Compress-Archive -Path "dist/PyWarp.exe" -DestinationPath $archive
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-windows-x64
+          path: pywarp-qml/pywarp-windows-x64-v${{ inputs.version }}.zip
+          retention-days: 14
+
+  build-linux:
+    name: Build Linux x64
+    needs: validate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pywarp-qml/requirements.txt
+
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libxkbcommon0 libxcb-cursor0
+
+      - name: Install build dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build application
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          pyinstaller \
+            --name PyWarp \
+            --onefile \
+            --windowed \
+            --noupx \
+            --clean \
+            --add-data "assets:assets" \
+            --add-data "qml:qml" \
+            --collect-all PySide6 \
+            --hidden-import PySide6.QtNetwork \
+            --hidden-import PySide6.QtQml \
+            --hidden-import PySide6.QtQuick \
+            main.py
+
+      - name: Package artifact
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          chmod +x dist/PyWarp
+          tar -C dist -czf \
+            "pywarp-linux-x64-v${VERSION}.tar.gz" PyWarp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-linux-x64
+          path: pywarp-qml/pywarp-linux-x64-v${{ inputs.version }}.tar.gz
+          retention-days: 14
+
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pywarp-qml/requirements.txt
+
+      - name: Install build dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build application
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          ICON_ARGS=()
+          if [[ -f assets/logo.icns ]]; then
+            ICON_ARGS=(--icon assets/logo.icns)
+          fi
+          pyinstaller \
+            --name PyWarp \
+            --onedir \
+            --windowed \
+            --noupx \
+            --clean \
+            --add-data "assets:assets" \
+            --add-data "qml:qml" \
+            --collect-all PySide6 \
+            --hidden-import PySide6.QtNetwork \
+            --hidden-import PySide6.QtQml \
+            --hidden-import PySide6.QtQuick \
+            "${ICON_ARGS[@]}" \
+            main.py
+
+      - name: Create disk image
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          hdiutil create \
+            -volname "PyWarp ${VERSION}" \
+            -srcfolder dist/PyWarp.app \
+            -format UDZO \
+            -ov \
+            -o "pywarp-macos-${{ matrix.arch }}-v${VERSION}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywarp-macos-${{ matrix.arch }}
+          path: pywarp-qml/pywarp-macos-${{ matrix.arch }}-v${{ inputs.version }}.dmg
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release notes and checksums
+        env:
+          USER_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          {
+            echo "# PyWarp ${TAG}"
+            echo
+            if [[ -n "${USER_NOTES}" ]]; then
+              printf '%s\n\n' "${USER_NOTES}"
+            fi
+
+            if [[ -f CHANGELOG.md ]]; then
+              CHANGELOG_NOTES="$(
+                awk -v heading="## ${TAG}" '
+                  $0 == heading {found=1; next}
+                  found && /^## / {exit}
+                  found {print}
+                ' CHANGELOG.md
+              )"
+              if [[ -n "${CHANGELOG_NOTES}" ]]; then
+                echo "## Release notes"
+                echo
+                printf '%s\n\n' "${CHANGELOG_NOTES}"
+              fi
+            fi
+
+            PREVIOUS_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            echo "## Changes"
+            echo
+            if [[ -n "${PREVIOUS_TAG}" ]]; then
+              git log --pretty='- %s (%h)' "${PREVIOUS_TAG}..HEAD"
+            else
+              git log --pretty='- %s (%h)' -20
+            fi
+            echo
+            echo "## Downloads"
+            echo
+            echo "| Platform | Architecture | File |"
+            echo "| --- | --- | --- |"
+            find artifacts -type f | sort | while read -r file; do
+              name="$(basename "$file")"
+              case "$name" in
+                *windows*) platform="Windows"; arch="x64" ;;
+                *linux*) platform="Linux"; arch="x64" ;;
+                *macos-arm64*) platform="macOS"; arch="Apple Silicon" ;;
+                *macos-x64*) platform="macOS"; arch="Intel" ;;
+                *) continue ;;
+              esac
+              echo "| ${platform} | ${arch} | \`${name}\` |"
+            done
+            echo
+            echo "Cloudflare WARP must be installed separately. On supported"
+            echo "Linux systems, PyWarp can install it from Cloudflare's"
+            echo "official repository after explicit administrator approval."
+            echo
+            echo "## SHA-256 checksums"
+            echo
+            find artifacts -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              | sed 's#  artifacts/[^/]*/#  #'
+          } > RELEASE_NOTES.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: PyWarp v${{ inputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: artifacts/**/*

@@ -1,112 +1,127 @@
-<div style="border:2px solid #d73a49; border-radius:10px; padding:16px; margin-bottom:24px; background:#fff5f5;">
-  <h2 style="margin-top:0; color:#b31d28;">⚠️ Windows Defender & SmartScreen Notice</h2>
-
-  <p><strong>Important for Windows users:</strong></p>
-
-  <p>
-    When downloading or running <strong>PyWarp</strong> on Windows, you may see security warnings such as:
-    <br>
-    <em>“Windows protected your PC”</em> or <em>“This app might put your PC at risk”</em>.
-  </p>
-
-  <ul>
-    <li>The Windows binary is <strong>not code-signed</strong></li>
-    <li>PyWarp is a <strong>networking / VPN-related open-source tool</strong></li>
-    <li>Microsoft flags <strong>new or low-reputation executables</strong> by default</li>
-  </ul>
-
-  <p><strong>This does NOT mean PyWarp is malicious.</strong></p>
-
-  <p>
-    👉 To run the app: click <strong>More info</strong> → <strong>Run anyway</strong> (first run only).
-  </p>
-
-  <hr style="margin:16px 0;">
-
-  <div dir="rtl" style="text-align:right;">
-    <p><strong>اطلاعیه مهم برای کاربران ویندوز:</strong></p>
-
-<p>
-  هنگام دانلود یا اجرای <strong>PyWarp</strong> ممکن است با پیام‌های امنیتی زیر مواجه شوید:
-  <br>
-  <em>«Windows از رایانه شما محافظت کرد»</em> یا <em>«این برنامه ممکن است خطرناک باشد»</em>
-</p>
-
-<ul>
-  <li>فایل اجرایی ویندوز <strong>امضای دیجیتال ندارد</strong></li>
-  <li>PyWarp یک ابزار <strong>متن‌باز با عملکرد شبکه / VPN</strong> است</li>
-  <li>مایکروسافت فایل‌های جدید یا کم‌اعتبار را به‌صورت پیش‌فرض مسدود می‌کند</li>
-</ul>
-
-<p><strong>این هشدار به‌معنای مخرب بودن PyWarp نیست.</strong></p>
-
-<p>
-  👉 برای اجرا: روی <strong>More info</strong> کلیک کرده و <strong>Run anyway</strong> را انتخاب کنید (فقط بار اول).
-</p>
-
-  </div>
-</div>
-
 # Security Policy
 
-## 📬 Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security issue in PyWarp, please report it **privately** to:
+Report suspected PyWarp vulnerabilities privately through one of these
+channels:
 
-* Email: [info@saeedmasoudie.ir](mailto:info@saeedmasoudie.ir)
-* GitHub: [Open a private security advisory](https://github.com/saeedmasoudie/pywarp/security/advisories)
+- [Open a private GitHub security advisory](https://github.com/saeedmasoudie/pywarp/security/advisories/new)
+- Email [info@saeedmasoudie.ir](mailto:info@saeedmasoudie.ir)
 
-Please **do not** disclose vulnerabilities publicly until we’ve had a chance to investigate and release a fix.
+Do not open a public issue, discussion, or pull request for an unpatched
+vulnerability. Reports are accepted in English or Persian.
 
----
+Include as much of the following as is safe to share:
 
-## 🔐 Supported Versions
+- A concise description of the issue and its potential impact
+- The affected PyWarp version, operating system, and `warp-cli` version
+- Reproduction steps or a minimal proof of concept
+- Relevant logs with license keys, account data, device identifiers, IP
+  addresses, organization names, and other personal data removed
+- Whether the issue is already being exploited or publicly discussed
+- Any suggested mitigation or patch
 
-| Version | Status              | Security Fixes |
-| ------- | ------------------- | -------------- |
-| v1.x    | Actively maintained | ✅ Yes          |
-| v0.x    | Legacy support      | ❌ No           |
+Do not send active credentials, WARP license keys, private signing material, or
+unnecessary personal data.
 
-We recommend using the latest release for full security coverage.
+## Supported versions
 
----
+Security fixes are provided for the latest published PyWarp 1.x release.
 
-## 🧭 Disclosure Policy
+| Version | Support |
+| --- | --- |
+| Latest 2.x release | Actively supported |
+| Older 1.x releases | Upgrade required |
+| 0.x and earlier | Unsupported |
 
-We follow **responsible disclosure** practices. Upon receiving a report, we aim to:
+Always reproduce an issue against the latest release when possible. The current
+application version is defined by `CURRENT_VERSION` in
+`backend/app_controller.py`.
 
-* Acknowledge within **48 hours**
-* Investigate and reproduce within **5 business days**
-* Release a patch or mitigation within **14 days**, if applicable
+## Response targets
 
----
+After receiving a complete report, the project aims to:
 
-## 🌐 Localization
+1. Acknowledge receipt within 48 hours.
+2. Provide an initial assessment within five business days.
+3. Develop a patch or practical mitigation within 14 days for confirmed issues
+   when the complexity and severity allow.
+4. Coordinate a disclosure date with the reporter.
 
-Security reports are accepted in **English** or **Persian (فارسی)**. Please include:
+These are targets rather than guarantees. Complex vulnerabilities, upstream
+dependencies, and third-party service behavior can require additional time.
+Please allow a reasonable remediation period before public disclosure.
 
-* A clear description of the issue
-* Steps to reproduce (if possible)
-* Potential impact
+## Scope
 
----
+The following are in scope when they affect PyWarp users:
 
-## 🛡️ Scope
+- WARP command construction, execution, and output parsing
+- Privilege boundaries in the confirmed Linux WARP installation flow
+- Registration, license, organization, endpoint, and split-tunnel handling
+- Local settings, logs, cached Smart Route results, and downloaded installers
+- Update metadata, release asset selection, and download handling
+- Public IP and geolocation request handling
+- Qt/QML interface paths that expose data or bypass a security decision
+- Packaging, GitHub Actions, release generation, and published artifacts
 
-This policy covers:
+Integration vulnerabilities caused by how PyWarp invokes or interprets an
+upstream service are in scope even when the underlying upstream product is not.
 
-* PyWarp’s proxy engine and networking logic
-* Artifact packaging and release workflows
-* CI/CD scripts and automation tools
+## Out of scope
 
-It does **not** cover third-party dependencies unless explicitly bundled.
+Unless PyWarp introduces or materially worsens the issue, this policy does not
+cover:
 
----
+- Vulnerabilities in Cloudflare WARP, Cloudflare infrastructure, GitHub, Qt,
+  Python, Requests, operating systems, or other third-party dependencies
+- Service availability, network blocking, censorship, or ISP behavior
+- Findings that require an already fully compromised local administrator
+- Social engineering, phishing, or physical attacks
+- Automated scanner output without a reproducible security impact
+- Feature requests, ordinary bugs, or support questions
 
-## 📢 Public Advisories
+Report third-party vulnerabilities to the affected vendor. If you are unsure
+whether PyWarp is responsible, send the report privately and explain the
+suspected integration impact.
 
-If a vulnerability is confirmed and patched, we will:
+## Safe-harbor expectations
 
-* Publish a GitHub advisory
-* Include details in the changelog (`CHANGELOG.md`)
-* Notify users via release notes
+Good-faith research should:
+
+- Use accounts, devices, and networks you own or are authorized to test
+- Avoid accessing, modifying, retaining, or disclosing other people's data
+- Avoid service disruption, destructive testing, persistence, and lateral
+  movement
+- Stop testing and report promptly if sensitive data is encountered
+- Follow applicable laws and third-party terms
+
+The project will not pursue action against good-faith research that follows
+these expectations. This statement cannot authorize testing against third-party
+services or waive their policies.
+
+## Windows Defender and SmartScreen
+
+PyWarp release binaries may be unsigned. Windows can warn about unsigned,
+newly published, or low-reputation networking applications. This warning is
+not proof of malware, but users should verify the download before choosing to
+run it:
+
+1. Download only from the official
+   [PyWarp Releases page](https://github.com/saeedmasoudie/pywarp/releases).
+2. Compare the file's SHA-256 digest with the checksum in its release notes.
+3. Do not bypass a warning if the source or checksum cannot be verified.
+4. Submit unexpected detections or behavior through the private reporting
+   channels above.
+
+## Disclosure and advisories
+
+For a confirmed vulnerability, the project may:
+
+- Publish a GitHub Security Advisory and request a CVE when appropriate
+- Release corrected packages and checksums
+- Document the fix in `CHANGELOG.md` and the release notes
+- Credit the reporter with permission, or keep the report anonymous
+
+Sensitive report details are shared only with people needed to investigate and
+remediate the issue.
