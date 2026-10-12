@@ -266,7 +266,13 @@ class AppController(QObject):
 
         self._status_process = QProcess(self)
         self._status_process.setProcessChannelMode(QProcess.MergedChannels)
-        if platform.system() == "Windows":
+        if (
+            platform.system() == "Windows"
+            and hasattr(
+                self._status_process,
+                "setCreateProcessArgumentsModifier",
+            )
+        ):
             self._status_process.setCreateProcessArgumentsModifier(
                 self._hide_qprocess_window
             )
