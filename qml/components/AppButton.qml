@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import "../theme"
 
-Button {
+AbstractButton {
     id: root
     hoverEnabled: true
+    focusPolicy: Qt.TabFocus
     property bool primary: false
     property bool danger: false
     property bool quiet: false
@@ -38,7 +39,7 @@ Button {
         color: root.enabled
             ? (root.primary || root.danger
                 ? "white"
-                : root.hovered ? Theme.blue : Theme.text)
+                : Theme.text)
             : Theme.textMuted
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
@@ -55,11 +56,17 @@ Button {
                 return root.primary ? Qt.darker(Theme.accent, 1.18)
                     : root.danger ? Qt.darker(Theme.danger, 1.15)
                     : Theme.surfaceHover
+            if (root.hovered)
+                return root.primary ? Theme.accentHover
+                    : root.danger ? Qt.lighter(Theme.danger, 1.08)
+                    : Theme.surfaceHover
             return root.restingColor
         }
         border.width: 1
-        border.color: root.hovered && root.enabled
-            ? root.hoverTone
+        border.color: root.activeFocus
+            ? Theme.accent
+            : root.hovered && root.enabled
+                ? root.hoverTone
             : root.primary || root.danger || root.quiet
                 ? "transparent" : Theme.border
 
@@ -70,15 +77,5 @@ Button {
             ColorAnimation { duration: Theme.animationFast }
         }
 
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: Math.max(0, parent.radius - 1)
-            color: root.hoverTone
-            opacity: root.hovered && root.enabled ? 0.14 : 0
-            Behavior on opacity {
-                NumberAnimation { duration: Theme.animationFast }
-            }
-        }
     }
 }

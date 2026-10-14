@@ -8,6 +8,8 @@ ComboBox {
     leftPadding: I18n.rtl ? 34 : 12
     rightPadding: I18n.rtl ? 12 : 34
     font.pixelSize: 13
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
 
     contentItem: Text {
         leftPadding: 0
@@ -19,12 +21,33 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
-    indicator: Text {
+    indicator: Item {
+        width: 16
+        height: 16
         x: I18n.rtl ? 12 : root.width - width - 12
         anchors.verticalCenter: parent.verticalCenter
-        text: "⌄"
-        color: Theme.textMuted
-        font.pixelSize: 17
+        Canvas {
+            anchors.fill: parent
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                ctx.strokeStyle = Theme.textMuted
+                ctx.lineWidth = 1.6
+                ctx.lineCap = "round"
+                ctx.lineJoin = "round"
+                ctx.beginPath()
+                ctx.moveTo(4, 6)
+                ctx.lineTo(8, 10)
+                ctx.lineTo(12, 6)
+                ctx.stroke()
+            }
+            Connections {
+                target: Theme
+                function onTextMutedChanged() {
+                    parent.requestPaint()
+                }
+            }
+        }
     }
     background: Rectangle {
         color: root.hovered ? Theme.surfaceHover : Theme.surfaceRaised
@@ -36,6 +59,8 @@ ComboBox {
         width: root.width
         implicitHeight: Math.min(contentItem.implicitHeight + 8, 300)
         padding: 4
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
         contentItem: ListView {
             clip: true
             implicitHeight: contentHeight
@@ -54,12 +79,15 @@ ComboBox {
         required property var modelData
         width: root.width - 8
         height: 38
+        leftPadding: 10
+        rightPadding: 10
         text: root.textRole ? model[root.textRole] : modelData
         highlighted: root.highlightedIndex === index
         contentItem: Text {
             text: parent.text
             color: Theme.text
             font.pixelSize: 13
+            elide: Text.ElideRight
             horizontalAlignment: I18n.rtl
                 ? Text.AlignRight : Text.AlignLeft
             verticalAlignment: Text.AlignVCenter

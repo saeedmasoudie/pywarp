@@ -1021,4 +1021,9 @@ QtObject {
         }
         return keys[value] ? t(keys[value], value) : value
     }
+
+    function directionalText(value) {
+        const text = String(value || "")
+        return rtl && text ? "\u202B" + text + "\u202C" : text
+    }
 }

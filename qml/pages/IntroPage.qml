@@ -8,6 +8,8 @@ Rectangle {
     id: root
     color: Theme.background
     property int step: 0
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
     readonly property int textAlignment: I18n.rtl
         ? Text.AlignRight : Text.AlignLeft
 
@@ -34,7 +36,8 @@ Rectangle {
 
     StyledComboBox {
         anchors.top: parent.top
-        anchors.right: parent.right
+        anchors.left: I18n.rtl ? parent.left : undefined
+        anchors.right: I18n.rtl ? undefined : parent.right
         anchors.margins: 26
         width: 145
         property var values: ["en", "fa", "ru", "zh_CN"]
@@ -131,6 +134,8 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 20
                 spacing: 18
+                layoutDirection: I18n.rtl
+                    ? Qt.RightToLeft : Qt.LeftToRight
 
                 Rectangle {
                     width: 64
@@ -154,12 +159,17 @@ Rectangle {
                     spacing: 5
                     Text {
                         Layout.fillWidth: true
-                        text: AppController.warpInstalled
-                            ? I18n.t("warp_ready", "WARP is installed and ready")
-                            : I18n.t(
-                                "warp_missing",
-                                "warp-cli was not found on this system"
-                            )
+                        text: I18n.directionalText(
+                            AppController.warpInstalled
+                                ? I18n.t(
+                                    "warp_ready",
+                                    "WARP is installed and ready"
+                                )
+                                : I18n.t(
+                                    "warp_missing",
+                                    "warp-cli was not found on this system"
+                                )
+                        )
                         color: Theme.text
                         font.pixelSize: 16
                         font.weight: Font.DemiBold
@@ -167,25 +177,27 @@ Rectangle {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: AppController.warpInstalled
-                            ? I18n.t(
-                                "warp_ready_hint",
-                                "Cloudflare WARP CLI is installed and ready."
-                            )
-                            : AppController.platformName === "Linux"
+                        text: I18n.directionalText(
+                            AppController.warpInstalled
                                 ? I18n.t(
-                                    "linux_install_hint",
-                                    "Download the official Cloudflare package for your distribution, install it, then register WARP."
+                                    "warp_ready_hint",
+                                    "Cloudflare WARP CLI is installed and ready."
                                 )
-                                : AppController.platformName === "Darwin"
+                                : AppController.platformName === "Linux"
                                     ? I18n.t(
-                                        "mac_install_hint",
-                                        "Install the official Cloudflare WARP application, then reopen PyWarp."
+                                        "linux_install_hint",
+                                        "Download the official Cloudflare package for your distribution, install it, then register WARP."
                                     )
-                                    : I18n.t(
-                                        "generic_install_hint",
-                                        "Install Cloudflare WARP from the official download page, then reopen PyWarp."
-                                    )
+                                    : AppController.platformName === "Darwin"
+                                        ? I18n.t(
+                                            "mac_install_hint",
+                                            "Install the official Cloudflare WARP application, then reopen PyWarp."
+                                        )
+                                        : I18n.t(
+                                            "generic_install_hint",
+                                            "Install Cloudflare WARP from the official download page, then reopen PyWarp."
+                                        )
+                        )
                         color: Theme.textMuted
                         font.pixelSize: 11
                         lineHeight: 1.25
@@ -196,9 +208,11 @@ Rectangle {
                         Layout.fillWidth: true
                         visible: !AppController.warpInstalled
                             && AppController.platformName === "Linux"
-                        text: I18n.t(
-                            "install_steps",
-                            "Install package  →  warp-cli register  →  reopen PyWarp"
+                        text: I18n.directionalText(
+                            I18n.t(
+                                "install_steps",
+                                "Install package  →  warp-cli register  →  reopen PyWarp"
+                            )
                         )
                         color: Theme.accentHover
                         font.pixelSize: 10
@@ -242,7 +256,9 @@ Rectangle {
                         Layout.fillWidth: true
                         visible: AppController.warpInstallMessage.length > 0
                             && !AppController.warpInstalled
-                        text: AppController.warpInstallMessage
+                        text: I18n.directionalText(
+                            AppController.warpInstallMessage
+                        )
                         color: AppController.warpInstalling
                             ? Theme.warning : Theme.danger
                         font.pixelSize: 9
@@ -259,6 +275,8 @@ Rectangle {
             visible: root.step === 2
             columns: 3
             columnSpacing: 10
+            layoutDirection: I18n.rtl
+                ? Qt.RightToLeft : Qt.LeftToRight
 
             Repeater {
                 model: [
@@ -332,6 +350,8 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 8
             spacing: 10
+            layoutDirection: I18n.rtl
+                ? Qt.RightToLeft : Qt.LeftToRight
             AppButton {
                 visible: root.step > 0
                 text: I18n.t("back", "Back")
@@ -416,6 +436,8 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
+                layoutDirection: I18n.rtl
+                    ? Qt.RightToLeft : Qt.LeftToRight
                 Item { Layout.fillWidth: true }
                 AppButton {
                     text: I18n.t("cancel", "Cancel")

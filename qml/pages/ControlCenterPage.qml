@@ -1165,6 +1165,8 @@ Item {
                 contentWidth: availableWidth
                 clip: true
                 background: null
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 ScrollBar.horizontal: ScrollBar {
                     policy: ScrollBar.AlwaysOff
                     visible: false
@@ -1191,10 +1193,13 @@ Item {
 
                         RowLayout {
                             Layout.fillWidth: true
+                            layoutDirection: I18n.rtl
+                                ? Qt.RightToLeft : Qt.LeftToRight
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 4
                                 Text {
+                                    Layout.fillWidth: true
                                     text: I18n.t(
                                         "smart_lab",
                                         "Smart connection test"
@@ -1202,6 +1207,8 @@ Item {
                                     color: Theme.text
                                     font.pixelSize: 18
                                     font.weight: Font.DemiBold
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                                 Text {
                                     Layout.fillWidth: true
@@ -1217,6 +1224,8 @@ Item {
                                     color: Theme.textMuted
                                     font.pixelSize: 11
                                     wrapMode: Text.WordWrap
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                             ColumnLayout {
@@ -1279,6 +1288,8 @@ Item {
                                     color: Theme.textFaint
                                     font.pixelSize: 9
                                     wrapMode: Text.WordWrap
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -1287,6 +1298,8 @@ Item {
                             Layout.fillWidth: true
                             columns: 3
                             columnSpacing: 8
+                            layoutDirection: I18n.rtl
+                                ? Qt.RightToLeft : Qt.LeftToRight
                             Repeater {
                                 model: [
                                     [
@@ -1339,6 +1352,8 @@ Item {
                         padding: 20
                         RowLayout {
                             Layout.fillWidth: true
+                            layoutDirection: I18n.rtl
+                                ? Qt.RightToLeft : Qt.LeftToRight
                             SmartScan {
                                 Layout.preferredWidth: 110
                                 Layout.preferredHeight: 110
@@ -1350,6 +1365,8 @@ Item {
                                 spacing: 5
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    layoutDirection: I18n.rtl
+                                        ? Qt.RightToLeft : Qt.LeftToRight
                                     Text {
                                         Layout.fillWidth: true
                                         text: AppController.autoSelecting
@@ -1365,6 +1382,8 @@ Item {
                                         color: Theme.text
                                         font.pixelSize: 12
                                         font.weight: Font.DemiBold
+                                        horizontalAlignment: I18n.rtl
+                                            ? Text.AlignRight : Text.AlignLeft
                                     }
                                     Text {
                                         text: AppController.autoProgress + "%"
@@ -1373,16 +1392,21 @@ Item {
                                     }
                                 }
                                 Text {
-                                    text: I18n.autoProfile(
-                                        AppController.autoProfile
-                                    )
-                                        || I18n.t(
-                                            "no_test_running",
-                                            "No test running"
+                                    Layout.fillWidth: true
+                                    text: I18n.directionalText(
+                                        I18n.autoProfile(
+                                            AppController.autoProfile
                                         )
+                                            || I18n.t(
+                                                "no_test_running",
+                                                "No test running"
+                                            )
+                                    )
                                     color: Theme.textMuted
                                     font.pixelSize: 11
                                     font.family: "monospace"
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                                 TechProgress {
                                     Layout.fillWidth: true
@@ -1390,11 +1414,16 @@ Item {
                                     running: AppController.autoSelecting
                                 }
                                 Text {
-                                    text: I18n.autoMessage(
-                                        AppController.autoMessage
+                                    Layout.fillWidth: true
+                                    text: I18n.directionalText(
+                                        I18n.autoMessage(
+                                            AppController.autoMessage
+                                        )
                                     )
                                     color: Theme.textFaint
                                     font.pixelSize: 10
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                             }
                         }
@@ -1407,10 +1436,13 @@ Item {
 
                         RowLayout {
                             Layout.fillWidth: true
+                            layoutDirection: I18n.rtl
+                                ? Qt.RightToLeft : Qt.LeftToRight
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
                                 Text {
+                                    Layout.fillWidth: true
                                     text: I18n.t(
                                         "full_results",
                                         "Full comparison results"
@@ -1418,6 +1450,8 @@ Item {
                                     color: Theme.text
                                     font.pixelSize: 14
                                     font.weight: Font.DemiBold
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                 }
                                 Text {
                                     Layout.fillWidth: true
@@ -1427,6 +1461,8 @@ Item {
                                     )
                                     color: Theme.textMuted
                                     font.pixelSize: 9
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                     elide: Text.ElideRight
                                 }
                             }
@@ -1460,15 +1496,20 @@ Item {
                                     anchors.leftMargin: 12
                                     anchors.rightMargin: 12
                                     spacing: 10
+                                    layoutDirection: I18n.rtl
+                                        ? Qt.RightToLeft : Qt.LeftToRight
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 2
                                         Text {
                                             Layout.fillWidth: true
-                                            text: profile
+                                            text: I18n.directionalText(profile)
                                             color: Theme.text
                                             font.pixelSize: 11
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: I18n.rtl
+                                                ? Text.AlignRight
+                                                : Text.AlignLeft
                                             elide: Text.ElideRight
                                         }
                                         Text {
@@ -1482,6 +1523,9 @@ Item {
                                             color: working
                                                 ? Theme.success : Theme.danger
                                             font.pixelSize: 9
+                                            horizontalAlignment: I18n.rtl
+                                                ? Text.AlignRight
+                                                : Text.AlignLeft
                                         }
                                     }
                                     Rectangle {

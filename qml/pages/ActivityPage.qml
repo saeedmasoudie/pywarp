@@ -116,14 +116,20 @@ Item {
                                 Layout.fillWidth: true
                                 Text {
                                     Layout.fillWidth: true
-                                    text: I18n.activityText(message)
+                                    text: I18n.directionalText(
+                                        I18n.activityText(message)
+                                    )
                                     color: Theme.text
                                     font.pixelSize: 11
                                     font.weight: Font.DemiBold
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                     elide: Text.ElideRight
                                 }
                                 Text {
-                                    text: I18n.activityCategory(category)
+                                    text: I18n.directionalText(
+                                        I18n.activityCategory(category)
+                                    )
                                     color: Theme.textFaint
                                     font.pixelSize: 7
                                     font.weight: Font.Bold
@@ -132,9 +138,13 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: I18n.activityText(detail)
+                                text: I18n.directionalText(
+                                    I18n.activityText(detail)
+                                )
                                 color: Theme.textMuted
                                 font.pixelSize: 9
+                                horizontalAlignment: I18n.rtl
+                                    ? Text.AlignRight : Text.AlignLeft
                                 elide: Text.ElideRight
                             }
                         }

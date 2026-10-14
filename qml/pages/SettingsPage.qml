@@ -415,44 +415,66 @@ Item {
                         && !AppController.managedAccount
                     Layout.fillWidth: true
                     spacing: 5
+                    LayoutMirroring.enabled: false
+                    LayoutMirroring.childrenInherit: true
                     Text {
+                        Layout.fillWidth: true
                         text: I18n.t("registered_devices", "Registered devices")
                         color: Theme.textMuted
                         font.pixelSize: 10
                         font.weight: Font.DemiBold
+                        horizontalAlignment: I18n.rtl
+                            ? Text.AlignRight : Text.AlignLeft
                     }
                     Repeater {
                         model: AppController.registrationDevices.slice(0, 4)
                         Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
-                            implicitHeight: 34
+                            implicitHeight: 40
                             radius: 8
                             color: Theme.surfaceRaised
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
+                                spacing: 8
+                                layoutDirection: I18n.rtl
+                                    ? Qt.RightToLeft : Qt.LeftToRight
                                 Text {
                                     Layout.fillWidth: true
                                     text: modelData.model + " · " + modelData.os
                                     color: Theme.text
                                     font.pixelSize: 9
+                                    horizontalAlignment: I18n.rtl
+                                        ? Text.AlignRight : Text.AlignLeft
                                     elide: Text.ElideRight
                                 }
-                                Text {
-                                    text: modelData.active
-                                        ? I18n.t("active", "Active")
-                                        : I18n.t("inactive", "Inactive")
+                                Rectangle {
+                                    implicitWidth:
+                                        deviceStatusText.implicitWidth + 16
+                                    implicitHeight: 24
+                                    radius: 8
                                     color: modelData.active
-                                        ? Theme.success : Theme.textFaint
-                                    font.pixelSize: 9
-                                    font.weight: Font.DemiBold
+                                        ? Theme.successSoft
+                                        : Theme.surfaceHover
+                                    Text {
+                                        id: deviceStatusText
+                                        anchors.centerIn: parent
+                                        text: modelData.active
+                                            ? I18n.t("active", "Active")
+                                            : I18n.t("inactive", "Inactive")
+                                        color: modelData.active
+                                            ? Theme.success : Theme.textFaint
+                                        font.pixelSize: 9
+                                        font.weight: Font.DemiBold
+                                    }
                                 }
                             }
                         }
                     }
                     Text {
+                        Layout.fillWidth: true
                         visible: AppController.registrationDevices.length > 4
                         text: I18n.t(
                             "more_devices", "+ %1 more"
@@ -462,6 +484,8 @@ Item {
                         )
                         color: Theme.textFaint
                         font.pixelSize: 9
+                        horizontalAlignment: I18n.rtl
+                            ? Text.AlignRight : Text.AlignLeft
                     }
                 }
             }

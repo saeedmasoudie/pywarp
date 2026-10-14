@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QStandardPaths, QUrl
+from PySide6.QtCore import (
+    QCoreApplication,
+    QObject,
+    QStandardPaths,
+    QUrl,
+    Signal,
+)
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
@@ -15,6 +23,60 @@ from backend.tray_service import TrayService
 
 
 ROOT = Path(__file__).resolve().parent
+INSTANCE_SERVER_NAME = "PyWarp-single-instance"
+
+
+class SingleInstance(QObject):
+    activateRequested = Signal()
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._server = QLocalServer(self)
+        self._server.setSocketOptions(
+            QLocalServer.SocketOption.UserAccessOption
+        )
+        self._server.newConnection.connect(self._accept_connections)
+
+    def acquire(self) -> bool:
+        probe = QLocalSocket()
+        probe.connectToServer(INSTANCE_SERVER_NAME)
+        if probe.waitForConnected(300):
+            probe.write(b"activate")
+            probe.waitForBytesWritten(300)
+            probe.disconnectFromServer()
+            return False
+
+        QLocalServer.removeServer(INSTANCE_SERVER_NAME)
+        if self._server.listen(INSTANCE_SERVER_NAME):
+            return True
+
+        probe.connectToServer(INSTANCE_SERVER_NAME)
+        if probe.waitForConnected(300):
+            probe.write(b"activate")
+            probe.waitForBytesWritten(300)
+            probe.disconnectFromServer()
+        return False
+
+    def _accept_connections(self) -> None:
+        while self._server.hasPendingConnections():
+            connection = self._server.nextPendingConnection()
+            if connection is not None:
+                connection.disconnectFromServer()
+                connection.deleteLater()
+        self.activateRequested.emit()
+
+
+def configure_windows_identity() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "PyWarp.PyWarp"
+        )
+    except (AttributeError, OSError):
+        logging.warning("Could not set the Windows application identity.")
 
 
 def configure_logging() -> Path:
@@ -40,15 +102,21 @@ def configure_logging() -> Path:
 
 
 def main() -> int:
+    configure_windows_identity()
     QCoreApplication.setOrganizationName("PyWarp")
     QCoreApplication.setApplicationName("PyWarp")
     QApplication.setDesktopFileName("pywarp")
 
     app = QApplication(sys.argv)
     app.setApplicationDisplayName("PyWarp")
+    single_instance = SingleInstance(app)
+    if not single_instance.acquire():
+        return 0
+
     png_logo = ROOT / "assets" / "logo.png"
     logo_path = png_logo if png_logo.exists() else ROOT / "assets" / "logo.svg"
-    app.setWindowIcon(QIcon(str(logo_path)))
+    app_icon = QIcon(str(logo_path))
+    app.setWindowIcon(app_icon)
 
     controller = AppController(configure_logging())
 
@@ -70,7 +138,16 @@ def main() -> int:
     engine.load(QUrl.fromLocalFile(str(ROOT / "qml" / "Main.qml")))
     if not engine.rootObjects():
         return 1
-    tray_service.set_window(engine.rootObjects()[0])
+    window = engine.rootObjects()[0]
+    window.setIcon(app_icon)
+
+    def activate_window() -> None:
+        window.showNormal()
+        window.raise_()
+        window.requestActivate()
+
+    single_instance.activateRequested.connect(activate_window)
+    tray_service.set_window(window)
     return app.exec()
 
 
