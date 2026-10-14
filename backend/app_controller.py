@@ -41,7 +41,7 @@ MODE_VALUES = (
 DNS_VALUES = ("off", "malware", "full")
 PROTOCOL_VALUES = ("WireGuard", "MASQUE")
 MASQUE_VALUES = ("auto", "h3-only", "h2-only", "h3-with-h2-fallback")
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.0.1"
 CREATE_NO_WINDOW = 0x08000000
 
 
