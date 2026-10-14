@@ -6,7 +6,7 @@ on:
       version:
         description: Version to release, without the v prefix
         required: true
-        default: "2.0.0"
+        default: "2.0.1"
         type: string
 
 permissions:
@@ -433,11 +433,13 @@ jobs:
             echo "## What's changed"
             echo
             if [[ -n "${PREVIOUS_TAG}" ]]; then
-              git log --no-merges --pretty="- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))" "${PREVIOUS_TAG}..HEAD"
+              git log --no-merges --format="%b" "${PREVIOUS_TAG}..HEAD" \
+                | sed '/^[[:space:]]*$/d'
               echo
               echo "[View every change since ${PREVIOUS_TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS_TAG}...${TAG})"
             else
-              git log --no-merges --pretty="- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))"
+              git log --no-merges --format="%b" \
+                | sed '/^[[:space:]]*$/d'
             fi
             echo
             echo "## SHA-256 checksums"
