@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QStandardPaths,
     QUrl,
     Signal,
+    QTimer,
 )
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
@@ -113,9 +114,19 @@ def main() -> int:
     if not single_instance.acquire():
         return 0
 
-    png_logo = ROOT / "assets" / "logo.png"
-    logo_path = png_logo if png_logo.exists() else ROOT / "assets" / "logo.svg"
-    app_icon = QIcon(str(logo_path))
+    icon_names = (
+        ("logo.ico", "logo.png", "logo.svg") if os.name == "nt"
+        else ("logo.png", "logo.icns", "logo.ico", "logo.svg")
+    )
+    app_icon = QIcon()
+    logo_path = ROOT / "assets" / "logo.svg"
+    for name in icon_names:
+        candidate = ROOT / "assets" / name
+        if candidate.is_file():
+            icon = QIcon(str(candidate))
+            if not icon.isNull():
+                logo_path, app_icon = candidate, icon
+                break
     app.setWindowIcon(app_icon)
 
     controller = AppController(configure_logging())
@@ -140,6 +151,11 @@ def main() -> int:
         return 1
     window = engine.rootObjects()[0]
     window.setIcon(app_icon)
+    window.show()
+    # Native windows may be recreated when moving between tray/Tiny Mode states.
+    window.visibleChanged.connect(lambda _: window.setIcon(app_icon))
+    window.visibilityChanged.connect(lambda _: window.setIcon(app_icon))
+    QTimer.singleShot(0, lambda: window.setIcon(app_icon))
 
     def activate_window() -> None:
         window.showNormal()

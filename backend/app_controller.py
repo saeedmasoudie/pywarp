@@ -43,6 +43,19 @@ PROTOCOL_VALUES = ("WireGuard", "MASQUE")
 MASQUE_VALUES = ("auto", "h3-only", "h2-only", "h3-with-h2-fallback")
 CURRENT_VERSION = "2.0.1"
 CREATE_NO_WINDOW = 0x08000000
+DEFAULT_EXCLUDED_NETWORKS = frozenset(
+    ipaddress.ip_network(value) for value in (
+        "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16",
+        "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16",
+        "224.0.0.0/24", "240.0.0.0/4", "239.255.255.250/32",
+        "255.255.255.255/32", "fe80::/10", "fd00::/8",
+        "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
+        "ff05::/16", "fc00::/7", "17.249.0.0/16", "17.252.0.0/16",
+        "17.57.144.0/22", "17.188.128.0/18", "17.188.20.0/23",
+        "2620:149:a44::/48", "2403:300:a42::/48", "2403:300:a51::/48",
+        "2a01:b740:a42::/48",
+    )
+)
 
 
 class AppController(QObject):
@@ -164,7 +177,22 @@ class AppController(QObject):
         self._doh_mss_clamp_supported = False
         self._doh_mss_clamp_enabled = False
 
-        self._endpoint_history = self._load_list_setting("endpoint_history")
+        self._endpoint_history = list(dict.fromkeys(
+            self._load_list_setting("endpoint_history")
+        ))[:5]
+        self._custom_exclusions = self._load_json_setting(
+            "custom_exclusions", []
+        )
+        if not isinstance(self._custom_exclusions, list):
+            self._custom_exclusions = []
+        self._custom_exclusions = [
+            item for item in self._custom_exclusions
+            if isinstance(item, dict)
+            and item.get("type") in ("ip", "host")
+            and isinstance(item.get("value"), str)
+            and self._valid_exclusion(item["type"], item["value"])
+        ]
+        self._exclusions_generation = 0
         self._rule_history = self._load_list_setting("rule_history")
         self._advanced_history = self._load_json_setting(
             "advanced_history", []
@@ -1413,7 +1441,7 @@ class AppController(QObject):
             self._endpoint_history = [
                 endpoint,
                 *[item for item in self._endpoint_history if item != endpoint],
-            ][:10]
+            ][:5]
             self._save_setting("endpoint_history", self._endpoint_history)
             self._record_advanced_change("Saved endpoint", "endpoint", endpoint)
             self.settingsChanged.emit()
@@ -1448,6 +1476,13 @@ class AppController(QObject):
             self.toastRequested.emit("error", "Enter a valid IP/CIDR or domain.")
             return
         def added(_: CommandResult) -> None:
+            item = {"type": rule_type, "value": value}
+            if item not in self._custom_exclusions:
+                self._custom_exclusions.append(item)
+            self._save_setting("custom_exclusions", self._custom_exclusions)
+            self._exclusions.replace(
+                self._visible_exclusions(self._custom_exclusions)
+            )
             key = f"{rule_type}:{value}"
             self._rule_history = [
                 key,
@@ -1470,6 +1505,12 @@ class AppController(QObject):
     def removeExclusion(self, rule_type: str, value: str) -> None:
         rule_type = "host" if rule_type.lower() in ("host", "domain") else "ip"
         def removed(_: CommandResult) -> None:
+            self._custom_exclusions = [
+                item for item in self._custom_exclusions
+                if item != {"type": rule_type, "value": value}
+            ]
+            self._save_setting("custom_exclusions", self._custom_exclusions)
+            self._exclusions.remove_matching(type=rule_type, value=value)
             self._record_advanced_change(
                 "Removed bypass rule", rule_type, value
             )
@@ -1501,7 +1542,14 @@ class AppController(QObject):
     def resetExclusions(self) -> None:
         pending = {"count": 2}
 
-        def finished(_: CommandResult) -> None:
+        def finished(rule_type: str, _: CommandResult) -> None:
+            self._custom_exclusions = [
+                item for item in self._custom_exclusions
+                if item["type"] != rule_type
+            ]
+            self._save_setting("custom_exclusions", self._custom_exclusions)
+            self._exclusions_generation += 1
+            self._exclusions.remove_matching(type=rule_type)
             pending["count"] -= 1
             if pending["count"] == 0:
                 self._record_advanced_change(
@@ -1510,8 +1558,12 @@ class AppController(QObject):
                 self.refreshExclusions()
                 self.toastRequested.emit("success", "Manual exclusions reset.")
 
-        self._run(["tunnel", "ip", "reset"], success=finished, busy=False)
-        self._run(["tunnel", "host", "reset"], success=finished, busy=False)
+        for rule_type in ("ip", "host"):
+            self._run(
+                ["tunnel", rule_type, "reset"],
+                success=lambda result, kind=rule_type: finished(kind, result),
+                busy=False,
+            )
 
     def _record_advanced_change(
         self, action: str, kind: str, value: str
@@ -2027,36 +2079,82 @@ class AppController(QObject):
 
     @Slot()
     def refreshExclusions(self) -> None:
+        self._exclusions_generation += 1
+        generation = self._exclusions_generation
         collected: dict[str, list[dict]] = {"ip": [], "host": []}
         pending = {"count": 2}
 
-        def parsed(rule_type: str, result: CommandResult) -> None:
-            try:
-                data = json.loads(result.stdout)
-                values = data if isinstance(data, list) else (
-                    data.get("entries")
-                    or data.get(rule_type)
-                    or data.get("items")
-                    or []
-                )
+        def settled(rule_type: str, result: CommandResult | None) -> None:
+            if generation != self._exclusions_generation:
+                return
+            if result is not None:
                 collected[rule_type] = [
-                    {"type": rule_type, "value": str(value)}
-                    for value in values
+                    {"type": rule_type, "value": value}
+                    for value in self._parse_exclusion_values(
+                        rule_type, result.stdout
+                    )
                 ]
-            except (json.JSONDecodeError, AttributeError):
-                collected[rule_type] = []
             pending["count"] -= 1
             if pending["count"] == 0:
-                self._exclusions.replace(
-                    collected["ip"] + collected["host"]
-                )
+                items = collected["ip"] + collected["host"]
+                for item in self._custom_exclusions:
+                    if item not in items:
+                        items.append(dict(item))
+                self._exclusions.replace(self._visible_exclusions(items))
 
         for rule_type in ("ip", "host"):
             self._runner.run(
                 ["-j", "tunnel", rule_type, "list"],
-                on_success=lambda result, kind=rule_type: parsed(kind, result),
-                on_error=lambda _: None,
+                on_success=lambda result, kind=rule_type: settled(kind, result),
+                on_error=lambda _, kind=rule_type: settled(kind, None),
             )
+
+    @staticmethod
+    def _visible_exclusions(items: list[dict]) -> list[dict]:
+        """Hide exact built-in routes, not user subnets within those routes."""
+        visible = []
+        for item in items:
+            if item["type"] == "ip":
+                try:
+                    network = ipaddress.ip_network(item["value"], strict=False)
+                except ValueError:
+                    continue
+                if network in DEFAULT_EXCLUDED_NETWORKS:
+                    continue
+            if item not in visible:
+                visible.append(dict(item))
+        return visible
+
+    @staticmethod
+    def _parse_exclusion_values(rule_type: str, output: str) -> list[str]:
+        """Accept JSON wrappers/entry objects and older plain-text CLI lists."""
+        values: list[str] = []
+
+        def visit(data) -> None:
+            if isinstance(data, list):
+                for item in data:
+                    visit(item)
+            elif isinstance(data, dict):
+                for key in (
+                    "entries", "items", "result", "data", "excluded",
+                    "exclusions", "routes", "ips", "hosts", rule_type,
+                    "value", "address", "network", "cidr", "host", "hostname",
+                    "domain", "ip",
+                ):
+                    if key in data:
+                        visit(data[key])
+            elif isinstance(data, str):
+                for token in re.split(r"[\s,;|]+", data):
+                    value = token.strip("[]()\"'")
+                    if AppController._valid_exclusion(rule_type, value):
+                        if value not in values:
+                            values.append(value)
+
+        try:
+            visit(json.loads(output))
+        except (json.JSONDecodeError, TypeError):
+            visit(output)
+        return values
 
     @Slot(bool)
     def setDnsLogging(self, enabled: bool) -> None:

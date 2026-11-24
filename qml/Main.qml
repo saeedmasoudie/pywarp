@@ -19,7 +19,7 @@ ApplicationWindow {
     height: 760
     minimumWidth: AppController.compactMode ? 420 : 820
     minimumHeight: AppController.compactMode ? 190 : 600
-    visible: true
+    visible: false
     title: "PyWarp"
     color: Theme.background
     flags: Qt.Window | Qt.FramelessWindowHint

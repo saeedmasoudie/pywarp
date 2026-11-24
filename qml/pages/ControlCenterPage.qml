@@ -646,32 +646,44 @@ Item {
                             }
                         }
                         Flow {
+                            id: endpointHistoryFlow
                             Layout.fillWidth: true
-                            Layout.preferredHeight:
-                                AppController.endpointHistory.length ? 29 : 0
+                            Layout.preferredHeight: childrenRect.height
+                            visible: AppController.endpointHistory.length > 0
                             spacing: 6
                             Repeater {
-                                model: AppController.endpointHistory
-                                Rectangle {
+                                model: AppController.endpointHistory.slice(0, 5)
+                                AbstractButton {
+                                    id: endpointChip
                                     required property string modelData
-                                    width: endpointHistoryText.implicitWidth + 18
+                                    width: Math.min(
+                                        endpointHistoryText.implicitWidth + 18,
+                                        endpointHistoryFlow.width
+                                    )
                                     height: 27
-                                    radius: 9
-                                    color: Theme.surfaceRaised
-                                    border.color: Theme.border
-                                    Text {
+                                    hoverEnabled: true
+                                    focusPolicy: Qt.TabFocus
+                                    Accessible.name: modelData
+                                    background: Rectangle {
+                                        radius: 9
+                                        color: endpointChip.hovered
+                                            ? Theme.surfaceHover
+                                            : Theme.surfaceRaised
+                                        border.color: endpointChip.activeFocus
+                                            ? Theme.accent : Theme.border
+                                    }
+                                    contentItem: Text {
                                         id: endpointHistoryText
-                                        anchors.centerIn: parent
-                                        text: modelData
+                                        text: endpointChip.modelData
                                         color: Theme.textMuted
-                                        font.pixelSize: 9
+                                        font.pixelSize: 12
                                         font.family: "monospace"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideMiddle
                                     }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: endpointInput.text = modelData
-                                    }
+                                    onClicked:
+                                        endpointInput.text = modelData
                                 }
                             }
                         }
