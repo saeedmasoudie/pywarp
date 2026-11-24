@@ -26,7 +26,7 @@ unnecessary personal data.
 
 ## Supported versions
 
-Security fixes are provided for the latest published PyWarp 1.x release.
+Security fixes are provided for the latest published PyWarp 2.x release.
 
 | Version | Support |
 | --- | --- |
